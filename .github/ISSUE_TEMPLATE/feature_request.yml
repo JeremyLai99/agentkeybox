@@ -1,0 +1,21 @@
+name: Feature request
+description: Suggest a focused workflow improvement
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: User problem
+      description: Describe the workflow pain before proposing a solution.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed behavior
+  - type: textarea
+    id: security
+    attributes:
+      label: Security implications
+      description: Does this change where, when, or how a credential can be accessed?

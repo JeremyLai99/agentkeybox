@@ -212,6 +212,7 @@ Scripts/
 └── security-static-check.sh
 ```
 
+
 ## Repository checks
 
 Before a commit or alpha build, run:
@@ -223,6 +224,7 @@ make check
 This runs formatter lint when available, a warnings-as-errors build, unit tests, MCP and CLI smoke tests, static secret/logging checks, and shell syntax validation.
 
 See [`docs/SESSION_STATUS.md`](docs/SESSION_STATUS.md) for the exact boundary between what is already verified and what still requires a real Mac.
+
 
 ## Status
 
@@ -247,6 +249,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Security reports should follow [SECURITY
 ## License
 
 Apache License 2.0. See [LICENSE](LICENSE).
+
+
 
 ## Product design direction
 

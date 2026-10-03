@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    name: macOS build, test, and package
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Swift version
+        run: swift --version
+      - name: Build with warnings as errors
+        run: swift build -Xswiftc -warnings-as-errors
+      - name: Test
+        run: swift test
+      - name: MCP smoke test
+        run: ./Scripts/mcp-smoke-test.sh
+      - name: CLI smoke test
+        run: ./Scripts/cli-smoke-test.sh
+      - name: Static security checks
+        run: ./Scripts/security-static-check.sh
+      - name: Package unsigned alpha artifact
+        run: ./Scripts/build-release-macos.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AgentKeyBox-macOS-alpha
+          path: |
+            dist/AgentKeyBox-*.zip
+            dist/AgentKeyBox-*.sha256
+
+  linux-core:
+    name: Linux core and protocol test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Swift version
+        run: swift --version
+      - name: Build core with warnings as errors
+        run: swift build -Xswiftc -warnings-as-errors
+      - name: Test core and MCP protocol
+        run: |
+          swift test
+          ./Scripts/mcp-smoke-test.sh
+          ./Scripts/cli-smoke-test.sh
+          ./Scripts/security-static-check.sh
