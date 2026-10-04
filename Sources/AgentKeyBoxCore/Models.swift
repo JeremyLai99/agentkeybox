@@ -28,6 +28,11 @@ public struct CredentialMetadata: Identifiable, Codable, Hashable, Sendable {
   public var projectID: UUID?
   public var environment: String?
   public var kind: CredentialKind
+  /// Environment variable the credential is injected as, e.g. `STRIPE_SECRET_KEY`.
+  public var environmentVariableName: String?
+  /// Hosts `http_request` may send this credential to; `*.example.com` matches subdomains.
+  /// Nil means unrestricted, which the approval prompt flags.
+  public var allowedHosts: [String]?
   public var createdAt: Date
   public var updatedAt: Date
 
@@ -38,6 +43,8 @@ public struct CredentialMetadata: Identifiable, Codable, Hashable, Sendable {
     projectID: UUID? = nil,
     environment: String? = nil,
     kind: CredentialKind = .apiKey,
+    environmentVariableName: String? = nil,
+    allowedHosts: [String]? = nil,
     createdAt: Date = Date(),
     updatedAt: Date = Date()
   ) {
@@ -47,8 +54,24 @@ public struct CredentialMetadata: Identifiable, Codable, Hashable, Sendable {
     self.projectID = projectID
     self.environment = environment
     self.kind = kind
+    self.environmentVariableName = environmentVariableName
+    self.allowedHosts = allowedHosts
     self.createdAt = createdAt
     self.updatedAt = updatedAt
+  }
+
+  /// The variable name used when injecting into a process. Metadata saved before
+  /// `environmentVariableName` existed falls back to the label when it is a valid name.
+  public var injectionVariableName: String? {
+    if let environmentVariableName, !environmentVariableName.isEmpty {
+      return environmentVariableName
+    }
+    return ApprovedCommandRunner.isValidEnvironmentVariable(label) ? label : nil
+  }
+
+  /// File-style credentials are delivered as temporary files, not as environment text.
+  public var isFileCredential: Bool {
+    kind == .p8 || kind == .pem || kind == .json
   }
 }
 
@@ -58,8 +81,22 @@ public enum ApprovalScope: String, Codable, Sendable {
   case project
 }
 
+public enum AgentRequestKind: String, Codable, Sendable {
+  case command
+  case httpRequest
+  case environment
+}
+
 public struct AgentRequest: Identifiable, Codable, Hashable, Sendable {
   public let id: UUID
+  public var kind: AgentRequestKind = .command
+  public var httpMethod: String?
+  public var url: String?
+  public var headerNames: [String] = []
+  public var bodyPreview: String?
+  public var hostAllowed: Bool?
+  /// For `.environment`: variable names that will be revealed to the requesting terminal.
+  public var environmentVariables: [String] = []
   public var agentID: String
   public var agentDisplayName: String
   public var projectPath: String

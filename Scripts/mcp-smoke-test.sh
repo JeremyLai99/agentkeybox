@@ -17,6 +17,8 @@ printf '%s\n' "$OUTPUT"
 grep -q '"name":"AgentKeyBox"' <<<"$OUTPUT"
 grep -q '"name":"list_credentials"' <<<"$OUTPUT"
 grep -q '"name":"run_with_secret"' <<<"$OUTPUT"
+grep -q '"name":"http_request"' <<<"$OUTPUT"
+grep -q '"name":"request_credential"' <<<"$OUTPUT"
 
 LINE_COUNT="$(printf '%s\n' "$OUTPUT" | grep -c '^{' || true)"
 [[ "$LINE_COUNT" -eq 2 ]] || { echo "Expected exactly 2 JSON-RPC responses; got $LINE_COUNT" >&2; exit 1; }

@@ -402,6 +402,128 @@ final class AgentKeyBoxCoreTests: XCTestCase {
     #endif
   }
 
+  // MARK: - http_request policy
+
+  private func validate(
+    url: String = "https://api.stripe.com/v1/charges",
+    method: String = "GET",
+    headers: [String: String] = ["Authorization": "Bearer {{secret}}"],
+    body: String? = nil,
+    allowedHosts: [String]? = ["api.stripe.com"]
+  ) throws -> ValidatedHTTPRequest {
+    try HTTPRequestPolicy.validate(
+      method: method, url: url, headers: headers, body: body, allowedHosts: allowedHosts)
+  }
+
+  func testHTTPPolicyAcceptsAllowedHostRequest() throws {
+    let request = try validate(method: "post")
+    XCTAssertEqual(request.method, "POST")
+    XCTAssertEqual(request.host, "api.stripe.com")
+    XCTAssertTrue(request.hostRestricted)
+  }
+
+  func testHTTPPolicyRejectsUnsafeRequests() {
+    XCTAssertThrowsError(try validate(url: "http://api.stripe.com/v1")) {
+      XCTAssertEqual($0 as? HTTPRequestPolicyError, .httpsRequired)
+    }
+    XCTAssertThrowsError(try validate(url: "https://evil.example/collect")) {
+      XCTAssertEqual(
+        $0 as? HTTPRequestPolicyError,
+        .hostNotAllowed(host: "evil.example", allowed: ["api.stripe.com"]))
+    }
+    XCTAssertThrowsError(try validate(url: "https://api.stripe.com/v1?key={{secret}}")) {
+      XCTAssertEqual($0 as? HTTPRequestPolicyError, .placeholderOutsideHeaders)
+    }
+    XCTAssertThrowsError(try validate(body: "token={{secret}}")) {
+      XCTAssertEqual($0 as? HTTPRequestPolicyError, .placeholderOutsideHeaders)
+    }
+    XCTAssertThrowsError(try validate(headers: ["Accept": "application/json"])) {
+      XCTAssertEqual($0 as? HTTPRequestPolicyError, .placeholderMissing)
+    }
+    XCTAssertThrowsError(
+      try validate(headers: ["Authorization": "Bearer {{secret}}", "Host": "evil.example"])
+    ) {
+      XCTAssertEqual($0 as? HTTPRequestPolicyError, .forbiddenHeader("Host"))
+    }
+    XCTAssertThrowsError(try validate(url: "https://user:pw@api.stripe.com/")) {
+      XCTAssertEqual($0 as? HTTPRequestPolicyError, .credentialsInURL)
+    }
+    XCTAssertThrowsError(try validate(method: "TRACE")) {
+      XCTAssertEqual($0 as? HTTPRequestPolicyError, .unsupportedMethod("TRACE"))
+    }
+  }
+
+  func testHTTPPolicyUnrestrictedCredentialIsFlagged() throws {
+    let request = try validate(url: "https://example.com/api", allowedHosts: nil)
+    XCTAssertFalse(request.hostRestricted)
+  }
+
+  func testHostWildcardDoesNotMatchLookalikes() {
+    XCTAssertTrue(HTTPRequestPolicy.hostMatches("abc.supabase.co", pattern: "*.supabase.co"))
+    XCTAssertTrue(HTTPRequestPolicy.hostMatches("API.Stripe.com", pattern: "api.stripe.com"))
+    XCTAssertFalse(HTTPRequestPolicy.hostMatches("supabase.co", pattern: "*.supabase.co"))
+    XCTAssertFalse(HTTPRequestPolicy.hostMatches("evilsupabase.co", pattern: "*.supabase.co"))
+    XCTAssertFalse(HTTPRequestPolicy.hostMatches("api.stripe.com.evil.io", pattern: "api.stripe.com"))
+  }
+
+  func testRedactThenTruncateNeverLeaksSecretPrefixAtBoundary() {
+    let secret = "sk_test_ABCDEFGHIJKLMNOP"
+    // The secret starts 10 bytes before the visible limit, so truncating first would leak
+    // "sk_test_AB".
+    let text = String(repeating: "x", count: 90) + secret + String(repeating: "y", count: 50)
+    let (visible, truncated) = SecretRedactor.redactThenTruncate(
+      Data(text.utf8), secretData: Data(secret.utf8), maxBytes: 100)
+    XCTAssertTrue(truncated)
+    XCTAssertFalse(visible.contains("sk_test"))
+  }
+
+  func testCredentialMetadataDecodesSnapshotsWithoutNewFields() throws {
+    let legacy = """
+      {"id":"3BB35765-FD77-484F-99B2-E2181D934056","label":"DEMO_API_KEY","service":"Demo",
+       "kind":"apiKey","createdAt":0,"updatedAt":0}
+      """
+    let metadata = try JSONDecoder().decode(CredentialMetadata.self, from: Data(legacy.utf8))
+    XCTAssertNil(metadata.environmentVariableName)
+    XCTAssertNil(metadata.allowedHosts)
+    XCTAssertEqual(metadata.injectionVariableName, "DEMO_API_KEY")
+
+    var labelled = metadata
+    labelled.label = "Stripe Production"
+    XCTAssertNil(labelled.injectionVariableName, "labels that are not variable names are ignored")
+  }
+
+  func testProviderPresetLookupPrefillsAllowlist() {
+    let preset = ProviderCatalog.preset(matchingService: nil, environmentKey: "STRIPE_SECRET_KEY")
+    XCTAssertEqual(preset?.allowedHosts, ["api.stripe.com"])
+    XCTAssertNotNil(preset?.dashboardURL)
+    XCTAssertEqual(
+      ProviderCatalog.preset(matchingService: "openai", environmentKey: nil)?.id, "openai")
+  }
+
+  #if os(macOS)
+    func testHTTPExecutorRedactsResponseAndRefusesRedirects() async throws {
+      let server = try TinyHTTPServer()
+      defer { server.stop() }
+      let secret = "sk_test_echoed_secret_value"
+
+      // The server echoes the Authorization header back; the executor must redact it.
+      var echo = ValidatedHTTPRequest(
+        method: "GET", url: URL(string: "http://127.0.0.1:\(server.port)/echo")!,
+        host: "127.0.0.1", headers: ["Authorization": "Bearer {{secret}}"], body: nil,
+        hostRestricted: true)
+      let echoed = try await HTTPRequestExecutor.execute(echo, secretData: Data(secret.utf8))
+      XCTAssertEqual(echoed.statusCode, 200)
+      XCTAssertTrue(echoed.body.contains("[REDACTED_BY_AGENTKEYBOX]"))
+      XCTAssertFalse(echoed.body.contains(secret))
+
+      // A redirect is returned as-is instead of replaying the credential to the new location.
+      echo.url = URL(string: "http://127.0.0.1:\(server.port)/redirect")!
+      let redirected = try await HTTPRequestExecutor.execute(echo, secretData: Data(secret.utf8))
+      XCTAssertEqual(redirected.statusCode, 302)
+      XCTAssertEqual(server.requestedPaths, ["/echo", "/redirect"])
+    }
+  #endif
+
   func testExecutableSearchPathCoversFinderLaunchedApps() {
     // The PATH a Finder-launched app actually receives.
     let directories = ExecutableSearchPath.directories(

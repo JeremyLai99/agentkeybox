@@ -1,6 +1,10 @@
 import AgentKeyBoxCore
 import Foundation
 
+#if canImport(Glibc)
+  import Glibc
+#endif
+
 struct DoctorCheck: Codable {
   var name: String
   var status: String
@@ -33,6 +37,8 @@ struct AgentKeyBoxCLI {
         exit(1)
       }
       await connect(target: target, helper: helper)
+    case "run":
+      await run(Array(args.dropFirst()))
     case "helper-path":
       if let helper = MCPExecutableLocator.locate() {
         print(helper)
@@ -183,6 +189,74 @@ struct AgentKeyBoxCLI {
     if failures > 0 { exit(1) }
   }
 
+  /// `akb run [--only A,B] -- command args…`: after one approval in AgentKeyBox, replaces this
+  /// process with the command, with the project's secrets in its environment. The command keeps
+  /// the terminal, so dev servers, prompts, and Ctrl-C behave normally.
+  private static func run(_ arguments: [String]) async {
+    var options = arguments
+    var command: [String] = []
+    if let separator = arguments.firstIndex(of: "--") {
+      options = Array(arguments[..<separator])
+      command = Array(arguments[(separator + 1)...])
+    } else {
+      command = arguments.filter { !$0.hasPrefix("--") }
+      options = arguments.filter { $0.hasPrefix("--") }
+    }
+    guard let program = command.first else {
+      writeError("Usage: akb run [--only VAR1,VAR2] -- <command> [args…]\n")
+      exit(2)
+    }
+
+    let only = argumentValue("--only", in: options)?
+      .split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+    let resolved: String
+    if program.contains("/") {
+      resolved = URL(fileURLWithPath: program).standardizedFileURL.path
+    } else if let found = executablePath(named: program) {
+      resolved = found
+    } else {
+      writeError("akb: command not found: \(program)\n")
+      exit(127)
+    }
+    let commandArguments = Array(command.dropFirst())
+
+    let response: BrokerResponse
+    do {
+      response = try await LocalBrokerClient().send(
+        BrokerRequest(
+          action: .revealEnvironment,
+          agentID: "terminal",
+          agentDisplayName: "Terminal (akb run)",
+          projectPath: FileManager.default.currentDirectoryPath,
+          purpose: "Run a command from your terminal with this project's secrets",
+          executablePath: resolved,
+          arguments: commandArguments,
+          requestedEnvironmentVariables: only
+        ))
+    } catch {
+      writeError("akb: \(error.localizedDescription)\n")
+      exit(1)
+    }
+    guard response.decision != .deny, let environment = response.environment else {
+      writeError("akb: access was denied.\n")
+      exit(1)
+    }
+
+    for (name, value) in environment {
+      setenv(name, value, 1)
+    }
+    writeError("akb: injected \(environment.keys.sorted().joined(separator: ", "))\n")
+    if let skipped = response.skippedEnvironmentVariables, !skipped.isEmpty {
+      writeError("akb: skipped \(skipped.joined(separator: ", ")) (not text)\n")
+    }
+
+    var argv: [UnsafeMutablePointer<CChar>?] = ([resolved] + commandArguments).map { strdup($0) }
+    argv.append(nil)
+    execv(resolved, argv)
+    writeError("akb: could not run \(resolved): \(String(cString: strerror(errno)))\n")
+    exit(126)
+  }
+
   private static func argumentValue(_ flag: String, in args: [String]) -> String? {
     guard let index = args.firstIndex(of: flag), args.indices.contains(index + 1) else {
       return nil
@@ -205,6 +279,7 @@ struct AgentKeyBoxCLI {
         akb connect claude              Configure Claude Code MCP integration
         akb connect codex               Configure Codex MCP integration
         akb connect all                 Configure both supported agents
+        akb run [--only A,B] -- <cmd>   Run a command with this project's secrets after approval
         akb helper-path                 Print the discovered agentkeybox-mcp path
         akb help
       """)

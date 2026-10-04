@@ -90,6 +90,24 @@ public enum SecretRedactor {
         partial.replacingOccurrences(of: candidate, with: "[REDACTED_BY_AGENTKEYBOX]")
       }
   }
+
+  /// Extra bytes to capture beyond a visible limit so the longest encoded form of the secret
+  /// (hex, twice the raw length, or JSON/percent escaping) is complete before redaction.
+  public static func margin(for secretData: Data) -> Int {
+    secretData.count * 6 + 64
+  }
+
+  /// Redacts the full captured text first, then cuts it to `maxBytes`. Truncating first would
+  /// split a secret at the boundary and leak its prefix.
+  public static func redactThenTruncate(
+    _ data: Data, secretData: Data, maxBytes: Int
+  ) -> (text: String, truncated: Bool) {
+    let redacted = redact(String(decoding: data, as: UTF8.self), secretData: secretData)
+    guard redacted.utf8.count > maxBytes else { return (redacted, false) }
+    var visible = Substring(redacted)
+    while visible.utf8.count > maxBytes { visible = visible.dropLast() }
+    return (String(visible) + "\n[OUTPUT_TRUNCATED_BY_AGENTKEYBOX]", true)
+  }
 }
 
 public enum ApprovedCommandRunner {

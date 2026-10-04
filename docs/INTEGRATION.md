@@ -64,6 +64,14 @@ Start a new Codex session after installation. The prototype uses the MCP process
 
 ## MCP tools
 
+### `http_request`
+
+Preferred for provider HTTPS APIs. AgentKeyBox performs the request itself; the credential is placed into header values containing `{{secret}}`. See the README for the enforced rules (https only, allowed hosts, no redirects).
+
+### `request_credential`
+
+Asks the user to enter a missing credential in AgentKeyBox. Waits up to 10 minutes so the user can create the key in the provider's dashboard. Returns only the new credential's metadata.
+
 ### `list_credentials`
 
 Takes no secret-bearing input. It returns only credential IDs and non-secret metadata that are global or bound to the current project.

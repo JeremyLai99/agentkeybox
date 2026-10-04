@@ -90,16 +90,53 @@ akb status [--json]
 akb connect claude
 akb connect codex
 akb connect all
+akb run [--only VAR1,VAR2] -- <command> [args…]
 akb helper-path
 ```
 
 `akb doctor` checks the MCP helper, local broker initialization, and Claude Code / Codex configuration.
 
+### `akb run` — replace your `.env` file
+
+```bash
+akb run -- npm run dev
+```
+
+After one Touch ID approval in AgentKeyBox, `akb` replaces itself with your command, with every text secret of the current project folder in its environment (or only `--only` names). The command keeps your terminal, so dev servers, prompts, and Ctrl-C work normally, and there is no timeout. Because the secrets are handed to your process, AgentKeyBox cannot redact its output; the approval prompt says so and shows the exact command. File credentials (`.p8`, `.pem`, JSON) are skipped.
+
 ## MCP tools
 
 ### `list_credentials`
 
-Returns only non-secret metadata visible to the current project.
+Returns only non-secret metadata visible to the current project, including each credential's environment variable name and allowed hosts.
+
+### `http_request` — preferred for provider APIs
+
+AgentKeyBox sends one HTTPS request itself, after approval, and returns the status and redacted body. The agent puts `{{secret}}` where the credential belongs:
+
+```json
+{
+  "credential_id": "UUID",
+  "method": "GET",
+  "url": "https://api.stripe.com/v1/balance",
+  "headers": { "Authorization": "Bearer {{secret}}" },
+  "purpose": "Check the Stripe test balance"
+}
+```
+
+Rules, enforced before the user is even asked:
+
+- https only; no credentials in the URL
+- `{{secret}}` only in header values, never in the URL or body
+- the host must match the credential's allowed hosts (provider presets prefill them, e.g. `api.stripe.com`, `*.supabase.co`); credentials without an allowlist are flagged in the prompt
+- redirects are not followed, so the credential header is never replayed elsewhere
+- 30-second timeout, 128 KiB response limit, secret redacted from the response
+
+Unlike `run_with_secret`, no local process or shell is involved, so common API calls no longer need a high-risk shell command.
+
+### `request_credential`
+
+When `list_credentials` does not show what the project needs, the agent calls `request_credential` with the variable name (e.g. `STRIPE_SECRET_KEY`). AgentKeyBox opens a prompt with a link to the provider's dashboard where the user pastes the key. It is saved in the Keychain for the current project (adding the project folder if needed), and the agent receives only the new `credential_id`.
 
 ### `run_with_secret`
 

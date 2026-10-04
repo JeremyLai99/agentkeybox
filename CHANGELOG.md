@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Added
+
+- `http_request` MCP tool: AgentKeyBox performs one approved HTTPS request with the credential placed in a header via `{{secret}}`. Enforces https, per-credential allowed hosts (prefilled from provider presets), header-only placement, no redirects, a timeout, and a redacted, size-limited response.
+- `akb run [--only …] -- <command>`: one Touch ID approval, then the command runs in your terminal with the project's secrets in its environment — a drop-in replacement for `.env` files for dev servers.
+- `request_credential` MCP tool: when a credential is missing, the user enters it in an AgentKeyBox prompt (with a link to the provider's dashboard) instead of pasting it into chat; the agent receives only the new credential ID.
+- Credentials record their environment variable name and allowed hosts; `list_credentials` returns both.
+
+### Fixed
+
 - Fixed two Swift 6 compile errors that prevented the macOS broker client/server from building.
 - Moved the local broker from TCP port 49321 (bound on all interfaces) to an owner-only Unix-domain socket; removed the bypassable string-based loopback check.
 - The MCP helper now fails immediately with "AgentKeyBox is not running" instead of waiting for the full timeout.

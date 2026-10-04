@@ -114,7 +114,7 @@ private final class MCPServer: @unchecked Sendable {
             "version": .string("0.3.0"),
           ]),
           "instructions": .string(
-            "Use AgentKeyBox when a task needs a developer credential. List metadata first, then use run_with_secret. Never ask the user to paste raw secrets into chat."
+            "Use AgentKeyBox when a task needs a developer credential. Call list_credentials first. To call a provider's HTTPS API, prefer http_request with {{secret}} in a header. To run a local tool that reads the credential from an environment variable, use run_with_secret. If the credential is missing, call request_credential so the user can enter it in AgentKeyBox. Never ask the user to paste raw secrets into chat."
           ),
         ]))
 
@@ -125,7 +125,9 @@ private final class MCPServer: @unchecked Sendable {
       return success(
         id: request.id,
         result: .object([
-          "tools": .array([listCredentialsTool(), runWithSecretTool()])
+          "tools": .array([
+            listCredentialsTool(), httpRequestTool(), runWithSecretTool(), requestCredentialTool(),
+          ])
         ]))
 
     case "tools/call":
@@ -157,12 +159,21 @@ private final class MCPServer: @unchecked Sendable {
             projectPath: projectPath
           ))
         let items = (response.credentials ?? []).map { item in
-          "\(item.id.uuidString) | \(item.label) | \(item.service) | \(item.environment ?? "unspecified") | \(item.kind.rawValue)"
+          [
+            item.id.uuidString,
+            item.label,
+            item.service,
+            "env_var=\(item.environmentVariableName ?? "-")",
+            "allowed_hosts=\(item.allowedHosts?.joined(separator: ",") ?? "any")",
+            "environment=\(item.environment ?? "unspecified")",
+            item.kind.rawValue,
+          ].joined(separator: " | ")
         }
         let text =
           items.isEmpty
-          ? "No credentials are available to this project in AgentKeyBox."
-          : items.joined(separator: "\n")
+          ? "No credentials are available to this project in AgentKeyBox. Call request_credential with the environment variable name the project expects, so the user can enter it in AgentKeyBox."
+          : "id | label | service | env_var | allowed_hosts | environment | kind\n"
+            + items.joined(separator: "\n")
         return toolResult(id: request.id, text: text)
       } catch {
         return toolError(id: request.id, message: error.localizedDescription)
@@ -170,6 +181,12 @@ private final class MCPServer: @unchecked Sendable {
 
     case "run_with_secret":
       return await runWithSecret(requestID: request.id, args: args)
+
+    case "http_request":
+      return await httpRequest(requestID: request.id, args: args)
+
+    case "request_credential":
+      return await requestCredential(requestID: request.id, args: args)
 
     default:
       return toolError(id: request.id, message: "Unknown AgentKeyBox tool: \(name)")
@@ -235,6 +252,88 @@ private final class MCPServer: @unchecked Sendable {
     }
   }
 
+  private func httpRequest(requestID: JSONValue?, args: [String: JSONValue]) async -> [String:
+    JSONValue]
+  {
+    guard let credentialID = args["credential_id"]?.stringValue,
+      let url = args["url"]?.stringValue
+    else {
+      return toolError(id: requestID, message: "credential_id and url are required.")
+    }
+    var headers: [String: String] = [:]
+    for (name, value) in args["headers"]?.objectValue ?? [:] {
+      guard let text = value.stringValue else {
+        return toolError(id: requestID, message: "Header values must be strings.")
+      }
+      headers[name] = text
+    }
+    let agent = agentIdentity()
+
+    do {
+      let response = try await client.send(
+        BrokerRequest(
+          action: .httpRequest,
+          agentID: agent.id,
+          agentDisplayName: agent.name,
+          projectPath: trustedProjectPath(),
+          credentialIdentifier: credentialID,
+          purpose: args["purpose"]?.stringValue,
+          httpMethod: args["method"]?.stringValue ?? "GET",
+          url: url,
+          headers: headers,
+          body: args["body"]?.stringValue
+        ))
+      guard response.decision != .deny else {
+        return toolError(id: requestID, message: "Credential access was denied.")
+      }
+      guard let http = response.http else {
+        return toolError(
+          id: requestID, message: "AgentKeyBox approved the request but returned no response.")
+      }
+      var text = "status=\(http.statusCode)\ncontent_type=\(http.contentType ?? "-")\n\n\(http.body)"
+      if http.bodyTruncated {
+        text += "\nAgentKeyBox truncated the response body."
+      }
+      return toolResult(id: requestID, text: text)
+    } catch {
+      return toolError(id: requestID, message: error.localizedDescription)
+    }
+  }
+
+  private func requestCredential(requestID: JSONValue?, args: [String: JSONValue]) async -> [String:
+    JSONValue]
+  {
+    guard let envVar = args["env_var"]?.stringValue else {
+      return toolError(id: requestID, message: "env_var is required.")
+    }
+    let agent = agentIdentity()
+    // The user may need several minutes to create the key in the provider's dashboard.
+    let longClient = LocalBrokerClient(timeoutSeconds: BrokerEndpoint.credentialRequestClientTimeout)
+
+    do {
+      let response = try await longClient.send(
+        BrokerRequest(
+          action: .requestCredential,
+          agentID: agent.id,
+          agentDisplayName: agent.name,
+          projectPath: trustedProjectPath(),
+          purpose: args["purpose"]?.stringValue,
+          environmentVariable: envVar,
+          credentialService: args["service"]?.stringValue
+        ))
+      guard let credential = response.credentials?.first else {
+        return toolError(id: requestID, message: "AgentKeyBox did not return a credential.")
+      }
+      return toolResult(
+        id: requestID,
+        text:
+          "The credential is stored in AgentKeyBox. Use it with credential_id=\(credential.id.uuidString) (env_var=\(credential.environmentVariableName ?? envVar), allowed_hosts=\(credential.allowedHosts?.joined(separator: ",") ?? "any")). The secret value itself is not available to you."
+      )
+    } catch {
+      return toolError(id: requestID, message: error.localizedDescription)
+    }
+  }
+
   private func trustedProjectPath() -> String {
     let env = ProcessInfo.processInfo.environment
     if let claudeProject = env["CLAUDE_PROJECT_DIR"], !claudeProject.isEmpty {
@@ -270,6 +369,78 @@ private final class MCPServer: @unchecked Sendable {
       "inputSchema": .object([
         "type": .string("object"),
         "properties": .object([:]),
+        "additionalProperties": .bool(false),
+      ]),
+    ])
+  }
+
+  private func httpRequestTool() -> JSONValue {
+    .object([
+      "name": .string("http_request"),
+      "description": .string(
+        "Ask the user to approve one HTTPS request that needs a stored credential. AgentKeyBox sends the request itself and returns the status and redacted response body; you never receive the secret. Put {{secret}} in a header value where the credential belongs, e.g. {\"Authorization\": \"Bearer {{secret}}\"}. Requests are only sent to the credential's allowed hosts, and redirects are not followed."
+      ),
+      "inputSchema": .object([
+        "type": .string("object"),
+        "properties": .object([
+          "credential_id": .object([
+            "type": .string("string"),
+            "description": .string("Credential UUID returned by list_credentials."),
+          ]),
+          "method": .object([
+            "type": .string("string"),
+            "enum": .array(
+              ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"].map { JSONValue.string($0) }),
+          ]),
+          "url": .object([
+            "type": .string("string"),
+            "description": .string("Full https URL. Must not contain {{secret}}."),
+          ]),
+          "headers": .object([
+            "type": .string("object"),
+            "additionalProperties": .object(["type": .string("string")]),
+            "description": .string(
+              "Request headers. At least one value must contain {{secret}}."),
+          ]),
+          "body": .object([
+            "type": .string("string"),
+            "description": .string("Optional request body. Must not contain {{secret}}."),
+          ]),
+          "purpose": .object([
+            "type": .string("string"),
+            "description": .string("Short user-readable reason for this request."),
+          ]),
+        ]),
+        "required": .array([.string("credential_id"), .string("url"), .string("headers")]),
+        "additionalProperties": .bool(false),
+      ]),
+    ])
+  }
+
+  private func requestCredentialTool() -> JSONValue {
+    .object([
+      "name": .string("request_credential"),
+      "description": .string(
+        "Ask the user to add a credential that list_credentials does not show. AgentKeyBox opens a prompt where the user pastes the key (with a link to the provider's dashboard); it is saved for the current project and you receive only its credential_id. Use this instead of asking the user to paste a key into chat."
+      ),
+      "inputSchema": .object([
+        "type": .string("object"),
+        "properties": .object([
+          "env_var": .object([
+            "type": .string("string"),
+            "description": .string(
+              "Environment variable name the project expects, e.g. STRIPE_SECRET_KEY."),
+          ]),
+          "service": .object([
+            "type": .string("string"),
+            "description": .string("Provider name, e.g. Stripe, OpenAI, Supabase."),
+          ]),
+          "purpose": .object([
+            "type": .string("string"),
+            "description": .string("Short user-readable reason why the project needs it."),
+          ]),
+        ]),
+        "required": .array([.string("env_var")]),
         "additionalProperties": .bool(false),
       ]),
     ])

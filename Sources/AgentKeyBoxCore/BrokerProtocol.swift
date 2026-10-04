@@ -18,11 +18,22 @@ public enum BrokerEndpoint {
 
   /// Approval wait (120s, including Touch ID) + command timeout (60s) + kill escalation + margin.
   public static let defaultClientTimeout: TimeInterval = 200
+
+  /// How long the user has to find and paste a requested credential.
+  public static let credentialRequestTimeout: TimeInterval = 600
+  public static let credentialRequestClientTimeout: TimeInterval = credentialRequestTimeout + 30
 }
 
 public enum BrokerAction: String, Codable, Sendable {
   case listCredentials
   case executeWithSecret
+  /// AgentKeyBox performs one HTTPS request with the credential placed in a header.
+  case httpRequest
+  /// `akb run`: after approval, the project's secrets are returned to the requesting terminal
+  /// process so it can exec the user's command with them in its environment.
+  case revealEnvironment
+  /// An agent needs a credential that is not stored yet; the user enters it in AgentKeyBox.
+  case requestCredential
 }
 
 public struct CredentialSummary: Codable, Hashable, Sendable {
@@ -31,6 +42,8 @@ public struct CredentialSummary: Codable, Hashable, Sendable {
   public var service: String
   public var environment: String?
   public var kind: CredentialKind
+  public var environmentVariableName: String?
+  public var allowedHosts: [String]?
 
   public init(metadata: CredentialMetadata) {
     self.id = metadata.id
@@ -38,6 +51,8 @@ public struct CredentialSummary: Codable, Hashable, Sendable {
     self.service = metadata.service
     self.environment = metadata.environment
     self.kind = metadata.kind
+    self.environmentVariableName = metadata.injectionVariableName
+    self.allowedHosts = metadata.allowedHosts
   }
 }
 
@@ -57,6 +72,14 @@ public struct BrokerRequest: Codable, Sendable {
   public var deliveryMode: SecretDeliveryMode
   public var requestedScope: ApprovalScope
   public var sessionID: String?
+  public var httpMethod: String?
+  public var url: String?
+  public var headers: [String: String]?
+  public var body: String?
+  /// `revealEnvironment`: restrict to these variable names; nil means every project secret.
+  public var requestedEnvironmentVariables: [String]?
+  /// `requestCredential`: provider hint such as "Stripe".
+  public var credentialService: String?
 
   public init(
     requestID: UUID = UUID(),
@@ -73,7 +96,13 @@ public struct BrokerRequest: Codable, Sendable {
     environmentVariable: String? = nil,
     deliveryMode: SecretDeliveryMode = .environment,
     requestedScope: ApprovalScope = .once,
-    sessionID: String? = nil
+    sessionID: String? = nil,
+    httpMethod: String? = nil,
+    url: String? = nil,
+    headers: [String: String]? = nil,
+    body: String? = nil,
+    requestedEnvironmentVariables: [String]? = nil,
+    credentialService: String? = nil
   ) {
     self.requestID = requestID
     self.issuedAt = issuedAt
@@ -90,6 +119,12 @@ public struct BrokerRequest: Codable, Sendable {
     self.deliveryMode = deliveryMode
     self.requestedScope = requestedScope
     self.sessionID = sessionID
+    self.httpMethod = httpMethod
+    self.url = url
+    self.headers = headers
+    self.body = body
+    self.requestedEnvironmentVariables = requestedEnvironmentVariables
+    self.credentialService = credentialService
   }
 }
 
@@ -99,19 +134,30 @@ public struct BrokerResponse: Codable, Sendable {
   public var credentials: [CredentialSummary]?
   public var decision: ApprovalDecision?
   public var execution: CommandExecutionResult?
+  public var http: HTTPExecutionResult?
+  /// `revealEnvironment` only: variable name → secret value, for the approved terminal process.
+  public var environment: [String: String]?
+  /// Secrets the user approved but that could not be injected as text (file credentials).
+  public var skippedEnvironmentVariables: [String]?
 
   public init(
     ok: Bool,
     error: String? = nil,
     credentials: [CredentialSummary]? = nil,
     decision: ApprovalDecision? = nil,
-    execution: CommandExecutionResult? = nil
+    execution: CommandExecutionResult? = nil,
+    http: HTTPExecutionResult? = nil,
+    environment: [String: String]? = nil,
+    skippedEnvironmentVariables: [String]? = nil
   ) {
     self.ok = ok
     self.error = error
     self.credentials = credentials
     self.decision = decision
     self.execution = execution
+    self.http = http
+    self.environment = environment
+    self.skippedEnvironmentVariables = skippedEnvironmentVariables
   }
 }
 
