@@ -308,7 +308,8 @@ private final class MCPServer: @unchecked Sendable {
     }
     let agent = agentIdentity()
     // The user may need several minutes to create the key in the provider's dashboard.
-    let longClient = LocalBrokerClient(timeoutSeconds: BrokerEndpoint.credentialRequestClientTimeout)
+    let longClient = LocalBrokerClient(
+      timeoutSeconds: BrokerEndpoint.credentialRequestClientTimeout)
 
     do {
       let response = try await longClient.send(

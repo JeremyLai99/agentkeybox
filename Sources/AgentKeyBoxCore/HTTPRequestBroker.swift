@@ -34,7 +34,8 @@ public enum HTTPRequestPolicyError: Error, LocalizedError, Equatable {
     case .forbiddenHeader(let name):
       return "Header \"\(name)\" cannot be set by an agent."
     case .placeholderMissing:
-      return "Put {{secret}} in a header value where the credential belongs, e.g. Authorization: Bearer {{secret}}."
+      return
+        "Put {{secret}} in a header value where the credential belongs, e.g. Authorization: Bearer {{secret}}."
     case .placeholderOutsideHeaders:
       return "{{secret}} is only allowed in header values, not in the URL or body."
     case .hostNotAllowed(let host, let allowed):
@@ -125,7 +126,8 @@ public enum HTTPRequestPolicy {
   }
 
   static func isValidHeaderName(_ name: String) -> Bool {
-    let allowed = Set("!#$%&'*+-.^_`|~0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+    let allowed = Set(
+      "!#$%&'*+-.^_`|~0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
     return !name.isEmpty && name.allSatisfy { allowed.contains($0) }
   }
 }

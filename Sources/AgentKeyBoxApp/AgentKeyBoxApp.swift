@@ -604,7 +604,9 @@
         ?? ProviderCatalog.inferService(fromEnvironmentKey: variable)
       let existingProject =
         projects
-        .filter { ProjectScopeResolver.contains(projectRoot: $0.rootPath, requestPath: projectPath) }
+        .filter {
+          ProjectScopeResolver.contains(projectRoot: $0.rootPath, requestPath: projectPath)
+        }
         .max { normalize($0.rootPath).count < normalize($1.rootPath).count }
 
       let prompt = CredentialRequestPrompt(
