@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+- Fixed two Swift 6 compile errors that prevented the macOS broker client/server from building.
+- Moved the local broker from TCP port 49321 (bound on all interfaces) to an owner-only Unix-domain socket; removed the bypassable string-based loopback check.
+- The MCP helper now fails immediately with "AgentKeyBox is not running" instead of waiting for the full timeout.
+- The approval timeout no longer fires after the user approves, so a slow approved command is no longer reported as an approval timeout after it already ran.
+- Concurrent broker requests can no longer both claim the single approval slot and leak a pending continuation.
+- `.env` and key-file imports now ask which project the credentials belong to instead of using the first project.
+- Raised the broker client timeout to cover the approval wait plus command execution.
+- Added Unix-socket broker round-trip, auth, and app-not-running tests.
+- Approval confirmation now uses Touch ID with login-password fallback. The biometrics-only policy reported "not enrolled" on a real Mac with Touch ID set up, so approvals were silently granted on a single click.
+- The app now finds agent CLIs installed outside the minimal Finder PATH (e.g. `~/.npm-global/bin`) by consulting the login-shell PATH and common install locations, and passes that PATH to agent CLI child processes. "Connect Claude Code" previously reported "Not installed" when launched from Finder.
+- Agent CLI lookup now searches directories in a deterministic order.
+- A Touch ID / password prompt is now dismissed when its approval times out, instead of staying on screen with nothing behind it.
+- Team-signed builds store secrets in the data protection keychain with user presence required, and reuse the approval's Touch ID authentication to read them: one approval now costs one prompt instead of Touch ID followed by repeated keychain password dialogs. Legacy-keychain items are migrated on first read; unsigned development builds keep using the legacy keychain.
+- Removed the "Require Touch ID" toggle; every approval now requires Touch ID or the login password.
+- `Scripts/build-release-macos.sh` can embed a provisioning profile and sign with keychain entitlements (`AGENTKEYBOX_PROVISIONING_PROFILE`), and signs helpers separately instead of using `--deep`.
+
 ## 0.3.0 — pre-alpha
 
 - Hardened reusable approval identity with exact executable/argument binding.

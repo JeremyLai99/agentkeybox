@@ -131,18 +131,72 @@ public enum MCPExecutableLocator {
   }
 }
 
-public func executablePath(named name: String) -> String? {
-  var directories = (ProcessInfo.processInfo.environment["PATH"] ?? "")
-    .split(separator: ":")
-    .map(String.init)
-  directories.append(contentsOf: [
-    "/opt/homebrew/bin",
-    "/usr/local/bin",
-    "/usr/bin",
-    FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".local/bin").path,
-  ])
+/// Directories searched for agent CLIs, in priority order.
+///
+/// Apps launched from Finder inherit only `/usr/bin:/bin:/usr/sbin:/sbin`, so CLIs installed by
+/// npm, Homebrew, or installers under the home directory are invisible unless we also consult the
+/// user's login-shell PATH and common install locations.
+public enum ExecutableSearchPath {
+  public static func directories(
+    environment: [String: String] = ProcessInfo.processInfo.environment
+  ) -> [String] {
+    let home = FileManager.default.homeDirectoryForCurrentUser.path
+    let fallbacks = [
+      "/opt/homebrew/bin",
+      "/usr/local/bin",
+      "\(home)/.local/bin",
+      "\(home)/.npm-global/bin",
+      "\(home)/.claude/local",
+      "\(home)/.bun/bin",
+      "\(home)/.volta/bin",
+      "/usr/bin",
+      "/bin",
+    ]
+    let inherited = (environment["PATH"] ?? "").split(separator: ":").map(String.init)
 
-  for directory in Array(Set(directories)) {
+    var seen: Set<String> = []
+    return (inherited + loginShellPath + fallbacks).filter {
+      !$0.isEmpty && seen.insert($0).inserted
+    }
+  }
+
+  /// PATH for child processes, so `#!/usr/bin/env node` style CLIs can find their runtime.
+  public static func joined() -> String {
+    directories().joined(separator: ":")
+  }
+
+  /// Resolved once per process; a login shell can take a moment to start.
+  private static let loginShellPath: [String] = {
+    let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
+    guard FileManager.default.isExecutableFile(atPath: shell) else { return [] }
+
+    let process = Process()
+    let pipe = Pipe()
+    process.executableURL = URL(fileURLWithPath: shell)
+    process.arguments = ["-l", "-c", "printf %s \"$PATH\""]
+    process.standardOutput = pipe
+    process.standardError = FileHandle.nullDevice
+    process.standardInput = FileHandle.nullDevice
+
+    let semaphore = DispatchSemaphore(value: 0)
+    process.terminationHandler = { _ in semaphore.signal() }
+    do {
+      try process.run()
+    } catch {
+      return []
+    }
+    // Never let a slow or misbehaving shell profile block agent detection.
+    guard semaphore.wait(timeout: .now() + 3) == .success else {
+      process.terminate()
+      return []
+    }
+    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+    return String(decoding: data, as: UTF8.self).split(separator: ":").map(String.init)
+  }()
+}
+
+public func executablePath(named name: String) -> String? {
+  for directory in ExecutableSearchPath.directories() {
     let candidate = URL(fileURLWithPath: directory).appendingPathComponent(name).path
     if FileManager.default.isExecutableFile(atPath: candidate) {
       return candidate
@@ -163,6 +217,9 @@ public func runExecutable(_ path: String, arguments: [String]) throws -> String 
   let process = Process()
   process.executableURL = URL(fileURLWithPath: path)
   process.arguments = arguments
+  var environment = ProcessInfo.processInfo.environment
+  environment["PATH"] = ExecutableSearchPath.joined()
+  process.environment = environment
   process.standardOutput = handle
   process.standardError = handle
 

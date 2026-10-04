@@ -6,7 +6,7 @@ import Foundation
   public final class LocalBrokerServer: @unchecked Sendable {
     public typealias Handler = @Sendable (BrokerRequest) async -> BrokerResponse
 
-    private let port: UInt16
+    private let socketURL: URL
     private let expectedAuthToken: String
     private let handler: Handler
     private let queue = DispatchQueue(label: "dev.agentkeybox.broker.server")
@@ -15,24 +15,49 @@ import Foundation
     private var listener: NWListener?
 
     public init(
-      port: UInt16 = LocalBrokerClient.defaultPort,
+      socketURL: URL = BrokerEndpoint.defaultSocketURL,
       expectedAuthToken: String,
       handler: @escaping Handler
     ) {
-      self.port = port
+      self.socketURL = socketURL
       self.expectedAuthToken = expectedAuthToken
       self.handler = handler
     }
 
     public func start() throws {
       guard listener == nil else { return }
-      let listener = try NWListener(using: .tcp, on: NWEndpoint.Port(rawValue: port)!)
+      let path = socketURL.path
+      guard path.utf8.count <= BrokerEndpoint.maxSocketPathBytes else {
+        throw BrokerError.socketPathTooLong
+      }
+
+      // The owner-only directory is the access boundary: other users cannot connect to,
+      // replace, or pre-create the socket inside it.
+      let directory = socketURL.deletingLastPathComponent()
+      try FileManager.default.createDirectory(
+        at: directory,
+        withIntermediateDirectories: true,
+        attributes: [.posixPermissions: 0o700]
+      )
+      try FileManager.default.setAttributes(
+        [.posixPermissions: 0o700], ofItemAtPath: directory.path)
+      // Remove a stale socket left behind by a previous crash; bind fails otherwise.
+      try? FileManager.default.removeItem(atPath: path)
+
+      let parameters = NWParameters.tcp
+      parameters.requiredLocalEndpoint = .unix(path: path)
+      let listener = try NWListener(using: parameters)
       listener.newConnectionHandler = { [weak self] connection in
         self?.accept(connection)
       }
       listener.stateUpdateHandler = { state in
-        if case .failed(let error) = state {
+        switch state {
+        case .ready:
+          try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path)
+        case .failed(let error):
           FileHandle.standardError.write(Data("AgentKeyBox broker failed: \(error)\n".utf8))
+        default:
+          break
         }
       }
       listener.start(queue: queue)
@@ -42,19 +67,12 @@ import Foundation
     public func stop() {
       listener?.cancel()
       listener = nil
+      try? FileManager.default.removeItem(at: socketURL)
     }
 
     deinit { listener?.cancel() }
 
     private func accept(_ connection: NWConnection) {
-      let endpointText = String(describing: connection.endpoint)
-      guard
-        endpointText.contains("127.0.0.1") || endpointText.contains("::1")
-          || endpointText.contains("localhost")
-      else {
-        connection.cancel()
-        return
-      }
       connection.start(queue: queue)
       receiveLine(connection: connection)
     }
@@ -86,24 +104,7 @@ import Foundation
         if let newline = next.firstIndex(of: 0x0A) {
           let line = Data(next[..<newline])
           Task {
-            let response: BrokerResponse
-            do {
-              let request = try JSONDecoder().decode(BrokerRequest.self, from: line)
-              guard request.authToken == self.expectedAuthToken else {
-                response = BrokerResponse(ok: false, error: "Unauthorized local broker request.")
-                try await self.send(response, on: connection)
-                return
-              }
-              guard await self.replayGuard.accept(request) else {
-                response = BrokerResponse(
-                  ok: false, error: "Expired or replayed local broker request.")
-                try await self.send(response, on: connection)
-                return
-              }
-              response = await self.handler(request)
-            } catch {
-              response = BrokerResponse(ok: false, error: "Invalid local broker request.")
-            }
+            let response = await self.response(for: line)
             try? await self.send(response, on: connection)
           }
           return
@@ -114,6 +115,19 @@ import Foundation
         }
         self.receiveLine(connection: connection, buffer: next)
       }
+    }
+
+    private func response(for line: Data) async -> BrokerResponse {
+      guard let request = try? JSONDecoder().decode(BrokerRequest.self, from: line) else {
+        return BrokerResponse(ok: false, error: "Invalid local broker request.")
+      }
+      guard request.authToken == expectedAuthToken else {
+        return BrokerResponse(ok: false, error: "Unauthorized local broker request.")
+      }
+      guard await replayGuard.accept(request) else {
+        return BrokerResponse(ok: false, error: "Expired or replayed local broker request.")
+      }
+      return await handler(request)
     }
 
     private func send(_ response: BrokerResponse, on connection: NWConnection) async throws {
@@ -133,7 +147,7 @@ import Foundation
   public final class LocalBrokerServer: @unchecked Sendable {
     public typealias Handler = @Sendable (BrokerRequest) async -> BrokerResponse
     public init(
-      port: UInt16 = LocalBrokerClient.defaultPort,
+      socketURL: URL = BrokerEndpoint.defaultSocketURL,
       expectedAuthToken: String,
       handler: @escaping Handler
     ) {}

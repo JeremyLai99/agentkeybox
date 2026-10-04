@@ -88,7 +88,7 @@ Flow:
 agent
   ↓ MCP tool call
 agentkeybox-mcp
-  ↓ authenticated localhost request (no secret)
+  ↓ authenticated Unix-socket request (no secret)
 AgentKeyBox.app
   ↓ native Allow / Deny prompt
 Keychain
@@ -100,7 +100,7 @@ agentkeybox-mcp
 agent
 ```
 
-The app must be running. An approval automatically expires after two minutes.
+The app must be running; if it is not, the tool fails immediately with "AgentKeyBox is not running". An unanswered approval automatically expires after two minutes.
 
 ## Local broker authentication
 
@@ -110,7 +110,7 @@ On first launch, AgentKeyBox creates a random broker token at:
 ~/Library/Application Support/AgentKeyBox/broker-token
 ```
 
-The file is owner-readable/writable only (`0600`). The MCP helper reads this token before calling the localhost broker. It is **not** an API credential and never leaves the machine.
+The file is owner-readable/writable only (`0600`). The MCP helper reads this token before calling the broker over its owner-only Unix-domain socket (`broker.sock` in the same directory). It is **not** an API credential and never leaves the machine.
 
 This is a guardrail against unrelated local callers, not a defense against malware running as the same macOS user.
 

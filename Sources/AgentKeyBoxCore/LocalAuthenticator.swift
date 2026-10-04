@@ -13,36 +13,71 @@ public enum LocalAuthenticationError: Error, LocalizedError {
 #if os(macOS)
   import LocalAuthentication
 
+  /// Proof that the user just authenticated. Passing it to `KeychainSecretStore.read` lets the
+  /// keychain reuse that authentication instead of prompting a second time.
+  public final class AuthenticationGrant: @unchecked Sendable {
+    let context: LAContext
+
+    init(context: LAContext) {
+      self.context = context
+    }
+  }
+
   public final class LocalAuthenticator: @unchecked Sendable {
+    private let lock = NSLock()
+    private var activeContext: LAContext?
+
     public init() {}
 
-    /// Returns true when biometric/device-owner authentication was available and succeeded.
-    /// Returns false when the Mac has no usable local authentication policy configured.
-    public func authenticateIfAvailable(reason: String) async throws -> Bool {
+    /// Returns a grant when device-owner authentication was available and succeeded.
+    /// Returns nil only when the Mac has no local authentication configured at all.
+    ///
+    /// Uses `.deviceOwnerAuthentication` (Touch ID, falling back to the login password) rather
+    /// than biometrics only: the biometrics-only policy reports "not enrolled" when no fingerprint
+    /// is registered, which previously skipped confirmation entirely and approved on one click.
+    public func authenticate(reason: String) async throws -> AuthenticationGrant? {
       let context = LAContext()
       context.localizedCancelTitle = "Cancel"
       var error: NSError?
-      guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error)
-      else {
-        return false
+      guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
+        return nil
+      }
+      lock.withLock { activeContext = context }
+      defer {
+        lock.withLock {
+          if activeContext === context { activeContext = nil }
+        }
       }
       do {
         let success = try await context.evaluatePolicy(
-          .deviceOwnerAuthenticationWithBiometrics,
+          .deviceOwnerAuthentication,
           localizedReason: reason
         )
         if !success {
           throw LocalAuthenticationError.failed("Local authentication was not completed.")
         }
-        return true
+        return AuthenticationGrant(context: context)
       } catch {
         throw LocalAuthenticationError.failed(error.localizedDescription)
       }
     }
+
+    /// Dismisses a Touch ID / password prompt that is still on screen, e.g. after the approval
+    /// timed out. The pending `authenticate` call then throws.
+    public func cancelPendingAuthentication() {
+      let context = lock.withLock {
+        defer { activeContext = nil }
+        return activeContext
+      }
+      context?.invalidate()
+    }
   }
 #else
+  public final class AuthenticationGrant: @unchecked Sendable {}
+
   public final class LocalAuthenticator: @unchecked Sendable {
     public init() {}
-    public func authenticateIfAvailable(reason: String) async throws -> Bool { false }
+    public func authenticate(reason: String) async throws -> AuthenticationGrant? { nil }
+    public func cancelPendingAuthentication() {}
   }
 #endif

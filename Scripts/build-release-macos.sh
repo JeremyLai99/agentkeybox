@@ -43,8 +43,42 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 </plist>
 PLIST
 
+# Signing modes:
+# - AGENTKEYBOX_CODESIGN_IDENTITY + AGENTKEYBOX_PROVISIONING_PROFILE: team-signed with the
+#   keychain-access-groups entitlement, so secrets live in the data protection keychain behind
+#   Touch ID and one approval costs exactly one prompt. macOS kills an app that claims this
+#   entitlement without an embedded provisioning profile, so both are required.
+# - AGENTKEYBOX_CODESIGN_IDENTITY only: team-signed without keychain entitlements (legacy keychain).
+# - neither: ad-hoc signed (legacy keychain; macOS re-prompts for the login password per rebuild).
 if [[ -n "${AGENTKEYBOX_CODESIGN_IDENTITY:-}" ]]; then
-  codesign --force --options runtime --timestamp --deep --sign "$AGENTKEYBOX_CODESIGN_IDENTITY" "$APP"
+  SIGN=(codesign --force --options runtime --timestamp --sign "$AGENTKEYBOX_CODESIGN_IDENTITY")
+  "${SIGN[@]}" "$APP/Contents/Helpers/agentkeybox-mcp" "$APP/Contents/Helpers/akb"
+
+  if [[ -n "${AGENTKEYBOX_PROVISIONING_PROFILE:-}" ]]; then
+    TEAM_ID="$(security find-certificate -c "$AGENTKEYBOX_CODESIGN_IDENTITY" -p \
+      | openssl x509 -noout -subject | sed -nE 's/.*OU ?= ?([A-Z0-9]{10}).*/\1/p')"
+    if [[ -z "$TEAM_ID" ]]; then
+      echo "Could not determine the team ID of $AGENTKEYBOX_CODESIGN_IDENTITY." >&2
+      exit 1
+    fi
+    cp "$AGENTKEYBOX_PROVISIONING_PROFILE" "$APP/Contents/embedded.provisionprofile"
+    ENTITLEMENTS="dist/AgentKeyBox.entitlements"
+    cat > "$ENTITLEMENTS" <<ENT
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>com.apple.application-identifier</key><string>$TEAM_ID.dev.agentkeybox.app</string>
+  <key>com.apple.developer.team-identifier</key><string>$TEAM_ID</string>
+  <key>keychain-access-groups</key><array><string>$TEAM_ID.dev.agentkeybox</string></array>
+</dict>
+</plist>
+ENT
+    "${SIGN[@]}" --entitlements "$ENTITLEMENTS" "$APP"
+  else
+    echo "warning: AGENTKEYBOX_PROVISIONING_PROFILE not set; using the legacy keychain." >&2
+    "${SIGN[@]}" "$APP"
+  fi
 else
   codesign --force --deep --sign - "$APP"
 fi

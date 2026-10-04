@@ -25,7 +25,6 @@
     @Published var brokerStatus: String = "Starting local broker…"
     @Published var claudeConnectionStatus: String = "Not checked"
     @Published var codexConnectionStatus: String = "Not checked"
-    @Published var requireBiometricConfirmation: Bool = true
     @Published var accessEvents: [AccessEvent] = []
 
     private let secretStore = KeychainSecretStore()
@@ -38,6 +37,9 @@
     private var pendingBrokerRequest: BrokerRequest?
     private var pendingApprovalTimeoutTask: Task<Void, Never>?
     private var decisionInProgress = false
+    /// Claimed synchronously before the first suspension point so concurrent broker requests
+    /// cannot both pass the "nothing pending" check while the main actor is re-entered.
+    private var approvalSlotReserved = false
 
     init() {
       let snapshot = metadataStore.load()
@@ -202,6 +204,10 @@
         statusMessage = "Add a credential first."
         return
       }
+      guard !approvalSlotReserved, pendingRequest == nil else {
+        statusMessage = "Finish the pending approval first."
+        return
+      }
       let project = projects.first
       pendingBrokerRequest = nil
       pendingRequest = AgentRequest(
@@ -215,6 +221,12 @@
         arguments: []
       )
       NSApp.activate(ignoringOtherApps: true)
+    }
+
+    var keychainStatus: String {
+      secretStore.usesDataProtectionKeychain
+        ? "Every approval requires Touch ID or your login password. Secrets are protected by Touch ID in the data protection keychain."
+        : "Every approval requires Touch ID or your login password. This unsigned development build uses the legacy keychain, so macOS may also ask for your login password after each rebuild."
     }
 
     func credentialSummary(for request: AgentRequest) -> CredentialMetadata? {
@@ -240,9 +252,12 @@
       let requestID = request.id
 
       Task {
-        if decision != .deny && requireBiometricConfirmation {
+        // Every approval requires Touch ID or the login password. With the data protection
+        // keychain the same authentication then unlocks the secret, so there is one prompt total.
+        var grant: AuthenticationGrant?
+        if decision != .deny {
           do {
-            _ = try await authenticator.authenticateIfAvailable(
+            grant = try await authenticator.authenticate(
               reason: "Allow \(request.agentDisplayName) to use \(credential.label)?"
             )
           } catch {
@@ -256,6 +271,14 @@
             return
           }
         }
+
+        // The approval may have timed out while Touch ID was on screen; do not record or run it.
+        guard self.pendingRequest?.id == requestID else { return }
+        // The user has decided, so the approval wait is over. From here the command's own
+        // execution timeout applies; otherwise a slow command would be reported as an approval
+        // timeout after it already ran with the credential.
+        self.pendingApprovalTimeoutTask?.cancel()
+        self.pendingApprovalTimeoutTask = nil
 
         await approvalEngine.record(
           decision: decision,
@@ -294,7 +317,8 @@
         let response = await executeApprovedBrokerRequest(
           brokerRequest,
           credentialID: credentialID,
-          decision: decision
+          decision: decision,
+          grant: grant
         )
 
         await MainActor.run {
@@ -364,10 +388,12 @@
         return BrokerResponse(ok: true, credentials: visible.map(CredentialSummary.init(metadata:)))
 
       case .executeWithSecret:
-        guard pendingBrokerContinuation == nil else {
+        guard !approvalSlotReserved, pendingRequest == nil else {
           return BrokerResponse(
             ok: false, error: "Another AgentKeyBox approval is already pending.")
         }
+        approvalSlotReserved = true
+        defer { approvalSlotReserved = false }
         guard let identifier = brokerRequest.credentialIdentifier,
           let credentialID = UUID(uuidString: identifier),
           let credential = credentials.first(where: { $0.id == credentialID }),
@@ -402,10 +428,12 @@
         if let preauthorized = await approvalEngine.preauthorizedDecision(for: request),
           preauthorized != .deny
         {
+          // No grant: the data protection keychain shows its own user-presence prompt.
           return await executeApprovedBrokerRequest(
             brokerRequest,
             credentialID: credentialID,
-            decision: preauthorized
+            decision: preauthorized,
+            grant: nil
           )
         }
 
@@ -435,7 +463,8 @@
     private func executeApprovedBrokerRequest(
       _ brokerRequest: BrokerRequest,
       credentialID: UUID,
-      decision: ApprovalDecision
+      decision: ApprovalDecision,
+      grant: AuthenticationGrant?
     ) async -> BrokerResponse {
       guard let executablePath = brokerRequest.executablePath,
         let environmentVariable = brokerRequest.environmentVariable
@@ -443,9 +472,14 @@
         return BrokerResponse(ok: false, error: "Invalid approved execution request.")
       }
 
+      // Off the main actor: without a grant the keychain may show a prompt and block.
+      let secretStore = self.secretStore
       let secret: Data
       do {
-        guard let stored = try secretStore.read(id: credentialID) else {
+        let stored = try await Task.detached(priority: .userInitiated) {
+          try secretStore.read(id: credentialID, grant: grant)
+        }.value
+        guard let stored else {
           return BrokerResponse(ok: false, error: "Credential value is missing from Keychain.")
         }
         secret = stored
@@ -480,6 +514,9 @@
     }
 
     private func finishDecision(_ response: BrokerResponse, message: String) {
+      // A timed-out or otherwise finished request must not leave its Touch ID / password prompt
+      // on screen; completing that stale prompt would do nothing.
+      authenticator.cancelPendingAuthentication()
       decisionInProgress = false
       pendingApprovalTimeoutTask?.cancel()
       pendingApprovalTimeoutTask = nil
@@ -527,8 +564,19 @@
   }
 
   struct ContentView: View {
+    private enum ImportKind {
+      case env
+      case credentialFile
+    }
+
+    private struct PendingImport {
+      let url: URL
+      let kind: ImportKind
+    }
+
     @EnvironmentObject private var model: AppModel
     @State private var showingAddCredential = false
+    @State private var pendingImport: PendingImport?
 
     var body: some View {
       NavigationSplitView {
@@ -593,9 +641,11 @@
             Button("Import Key File…") { chooseCredentialFile() }
           }
 
-          Toggle("Require Touch ID when available", isOn: $model.requireBiometricConfirmation)
-            .toggleStyle(.switch)
-            .frame(maxWidth: 320)
+          Text(model.keychainStatus)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: 520)
 
           HStack {
             Button("Simulate Claude Request") { model.simulateRequest() }
@@ -639,6 +689,22 @@
         AddCredentialView()
           .environmentObject(model)
       }
+      .confirmationDialog(
+        "Which project should these credentials belong to?",
+        isPresented: Binding(
+          get: { pendingImport != nil },
+          set: { if !$0 { pendingImport = nil } }
+        ),
+        presenting: pendingImport
+      ) { item in
+        ForEach(model.projects) { project in
+          Button(project.name) { performImport(item, projectID: project.id) }
+        }
+        Button("Global (visible to every project)") { performImport(item, projectID: nil) }
+        Button("Cancel", role: .cancel) {}
+      } message: { item in
+        Text(item.url.lastPathComponent)
+      }
       .sheet(item: $model.pendingRequest) { request in
         ApprovalView(request: request)
           .environmentObject(model)
@@ -665,7 +731,7 @@
       panel.allowsMultipleSelection = false
       panel.prompt = "Import"
       guard panel.runModal() == .OK, let url = panel.url else { return }
-      model.importEnv(at: url, projectID: model.projects.first?.id)
+      pendingImport = PendingImport(url: url, kind: .env)
     }
 
     private func chooseCredentialFile() {
@@ -676,7 +742,16 @@
       panel.allowedContentTypes = []
       panel.prompt = "Import"
       guard panel.runModal() == .OK, let url = panel.url else { return }
-      model.importCredentialFile(at: url, projectID: model.projects.first?.id)
+      pendingImport = PendingImport(url: url, kind: .credentialFile)
+    }
+
+    private func performImport(_ item: PendingImport, projectID: UUID?) {
+      switch item.kind {
+      case .env:
+        model.importEnv(at: item.url, projectID: projectID)
+      case .credentialFile:
+        model.importCredentialFile(at: item.url, projectID: projectID)
+      }
     }
   }
 

@@ -69,7 +69,7 @@ Verify:
 - project path is correct
 - Deny prevents execution
 - Allow Once executes
-- Touch ID appears when available/enabled
+- Touch ID (or the password prompt on Macs without Touch ID) appears for every approval
 - secret itself is not returned in MCP output
 
 ## 6. Codex

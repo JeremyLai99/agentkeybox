@@ -17,18 +17,16 @@ import Foundation
   }
 
   public final class LocalBrokerClient: @unchecked Sendable {
-    public static let defaultPort: UInt16 = 49321
-
-    private let port: UInt16
+    private let socketURL: URL
     private let tokenStore: BrokerTokenStore
     private let timeoutSeconds: TimeInterval
 
     public init(
-      port: UInt16 = LocalBrokerClient.defaultPort,
+      socketURL: URL = BrokerEndpoint.defaultSocketURL,
       tokenStore: BrokerTokenStore = BrokerTokenStore(),
-      timeoutSeconds: TimeInterval = 135
+      timeoutSeconds: TimeInterval = BrokerEndpoint.defaultClientTimeout
     ) {
-      self.port = port
+      self.socketURL = socketURL
       self.tokenStore = tokenStore
       self.timeoutSeconds = timeoutSeconds
     }
@@ -41,15 +39,18 @@ import Foundation
         throw BrokerError.brokerAuthenticationUnavailable
       }
 
-      let encoder = JSONEncoder()
-      var payload = try encoder.encode(request)
-      payload.append(0x0A)
+      guard socketURL.path.utf8.count <= BrokerEndpoint.maxSocketPathBytes else {
+        throw BrokerError.socketPathTooLong
+      }
+      guard FileManager.default.fileExists(atPath: socketURL.path) else {
+        throw BrokerError.appNotRunning
+      }
 
-      let connection = NWConnection(
-        host: NWEndpoint.Host("127.0.0.1"),
-        port: NWEndpoint.Port(rawValue: port)!,
-        using: .tcp
-      )
+      var encoded = try JSONEncoder().encode(request)
+      encoded.append(0x0A)
+      let payload = encoded
+
+      let connection = NWConnection(to: .unix(path: socketURL.path), using: .tcp)
 
       return try await withCheckedThrowingContinuation { continuation in
         let queue = DispatchQueue(label: "dev.agentkeybox.broker.client")
@@ -93,10 +94,10 @@ import Foundation
                   }
                 }
               })
-          case .failed:
+          case .failed, .waiting:
+            // A refused or missing socket surfaces as `.waiting`, not `.failed`; Network.framework
+            // would otherwise keep retrying until the overall timeout.
             finish(.failure(BrokerError.appNotRunning))
-          case .cancelled:
-            break
           default:
             break
           }
@@ -136,11 +137,10 @@ import Foundation
   }
 #else
   public final class LocalBrokerClient: @unchecked Sendable {
-    public static let defaultPort: UInt16 = 49321
     public init(
-      port: UInt16 = LocalBrokerClient.defaultPort,
+      socketURL: URL = BrokerEndpoint.defaultSocketURL,
       tokenStore: BrokerTokenStore = BrokerTokenStore(),
-      timeoutSeconds: TimeInterval = 135
+      timeoutSeconds: TimeInterval = BrokerEndpoint.defaultClientTimeout
     ) {}
     public func send(_ request: BrokerRequest) async throws -> BrokerResponse {
       throw BrokerError.unsupportedPlatform

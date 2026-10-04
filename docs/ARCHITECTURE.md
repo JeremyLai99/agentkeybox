@@ -24,9 +24,9 @@ The architecture deliberately avoids accounts, hosted databases, cloud secret st
 - UI: SwiftUI
 - Platform: macOS 14+
 - Secret storage: macOS Keychain (`Security.framework`)
-- Local authentication: Touch ID through `LocalAuthentication` when available
+- Local authentication: Touch ID, falling back to the login password, through `LocalAuthentication`
 - Agent protocol: stdio MCP
-- Local broker: authenticated localhost TCP, default port `49321`
+- Local broker: authenticated Unix-domain socket at `~/Library/Application Support/AgentKeyBox/broker.sock` (owner-only `0700` directory)
 - Metadata: local JSON snapshot with owner-only permissions where supported
 - Backend: none
 
@@ -43,7 +43,7 @@ The architecture deliberately avoids accounts, hosted databases, cloud secret st
 │                      │
 │  no raw secret value │
 └──────────┬───────────┘
-           │ authenticated localhost request
+           │ authenticated Unix-socket request
            ▼
 ┌──────────────────────────────────────┐
 │ AgentKeyBox.app                      │
@@ -97,11 +97,17 @@ Planned adapters:
 
 Raw values are stored under a dedicated Keychain service.
 
-Keychain accessibility:
+Team-signed builds (signing identity + provisioning profile, see `Scripts/build-release-macos.sh`) use the **data protection keychain**:
 
 ```text
-kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+kSecUseDataProtectionKeychain = true
+kSecAttrAccessControl         = WhenUnlockedThisDeviceOnly + .userPresence
+access group                  = <TEAM_ID>.dev.agentkeybox
 ```
+
+Every secret read therefore requires Touch ID or the login password. The approval prompt's authenticated `LAContext` is passed to the read (`kSecUseAuthenticationContext`), so one approval costs exactly one prompt. Access is bound to the team's access group rather than a per-build code signature, so rebuilding or updating the app never triggers keychain password dialogs. Items created by older builds in the legacy keychain are migrated on first read.
+
+Ad-hoc / unsigned development builds cannot use the data protection keychain (`errSecMissingEntitlement`) and fall back to the legacy file-based keychain with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`. Its access control is tied to the exact build, so macOS asks for the login password after each rebuild. The app shows which mode is active.
 
 Metadata is stored separately and contains only fields such as:
 
@@ -205,7 +211,8 @@ The broker rejects:
 - requests outside the freshness window
 - replayed request IDs
 - oversized input
-- non-loopback callers
+
+The broker listens only on a Unix-domain socket inside the owner-only support directory, so it is never reachable from the network, other macOS users cannot connect to it, and no other process can squat on a well-known TCP port to impersonate it.
 
 This prevents accidental unauthenticated local use, but does not protect against malware already executing as the same macOS user.
 
@@ -290,7 +297,7 @@ These checks reduce accidental echoing. They are **not** a data-loss-prevention 
 
 ## 13. Local authentication
 
-When enabled, approval attempts use Touch ID when biometric authentication is available. If biometric policy is not available, the explicit native approval dialog remains the authorization interaction.
+When enabled, every approval requires device-owner authentication (`.deviceOwnerAuthentication`): Touch ID when available, otherwise the macOS login password. Only a Mac with no local authentication configured at all falls back to the native approval dialog alone.
 
 This is separate from Keychain storage and should not be described as making approved commands sandboxed.
 
@@ -354,5 +361,4 @@ The codebase intentionally leaves these unresolved until real usage:
 - whether generic command execution should survive beyond alpha or be replaced by provider-specific HTTP/proxy capabilities
 - the most trustworthy Codex project-root signal
 - how session approvals should be represented in UX
-- whether localhost TCP should become a Unix-domain socket
 - whether file credentials should eventually use dedicated provider bundles instead of generic temp files

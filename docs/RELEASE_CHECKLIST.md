@@ -9,7 +9,7 @@
 ## macOS runtime
 
 - [ ] Keychain save/read/delete works
-- [ ] Touch ID confirmation works when available
+- [ ] Touch ID / password confirmation appears for every approval
 - [ ] broker binds and responds locally
 - [ ] stale/replayed broker request is rejected
 - [ ] `.env` import works
@@ -43,6 +43,7 @@
 - [ ] CHANGELOG updated
 - [ ] dedicated security contact configured
 - [ ] binaries signed with Developer ID
+- [ ] Developer ID provisioning profile embedded; app reports the data protection keychain mode
 - [ ] `AGENTKEYBOX_NOTARY_PROFILE=... ./Scripts/notarize-release-macos.sh` passes
 - [ ] SHA-256 checksum published
 - [ ] README security disclaimer still matches implementation

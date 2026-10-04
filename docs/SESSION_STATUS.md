@@ -28,7 +28,7 @@ This file distinguishes what is implemented and testable in the repository from 
 
 - per-install random broker token
 - owner-only token/metadata file permissions where supported
-- localhost-only client/server design
+- owner-only Unix-domain socket client/server design (no TCP listener)
 - request UUID and timestamp freshness checks
 - replay protection
 - request and response size limits

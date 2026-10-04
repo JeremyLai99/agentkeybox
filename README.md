@@ -42,7 +42,7 @@ This is still **not a hard sandbox**: a command you approve can deliberately tra
 - `.p8`, `.pem`, and JSON credential import
 - provider presets for common developer services
 - native Allow / Deny approval flow
-- Touch ID confirmation when available
+- Touch ID (or login password) confirmation for every approval
 - protected temporary-file delivery for file credentials
 - command timeout and output-size limits
 - raw/common-encoding output redaction
@@ -66,6 +66,14 @@ On a Mac:
 open "$HOME/Applications/AgentKeyBox.app"
 ~/.local/bin/akb doctor
 ~/.local/bin/akb connect all
+```
+
+For a team-signed build that keeps secrets in the data protection keychain behind Touch ID (one prompt per approval, no keychain password dialogs after rebuilds), provide a signing identity and a macOS provisioning profile for `dev.agentkeybox.app`:
+
+```bash
+AGENTKEYBOX_CODESIGN_IDENTITY="Apple Development: Your Name (XXXXXXXXXX)" \
+AGENTKEYBOX_PROVISIONING_PROFILE=/path/to/AgentKeyBox.provisionprofile \
+./Scripts/build-release-macos.sh
 ```
 
 You can also run the SwiftPM development executable directly:

@@ -1,5 +1,25 @@
 import Foundation
 
+public enum BrokerEndpoint {
+  /// Unix-domain socket inside the owner-only (0700) AgentKeyBox support directory.
+  /// Unlike a fixed TCP port, other users cannot connect to or squat on this path.
+  public static var defaultSocketURL: URL {
+    let base =
+      FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+      ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".agentkeybox")
+    return
+      base
+      .appendingPathComponent("AgentKeyBox", isDirectory: true)
+      .appendingPathComponent("broker.sock")
+  }
+
+  /// `sockaddr_un.sun_path` holds 104 bytes including the terminating NUL.
+  public static let maxSocketPathBytes = 103
+
+  /// Approval wait (120s, including Touch ID) + command timeout (60s) + kill escalation + margin.
+  public static let defaultClientTimeout: TimeInterval = 200
+}
+
 public enum BrokerAction: String, Codable, Sendable {
   case listCredentials
   case executeWithSecret
@@ -102,6 +122,7 @@ public enum BrokerError: Error, LocalizedError, Equatable {
   case requestTimedOut
   case brokerAuthenticationUnavailable
   case unsupportedPlatform
+  case socketPathTooLong
 
   public var errorDescription: String? {
     switch self {
@@ -117,6 +138,8 @@ public enum BrokerError: Error, LocalizedError, Equatable {
       return "AgentKeyBox local authentication is unavailable. Open AgentKeyBox once and try again."
     case .unsupportedPlatform:
       return "AgentKeyBox broker is currently supported on macOS only."
+    case .socketPathTooLong:
+      return "AgentKeyBox broker socket path exceeds the Unix-domain socket length limit."
     }
   }
 }

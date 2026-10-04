@@ -402,4 +402,103 @@ final class AgentKeyBoxCoreTests: XCTestCase {
     #endif
   }
 
+  func testExecutableSearchPathCoversFinderLaunchedApps() {
+    // The PATH a Finder-launched app actually receives.
+    let directories = ExecutableSearchPath.directories(
+      environment: ["PATH": "/usr/bin:/bin:/usr/sbin:/sbin:/usr/bin"])
+    let home = FileManager.default.homeDirectoryForCurrentUser.path
+
+    XCTAssertEqual(directories.first, "/usr/bin")
+    XCTAssertEqual(directories.count, Set(directories).count, "directories must be de-duplicated")
+    for expected in ["/opt/homebrew/bin", "/usr/local/bin", "\(home)/.npm-global/bin"] {
+      XCTAssertTrue(directories.contains(expected), "missing \(expected)")
+    }
+  }
+
+  #if os(macOS)
+    /// Short root so the socket path stays under the 103-byte `sun_path` limit.
+    private func makeBrokerFixture() throws -> (root: URL, socket: URL, tokens: BrokerTokenStore) {
+      let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "akb-\(UUID().uuidString.prefix(8))")
+      let tokens = BrokerTokenStore(fileURL: root.appendingPathComponent("broker-token"))
+      _ = try tokens.loadOrCreate()
+      return (root, root.appendingPathComponent("broker.sock"), tokens)
+    }
+
+    func testBrokerRoundTripOverOwnerOnlyUnixSocket() async throws {
+      let fixture = try makeBrokerFixture()
+      defer { try? FileManager.default.removeItem(at: fixture.root) }
+      let server = LocalBrokerServer(
+        socketURL: fixture.socket,
+        expectedAuthToken: try fixture.tokens.load()
+      ) { request in
+        BrokerResponse(ok: true, decision: request.agentID == "test" ? .allowOnce : .deny)
+      }
+      try server.start()
+      defer { server.stop() }
+      try await Task.sleep(for: .milliseconds(200))
+
+      let directoryPerms =
+        (try FileManager.default.attributesOfItem(atPath: fixture.root.path)[.posixPermissions]
+        as? NSNumber)?.intValue
+      XCTAssertEqual(directoryPerms, 0o700)
+
+      let client = LocalBrokerClient(
+        socketURL: fixture.socket, tokenStore: fixture.tokens, timeoutSeconds: 5)
+      let response = try await client.send(
+        BrokerRequest(
+          action: .listCredentials, agentID: "test", agentDisplayName: "Test", projectPath: "/tmp"))
+      XCTAssertEqual(response.decision, .allowOnce)
+    }
+
+    func testBrokerRejectsWrongToken() async throws {
+      let fixture = try makeBrokerFixture()
+      defer { try? FileManager.default.removeItem(at: fixture.root) }
+      let server = LocalBrokerServer(
+        socketURL: fixture.socket,
+        expectedAuthToken: String(repeating: "x", count: 44)
+      ) { _ in BrokerResponse(ok: true) }
+      try server.start()
+      defer { server.stop() }
+      try await Task.sleep(for: .milliseconds(200))
+
+      let client = LocalBrokerClient(
+        socketURL: fixture.socket, tokenStore: fixture.tokens, timeoutSeconds: 5)
+      do {
+        _ = try await client.send(
+          BrokerRequest(
+            action: .listCredentials, agentID: "test", agentDisplayName: "Test",
+            projectPath: "/tmp"))
+        XCTFail("Expected unauthorized request to fail")
+      } catch {
+        XCTAssertEqual(
+          error as? BrokerError, .requestFailed("Unauthorized local broker request."))
+      }
+    }
+
+    func testBrokerClientReportsAppNotRunningPromptly() async throws {
+      let fixture = try makeBrokerFixture()
+      defer { try? FileManager.default.removeItem(at: fixture.root) }
+
+      // A stale socket file with no listener must fail fast, not wait for the full timeout.
+      FileManager.default.createFile(atPath: fixture.socket.path, contents: nil)
+      for _ in 0..<2 {
+        let client = LocalBrokerClient(
+          socketURL: fixture.socket, tokenStore: fixture.tokens, timeoutSeconds: 30)
+        let start = Date()
+        do {
+          _ = try await client.send(
+            BrokerRequest(
+              action: .listCredentials, agentID: "test", agentDisplayName: "Test",
+              projectPath: "/tmp"))
+          XCTFail("Expected missing broker to fail")
+        } catch {
+          XCTAssertEqual(error as? BrokerError, .appNotRunning)
+        }
+        XCTAssertLessThan(Date().timeIntervalSince(start), 5)
+        try? FileManager.default.removeItem(at: fixture.socket)
+      }
+    }
+  #endif
+
 }

@@ -22,16 +22,16 @@ AgentKeyBox aims to reduce accidental leakage by keeping secret values in macOS 
 
 The current prototype includes:
 
-- Keychain-backed secret storage
+- Keychain-backed secret storage; team-signed builds use the data protection keychain with Touch ID / password (user presence) required for every read
 - owner-only local metadata/token files where supported
-- authenticated localhost broker
+- authenticated broker on an owner-only Unix-domain socket
 - request freshness and replay rejection
 - project-scoped credential visibility
 - approval timeout
 - command execution timeout with best-effort termination / direct-child kill escalation
 - output-size limits
 - common direct secret-representation redaction
-- optional Touch ID confirmation when available
+- optional Touch ID / login-password confirmation for every approval
 - protected temporary-file delivery for file credentials
 
 ## Explicit non-goals
