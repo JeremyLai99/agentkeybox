@@ -12,7 +12,7 @@ jobs:
     name: macOS build, test, and package
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Swift version
         run: swift --version
       - name: Build with warnings as errors
@@ -27,7 +27,7 @@ jobs:
         run: ./Scripts/security-static-check.sh
       - name: Package unsigned alpha artifact
         run: ./Scripts/build-release-macos.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: AgentKeyBox-macOS-alpha
           path: |
@@ -38,7 +38,7 @@ jobs:
     name: Linux core and protocol test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Swift version
         run: swift --version
       - name: Build core with warnings as errors
