@@ -447,3 +447,20 @@ The UI should ultimately answer one question:
 > **Can a developer who understands what an API key is—but does not understand secrets infrastructure—use AgentKeyBox correctly without reading documentation?**
 
 If the answer is no, the UX is still too technical.
+
+
+---
+
+## 12. Brand consistency
+
+UI implementation should follow [`BRAND.md`](BRAND.md).
+
+Key constraints:
+
+- use **Key in a Box + Agent** as the primary visual language
+- use **AgentKey Blue** as the primary brand accent
+- reserve **Electric Cyan** for active/request states and small interaction highlights
+- keep the application UI flatter and quieter than the dimensional app icon
+- preserve rounded, approachable, macOS-native geometry
+- the agent represents a requester, not the owner of the credential
+- prefer SF Symbols for ordinary controls instead of creating unnecessary custom icons

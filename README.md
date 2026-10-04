@@ -265,3 +265,10 @@ Apache License 2.0. See [LICENSE](LICENSE).
 The current SwiftUI interface is an engineering prototype. The intended public product is project-centric, import-first, and uses progressive disclosure so users do not need to understand secrets-management infrastructure.
 
 See [`docs/UI_DIRECTION.md`](docs/UI_DIRECTION.md) for the planned onboarding, project view, credential cards, approval prompts, and public-alpha UX.
+
+
+## Brand direction
+
+The current visual identity uses the **Key in a Box + Agent** concept: the box represents controlled local storage, the key represents developer credentials, and the agent represents AI coding agents that must request access.
+
+See [`docs/BRAND.md`](docs/BRAND.md) for the visual rationale, color tokens, icon geometry, UI translation rules, and future asset requirements. The selected raster reference lives at [`assets/brand/agentkeybox-app-icon.png`](assets/brand/agentkeybox-app-icon.png).
