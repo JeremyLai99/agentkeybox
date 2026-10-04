@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+<defs><linearGradient id="a" x1="0" y1="0" x2="1" y2="1">
+<stop offset="0" stop-color="#0867E8"/><stop offset="1" stop-color="#061C4A"/></linearGradient></defs>
+<!-- box -->
+<path d="M24 58 L64 40 L104 58 L64 76 Z" fill="#DCEBFF"/>
+<path d="M24 58 L64 76 L64 111 L24 93 Z" fill="#B9D5FF"/>
+<path d="M64 76 L104 58 L104 93 L64 111 Z" fill="url(#a)"/>
+<!-- agent -->
+<rect x="42" y="28" width="44" height="34" rx="17" fill="#F4F8FF"/>
+<rect x="49" y="36" width="30" height="18" rx="9" fill="#0B1733"/>
+<circle cx="58" cy="45" r="3" fill="#16DDF3"/><circle cx="70" cy="45" r="3" fill="#16DDF3"/>
+<!-- key on box -->
+<path d="M74 88 H85" stroke="#16DDF3" stroke-width="7" stroke-linecap="round"/>
+<path d="M74 88 H57 V95 H50 V88 H43" stroke="#16DDF3" stroke-width="7" stroke-linecap="square" stroke-linejoin="round"/>
+<circle cx="92" cy="88" r="10" fill="none" stroke="#16DDF3" stroke-width="7"/>
+<!-- request marks -->
+<path d="M90 30l6-9M98 39l10-3" stroke="#16DDF3" stroke-width="6" stroke-linecap="round"/>
+</svg>

@@ -315,3 +315,79 @@ Current selected visual reference:
 `assets/brand/agentkeybox-app-icon.png`
 
 This is the current visual reference and product-direction asset. It is **not yet the final vector/master production asset**.
+
+
+---
+
+## 13. Production asset set
+
+The first production-ready icon asset set now lives under `assets/brand/`.
+
+### App icon
+
+`assets/brand/app-icon/`
+
+- `AppIcon-1024.png` is the primary raster master derived from the selected **Key in a Box + Agent** artwork.
+- Standard raster exports are included at 512, 256, 128, 64, 32, and 16 px.
+- `AppIcon-Simplified.svg` provides simplified small-size artwork.
+- `AppIcon-Tiny.svg` is pixel-aware artwork specifically for 16/32 px, where the full illustration loses legibility.
+
+`assets/brand/AppIcon.appiconset/` contains a macOS asset-catalog-ready set with `Contents.json`.
+
+Do not generate 16/32 px icons by blindly downscaling the 1024 artwork. Use the dedicated tiny/simplified variants.
+
+### Menu bar template
+
+`assets/brand/menu-bar/`
+
+The menu-bar artwork is intentionally different from the app icon:
+
+- monochrome only
+- transparent background
+- front-facing simplified geometry
+- rendered at 16, 18, 22 px and @2x equivalents 32, 36, 44 px
+- intended to be loaded as a macOS template image (`NSImage.isTemplate = true`)
+
+Do not maintain separate white and black menu-bar art. macOS should tint the template image automatically for the current appearance.
+
+### Approval request
+
+`assets/brand/ui/ApprovalRequest.svg`
+
+This is the compact branded permission/request glyph. Use it only where the AgentKeyBox identity adds value, such as approval UI or a request notification. Ordinary buttons should continue to use SF Symbols.
+
+### Credential types
+
+`assets/brand/credential-types/`
+
+Production credential-type glyphs are deliberately flat/duotone rather than miniature 3D app icons:
+
+- `Credential-APIKey`
+- `Credential-ENV`
+- `Credential-P8`
+- `Credential-PEM`
+- `Credential-JSON`
+
+Each has an SVG master and 128/64/32 px PNG exports.
+
+Provider logos remain separate from AgentKeyBox credential-type icons.
+
+### Connection and status icons
+
+Do not create a custom branded icon for every state. Use native semantic/SF Symbols for generic UI states such as:
+
+- connected / success
+- disconnected / error
+- pending
+- settings required
+- deny / destructive actions
+
+This prevents visual overload and keeps the app macOS-native.
+
+### Locked key geometry rule
+
+Every production AgentKeyBox key must follow this geometry:
+
+> **One circular bow/head at the rear + one straight shaft + teeth at the front.**
+
+There must never be a circular element at both ends of the key.
