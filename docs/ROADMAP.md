@@ -32,7 +32,7 @@
 - [ ] search/filter
 - [ ] menu-bar experience
 - [ ] richer App Store Connect credential bundle metadata
-- [ ] safer provider-specific HTTP operations
+- [x] safer provider-specific HTTP operations
 
 
 ## UI / UX productization
@@ -45,8 +45,8 @@ Before broad public alpha, move toward the product direction described in [`UI_D
 - [ ] drag-and-drop `.env`, `.p8`, `.pem`, and JSON import
 - [ ] guided first-run onboarding
 - [ ] Claude Code / Codex connection inside onboarding and Settings
-- [ ] remove simulation/debug controls from production builds
-- [ ] simplified approval prompt with expandable command details
+- [x] remove simulation/debug controls from production builds
+- [x] simplified approval prompt with expandable command details
 - [ ] first-class file credential cards
 - [ ] provider-aware credential bundles
 - [ ] human-readable error and empty states

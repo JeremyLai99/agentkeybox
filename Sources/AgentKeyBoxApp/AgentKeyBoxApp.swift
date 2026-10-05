@@ -16,6 +16,42 @@
     }
   }
 
+  /// Hosts approval prompts in a floating panel that is independent of the main window.
+  @MainActor
+  final class PromptPanelController {
+    private var panel: NSPanel?
+
+    func show<Content: View>(_ content: Content, title: String) {
+      let panel = self.panel ?? makePanel()
+      self.panel = panel
+      panel.title = title
+      panel.contentViewController = NSHostingController(rootView: content)
+      panel.center()
+      NSApp.activate(ignoringOtherApps: true)
+      panel.makeKeyAndOrderFront(nil)
+    }
+
+    func close() {
+      panel?.orderOut(nil)
+      panel?.contentViewController = nil
+    }
+
+    private func makePanel() -> NSPanel {
+      // Not closable: the user answers with Allow / Deny (or Save / Cancel), and an unanswered
+      // prompt times out, so there is no ambiguous "closed" state.
+      let panel = NSPanel(
+        contentRect: NSRect(x: 0, y: 0, width: 600, height: 400),
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false)
+      panel.level = .floating
+      panel.isReleasedWhenClosed = false
+      panel.hidesOnDeactivate = false
+      panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+      return panel
+    }
+  }
+
   /// An agent asked for a credential that AgentKeyBox does not have yet.
   struct CredentialRequestPrompt: Identifiable {
     let id = UUID()
@@ -50,8 +86,12 @@
   final class AppModel: ObservableObject {
     @Published var projects: [Project]
     @Published var credentials: [CredentialMetadata]
-    @Published var pendingRequest: AgentRequest?
-    @Published var pendingCredentialRequest: CredentialRequestPrompt?
+    @Published var pendingRequest: AgentRequest? {
+      didSet { updatePromptPanel() }
+    }
+    @Published var pendingCredentialRequest: CredentialRequestPrompt? {
+      didSet { updatePromptPanel() }
+    }
     @Published var pendingEnvImport: EnvImportPreview?
     @Published var statusMessage: String?
     @Published var brokerStatus: String = "Starting local broker…"
@@ -64,6 +104,7 @@
     private let metadataStore = MetadataStore()
     private let brokerTokenStore = BrokerTokenStore()
     private let authenticator = LocalAuthenticator()
+    private let promptPanel = PromptPanelController()
     private var brokerServer: LocalBrokerServer?
     private var pendingBrokerContinuation: CheckedContinuation<BrokerResponse, Never>?
     private var pendingBrokerRequest: BrokerRequest?
@@ -291,6 +332,7 @@
       }
     }
 
+    #if DEBUG
     func simulateRequest(agentID: String = "claude-code", agentName: String = "Claude Code") {
       guard let credential = credentials.first else {
         statusMessage = "Add a credential first."
@@ -314,6 +356,7 @@
       )
       NSApp.activate(ignoringOtherApps: true)
     }
+    #endif
 
     var keychainStatus: String {
       secretStore.usesDataProtectionKeychain
@@ -896,6 +939,22 @@
       }
     }
 
+    /// Approval and credential prompts live in their own floating panel, so they appear even
+    /// when the main window has been closed.
+    private func updatePromptPanel() {
+      if let request = pendingRequest {
+        promptPanel.show(
+          ApprovalView(request: request).environmentObject(self),
+          title: "\(request.agentDisplayName) wants access")
+      } else if let prompt = pendingCredentialRequest {
+        promptPanel.show(
+          CredentialRequestView(prompt: prompt).environmentObject(self),
+          title: "\(prompt.agentDisplayName) needs a credential")
+      } else {
+        promptPanel.close()
+      }
+    }
+
     func riskAssessment(for request: AgentRequest) -> CommandRiskAssessment? {
       guard request.kind != .httpRequest, let executablePath = request.executablePath else {
         return nil
@@ -990,14 +1049,16 @@
             .multilineTextAlignment(.center)
             .frame(maxWidth: 520)
 
-          HStack {
-            Button("Simulate Claude Request") { model.simulateRequest() }
+          #if DEBUG
+            HStack {
+              Button("Simulate Claude Request") { model.simulateRequest() }
+                .disabled(model.credentials.isEmpty)
+              Button("Simulate Codex Request") {
+                model.simulateRequest(agentID: "codex", agentName: "Codex")
+              }
               .disabled(model.credentials.isEmpty)
-            Button("Simulate Codex Request") {
-              model.simulateRequest(agentID: "codex", agentName: "Codex")
             }
-            .disabled(model.credentials.isEmpty)
-          }
+          #endif
 
           if let message = model.statusMessage {
             Text(message)
@@ -1048,16 +1109,8 @@
       } message: { item in
         Text(item.url.lastPathComponent)
       }
-      .sheet(item: $model.pendingRequest) { request in
-        ApprovalView(request: request)
-          .environmentObject(model)
-      }
       .sheet(item: $model.pendingEnvImport) { preview in
         EnvImportView(preview: preview)
-          .environmentObject(model)
-      }
-      .sheet(item: $model.pendingCredentialRequest) { prompt in
-        CredentialRequestView(prompt: prompt)
           .environmentObject(model)
       }
       .task {
@@ -1193,11 +1246,18 @@
         Label("\(request.agentDisplayName) wants access", systemImage: "key.fill")
           .font(.title2.bold())
 
-        switch request.kind {
-        case .command: commandDetails
-        case .httpRequest: httpDetails
-        case .environment: environmentDetails
+        // Details scroll so long arguments can never push the buttons out of view.
+        ScrollView {
+          VStack(alignment: .leading, spacing: 16) {
+            switch request.kind {
+            case .command: commandDetails
+            case .httpRequest: httpDetails
+            case .environment: environmentDetails
+            }
+          }
+          .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .frame(maxHeight: 420)
 
         Divider()
         Text(footnote)
@@ -1228,9 +1288,7 @@
 
     @ViewBuilder private var commandDetails: some View {
       credentialRows
-      if let operation = request.operation, !operation.isEmpty {
-        monospacedBlock("Command", operation)
-      }
+      commandBlock
       if let environmentVariable = request.environmentVariable {
         LabeledContent(
           "Delivery",
@@ -1268,9 +1326,7 @@
 
     @ViewBuilder private var environmentDetails: some View {
       LabeledContent("Folder", value: request.projectPath)
-      if let operation = request.operation {
-        monospacedBlock("Command", operation)
-      }
+      commandBlock
       LabeledContent(
         "Secrets", value: request.environmentVariables.joined(separator: ", "))
       riskWarning
@@ -1289,6 +1345,18 @@
               .font(.caption)
           }
         }
+      }
+    }
+
+    /// One argument per line with control characters escaped and spaces quoted, so an argument
+    /// cannot hide another behind newlines or masquerade as several arguments.
+    @ViewBuilder private var commandBlock: some View {
+      if let executable = request.executablePath {
+        monospacedBlock(
+          request.arguments.isEmpty ? "Command" : "Command and arguments (one per line)",
+          CommandDisplay.lines(executable: executable, arguments: request.arguments))
+      } else if let operation = request.operation, !operation.isEmpty {
+        monospacedBlock("Command", operation)
       }
     }
 

@@ -624,6 +624,20 @@ final class AgentKeyBoxCoreTests: XCTestCase {
     }
   }
 
+  func testCommandDisplayCannotHideOrMergeArguments() {
+    let shown = CommandDisplay.lines(
+      executable: "/usr/bin/curl",
+      arguments: [
+        "https://api.stripe.com", "\n\n\n-d @/etc/hosts", "two words", "", "evil\u{202E}txt.sh",
+      ])
+    XCTAssertEqual(
+      shown.components(separatedBy: "\n"),
+      [
+        "/usr/bin/curl", "https://api.stripe.com", "\"\\n\\n\\n-d @/etc/hosts\"", "\"two words\"",
+        "\"\"", "evil\\u{202e}txt.sh",
+      ])
+  }
+
   func testExecutableSearchPathCoversFinderLaunchedApps() {
     // The PATH a Finder-launched app actually receives.
     let directories = ExecutableSearchPath.directories(
