@@ -33,3 +33,10 @@ All AgentKeyBox key artwork follows the same rule:
 - straight shaft
 - teeth only at the front
 - never a circular element at both ends
+
+
+## Small-size legibility revision
+
+- `.env`, `.p8`, `.pem`, and `JSON` labels are constrained to a fixed content panel and must never overflow the document frame.
+- The menu-bar template intentionally uses only **Box + Key** so it remains readable at 16–22 px.
+- Menu-bar exports are checked at 16, 18, and 22 px instead of being judged only while enlarged.

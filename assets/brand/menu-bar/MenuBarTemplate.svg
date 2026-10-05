@@ -1,15 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
 <g fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round">
-  <!-- box -->
-  <rect x="4" y="14" width="24" height="13" rx="3" stroke-width="3"/>
-  <path d="M4 15 16 10 28 15 16 19 4 15Z" stroke-width="3"/>
-  <!-- agent -->
-  <rect x="9" y="5" width="14" height="10" rx="5" stroke-width="3"/>
-  <circle cx="13.5" cy="10" r="1" fill="#000" stroke="none"/>
-  <circle cx="18.5" cy="10" r="1" fill="#000" stroke="none"/>
-  <!-- conventional key -->
-  <path d="M15 22h4" stroke-width="2.6"/>
-  <path d="M15 22h-5v2h-2v-2H7" stroke-width="2.6"/>
-  <circle cx="23" cy="22" r="3" stroke-width="2.6"/>
+  <!-- KeyBox container: deliberately flat for 16–22 px -->
+  <rect x="4" y="6" width="24" height="20" rx="4" stroke-width="3"/>
+  <!-- conventional key: bow at right, teeth at left -->
+  <path d="M16.5 16H11v3H8v-3H6.8" stroke-width="3"/>
+  <path d="M16.5 16h3" stroke-width="3"/>
+  <circle cx="23" cy="16" r="3.6" stroke-width="3"/>
 </g>
 </svg>

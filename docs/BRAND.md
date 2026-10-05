@@ -391,3 +391,35 @@ Every production AgentKeyBox key must follow this geometry:
 > **One circular bow/head at the rear + one straight shaft + teeth at the front.**
 
 There must never be a circular element at both ends of the key.
+
+
+---
+
+## 14. Small-size legibility rules
+
+Small production icons must be designed for their actual display size, not treated as simple reductions of larger artwork.
+
+### Credential type icons
+
+The `.env`, `.p8`, `.pem`, and `JSON` labels must remain fully inside the document content panel at every exported size.
+
+- labels are centered inside a fixed content panel
+- no glyph may touch or cross the file frame
+- use shorter labels rather than shrinking text until it becomes illegible
+- 32 px exports must be visually checked independently
+- UI text next to the icon remains the authoritative accessible type label
+
+### Menu bar icon
+
+The macOS menu bar mark is intentionally reduced to **Box + Key**.
+
+At 16–22 px, the Agent character is omitted because it makes the mark visually collapse. The menu bar icon is a utility glyph, not a miniature copy of the app icon.
+
+- monochrome template image only
+- transparent background
+- flat KeyBox container
+- one conventional key with circular bow at the rear and teeth at the front
+- no Agent face, 3D lighting, gradients, or decorative signal marks
+- validate 16 px, 18 px, and 22 px exports at actual size before release
+
+Brand completeness is restored in the full app icon, approval UI, onboarding, and other larger surfaces.
