@@ -33,7 +33,9 @@
 
   /// Brand images from `assets/brand`. Release builds load them from `Contents/Resources/Brand`
   /// (copied by build-release-macos.sh); debug builds run from SwiftPM's build directory and fall
-  /// back to the repository checkout.
+  /// back to the repository checkout. Main-actor isolated because NSImage is not Sendable and
+  /// only SwiftUI views use these images.
+  @MainActor
   enum BrandAssets {
     static func url(_ relativePath: String) -> URL? {
       if let resources = Bundle.main.resourceURL {
