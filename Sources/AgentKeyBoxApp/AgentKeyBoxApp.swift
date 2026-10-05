@@ -8,10 +8,157 @@
     @StateObject private var model = AppModel()
 
     var body: some Scene {
-      WindowGroup {
+      // A single main window, so the menu bar's "Open AgentKeyBox" brings it back instead of
+      // opening duplicates.
+      Window("AgentKeyBox", id: "main") {
         ContentView()
           .environmentObject(model)
           .frame(minWidth: 860, minHeight: 560)
+          .tint(.agentKeyBlue)
+      }
+
+      MenuBarExtra {
+        MenuBarContent()
+          .environmentObject(model)
+      } label: {
+        MenuBarLabel(pending: model.hasPendingPrompt)
+      }
+    }
+  }
+
+  extension Color {
+    /// BRAND.md primary accent.
+    static let agentKeyBlue = Color(red: 0x08 / 255, green: 0x67 / 255, blue: 0xE8 / 255)
+  }
+
+  /// Brand images from `assets/brand`. Release builds load them from `Contents/Resources/Brand`
+  /// (copied by build-release-macos.sh); debug builds run from SwiftPM's build directory and fall
+  /// back to the repository checkout.
+  enum BrandAssets {
+    static func url(_ relativePath: String) -> URL? {
+      if let resources = Bundle.main.resourceURL {
+        let url = resources.appendingPathComponent("Brand/\(relativePath)")
+        if FileManager.default.fileExists(atPath: url.path) { return url }
+      }
+      #if DEBUG
+        let repository = URL(fileURLWithPath: #filePath)
+          .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let url = repository.appendingPathComponent("assets/brand/\(relativePath)")
+        if FileManager.default.fileExists(atPath: url.path) { return url }
+      #endif
+      return nil
+    }
+
+    /// Combines `<name>-<points>.png` and `<name>-<2×points>.png` into one 1x/2x image.
+    static func image(_ directory: String, _ name: String, points: Int, template: Bool = false)
+      -> NSImage?
+    {
+      let image = NSImage(size: NSSize(width: points, height: points))
+      for scale in [1, 2] {
+        guard let url = url("\(directory)/\(name)-\(points * scale).png"),
+          let representation = NSImageRep(contentsOf: url)
+        else { continue }
+        representation.size = NSSize(width: points, height: points)
+        image.addRepresentation(representation)
+      }
+      guard !image.representations.isEmpty else { return nil }
+      image.isTemplate = template
+      return image
+    }
+
+    static let menuBar = image("menu-bar", "MenuBarTemplate", points: 18, template: true)
+    static let approvalRequest = image("ui", "ApprovalRequest", points: 64)
+
+    static func credentialIcon(for kind: CredentialKind) -> NSImage? {
+      let name: String
+      switch kind {
+      case .apiKey, .token: name = "Credential-APIKey"
+      case .environmentVariable: name = "Credential-ENV"
+      case .p8: name = "Credential-P8"
+      case .pem: name = "Credential-PEM"
+      case .json: name = "Credential-JSON"
+      }
+      return image("credential-types", name, points: 32)
+    }
+  }
+
+  struct MenuBarLabel: View {
+    let pending: Bool
+
+    var body: some View {
+      if let icon = BrandAssets.menuBar {
+        // A template image, so macOS tints it for light, dark, and highlighted menu bars.
+        Image(nsImage: icon)
+      } else {
+        Image(systemName: "key.horizontal.fill")
+      }
+      if pending {
+        Text("1")
+      }
+    }
+  }
+
+  struct MenuBarContent: View {
+    @EnvironmentObject private var model: AppModel
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+      if let title = model.pendingPromptTitle {
+        Button("Review: \(title)") { model.bringPromptToFront() }
+      } else {
+        Text("No pending requests")
+      }
+
+      if !model.accessEvents.isEmpty {
+        Divider()
+        Text("Recent")
+        ForEach(model.accessEvents.prefix(5)) { event in
+          Text("\(event.agentDisplayName) → \(event.credentialLabel) · \(event.decision.rawValue)")
+        }
+      }
+
+      Divider()
+      Button("Open AgentKeyBox") {
+        openWindow(id: "main")
+        NSApp.activate(ignoringOtherApps: true)
+      }
+      Button("Quit AgentKeyBox") { NSApp.terminate(nil) }
+        .keyboardShortcut("q")
+    }
+  }
+
+  /// A credential-type glyph from the brand set, with an SF Symbol fallback.
+  struct CredentialIcon: View {
+    let kind: CredentialKind
+    var size: CGFloat = 22
+
+    var body: some View {
+      if let icon = BrandAssets.credentialIcon(for: kind) {
+        Image(nsImage: icon)
+          .resizable()
+          .interpolation(.high)
+          .frame(width: size, height: size)
+      } else {
+        Image(systemName: "key.fill")
+          .frame(width: size, height: size)
+      }
+    }
+  }
+
+  /// The branded request glyph (BRAND.md reserves it for approval UI), with an SF Symbol fallback.
+  struct ApprovalGlyph: View {
+    var size: CGFloat = 40
+
+    var body: some View {
+      if let icon = BrandAssets.approvalRequest {
+        Image(nsImage: icon)
+          .resizable()
+          .interpolation(.high)
+          .frame(width: size, height: size)
+      } else {
+        Image(systemName: "key.fill")
+          .font(.system(size: size * 0.6))
+          .frame(width: size, height: size)
       }
     }
   }
@@ -942,16 +1089,33 @@
       }
     }
 
+    var hasPendingPrompt: Bool {
+      pendingRequest != nil || pendingCredentialRequest != nil
+    }
+
+    var pendingPromptTitle: String? {
+      if let request = pendingRequest { return "\(request.agentDisplayName) wants access" }
+      if let prompt = pendingCredentialRequest {
+        return "\(prompt.agentDisplayName) needs a credential"
+      }
+      return nil
+    }
+
+    /// From the menu bar: re-show the pending prompt if it was hidden behind other windows.
+    func bringPromptToFront() {
+      updatePromptPanel()
+    }
+
     /// Approval and credential prompts live in their own floating panel, so they appear even
     /// when the main window has been closed.
     private func updatePromptPanel() {
       if let request = pendingRequest {
         promptPanel.show(
-          ApprovalView(request: request).environmentObject(self),
+          ApprovalView(request: request).environmentObject(self).tint(.agentKeyBlue),
           title: "\(request.agentDisplayName) wants access")
       } else if let prompt = pendingCredentialRequest {
         promptPanel.show(
-          CredentialRequestView(prompt: prompt).environmentObject(self),
+          CredentialRequestView(prompt: prompt).environmentObject(self).tint(.agentKeyBlue),
           title: "\(prompt.agentDisplayName) needs a credential")
       } else {
         promptPanel.close()
@@ -1001,16 +1165,9 @@
 
           Section("Credentials") {
             ForEach(model.credentials) { credential in
-              VStack(alignment: .leading, spacing: 3) {
-                Text(credential.label)
-                HStack(spacing: 6) {
-                  Text(credential.service)
-                  if let environment = credential.environment {
-                    Text("· \(environment)")
-                  }
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
+              HStack(spacing: 8) {
+                CredentialIcon(kind: credential.kind)
+                credentialRow(credential)
               }
               .contextMenu {
                 Button("Delete", role: .destructive) {
@@ -1022,9 +1179,56 @@
         }
         .navigationTitle("AgentKeyBox")
       } detail: {
+        detail
+      }
+      .sheet(isPresented: $showingAddCredential) {
+        AddCredentialView()
+          .environmentObject(model)
+      }
+      .confirmationDialog(
+        "Which project should these credentials belong to?",
+        isPresented: Binding(
+          get: { pendingImport != nil },
+          set: { if !$0 { pendingImport = nil } }
+        ),
+        presenting: pendingImport
+      ) { item in
+        ForEach(model.projects) { project in
+          Button(project.name) { performImport(item, projectID: project.id) }
+        }
+        Button("Global (visible to every project)") { performImport(item, projectID: nil) }
+        Button("Cancel", role: .cancel) {}
+      } message: { item in
+        Text(item.url.lastPathComponent)
+      }
+      .sheet(item: $model.pendingEnvImport) { preview in
+        EnvImportView(preview: preview)
+          .environmentObject(model)
+      }
+      .task {
+        model.refreshAgentStatuses()
+      }
+    }
+
+    private func credentialRow(_ credential: CredentialMetadata) -> some View {
+      VStack(alignment: .leading, spacing: 3) {
+        Text(credential.label)
+        HStack(spacing: 6) {
+          Text(credential.service)
+          if let environment = credential.environment {
+            Text("· \(environment)")
+          }
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+      }
+    }
+
+    private var detail: some View {
         VStack(spacing: 18) {
-          Image(systemName: "key.horizontal.fill")
-            .font(.system(size: 54))
+          Image(nsImage: NSApp.applicationIconImage)
+            .resizable()
+            .frame(width: 88, height: 88)
           Text("Keys for your AI agents, under your control.")
             .font(.title2)
           Text(model.brokerStatus)
@@ -1091,34 +1295,6 @@
           Spacer()
         }
         .padding(36)
-      }
-      .sheet(isPresented: $showingAddCredential) {
-        AddCredentialView()
-          .environmentObject(model)
-      }
-      .confirmationDialog(
-        "Which project should these credentials belong to?",
-        isPresented: Binding(
-          get: { pendingImport != nil },
-          set: { if !$0 { pendingImport = nil } }
-        ),
-        presenting: pendingImport
-      ) { item in
-        ForEach(model.projects) { project in
-          Button(project.name) { performImport(item, projectID: project.id) }
-        }
-        Button("Global (visible to every project)") { performImport(item, projectID: nil) }
-        Button("Cancel", role: .cancel) {}
-      } message: { item in
-        Text(item.url.lastPathComponent)
-      }
-      .sheet(item: $model.pendingEnvImport) { preview in
-        EnvImportView(preview: preview)
-          .environmentObject(model)
-      }
-      .task {
-        model.refreshAgentStatuses()
-      }
     }
 
     private func chooseProjectFolder() {
@@ -1246,8 +1422,11 @@
 
     var body: some View {
       VStack(alignment: .leading, spacing: 16) {
-        Label("\(request.agentDisplayName) wants access", systemImage: "key.fill")
-          .font(.title2.bold())
+        HStack(spacing: 12) {
+          ApprovalGlyph()
+          Text("\(request.agentDisplayName) wants access")
+            .font(.title2.bold())
+        }
 
         // Details scroll so long arguments can never push the buttons out of view.
         ScrollView {
@@ -1450,8 +1629,11 @@
 
     var body: some View {
       VStack(alignment: .leading, spacing: 16) {
-        Label("\(prompt.agentDisplayName) needs a credential", systemImage: "key.badge.plus")
-          .font(.title2.bold())
+        HStack(spacing: 12) {
+          ApprovalGlyph()
+          Text("\(prompt.agentDisplayName) needs a credential")
+            .font(.title2.bold())
+        }
 
         LabeledContent("Variable", value: prompt.environmentVariable)
         LabeledContent("Service", value: prompt.service)

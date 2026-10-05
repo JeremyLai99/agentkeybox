@@ -1,31 +1,24 @@
 #!/usr/bin/env bash
+# Regenerates AppIcon.appiconset and AppIcon.icns from the brand masters.
+# Run after changing agentkeybox-app-icon.png or the app-icon SVGs, and commit the results.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
-BRAND="$ROOT/assets/brand"
-SRC="$BRAND/agentkeybox-app-icon.png"
-DST="$BRAND/AppIcon.appiconset"
+BRAND="$(cd "$(dirname "$0")" && pwd)"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
-  echo "This generator uses macOS sips and must run on macOS." >&2
+  echo "This generator uses AppKit and iconutil and must run on macOS." >&2
   exit 1
 fi
 
-[[ -f "$SRC" ]] || { echo "Missing $SRC" >&2; exit 1; }
-mkdir -p "$DST"
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+ICONSET="$WORK/AppIcon.iconset"
 
-# Pixel-aware small variants: do not downscale the detailed master here.
-cp "$BRAND/app-icon/AppIcon-Tiny-16.png" "$DST/icon_16x16.png"
-cp "$BRAND/app-icon/AppIcon-Tiny-32.png" "$DST/icon_16x16@2x.png"
-cp "$BRAND/app-icon/AppIcon-Tiny-32.png" "$DST/icon_32x32.png"
-cp "$BRAND/app-icon/AppIcon-Simplified-64.png" "$DST/icon_32x32@2x.png"
+swift "$BRAND/render-app-icon.swift" "$BRAND" "$ICONSET"
+iconutil --convert icns "$ICONSET" --output "$BRAND/AppIcon.icns"
 
-# Larger variants use the approved primary artwork.
-sips -z 128 128 "$SRC" --out "$DST/icon_128x128.png" >/dev/null
-sips -z 256 256 "$SRC" --out "$DST/icon_128x128@2x.png" >/dev/null
-cp "$DST/icon_128x128@2x.png" "$DST/icon_256x256.png"
-sips -z 512 512 "$SRC" --out "$DST/icon_256x256@2x.png" >/dev/null
-cp "$DST/icon_256x256@2x.png" "$DST/icon_512x512.png"
-sips -z 1024 1024 "$SRC" --out "$DST/icon_512x512@2x.png" >/dev/null
+# Keep the asset-catalog copy in sync; its Contents.json uses the same file names.
+find "$BRAND/AppIcon.appiconset" -name '*.png' -delete
+cp "$ICONSET"/*.png "$BRAND/AppIcon.appiconset/"
 
-echo "Generated macOS AppIcon set at $DST"
+echo "Generated $BRAND/AppIcon.icns and $BRAND/AppIcon.appiconset"

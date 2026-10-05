@@ -23,6 +23,13 @@ cp "$BIN_DIR/agentkeybox-mcp" "dist/bin/agentkeybox-mcp"
 cp "$BIN_DIR/akb" "dist/bin/akb"
 chmod +x "$APP/Contents/MacOS/AgentKeyBox" "$APP/Contents/Helpers/agentkeybox-mcp" "$APP/Contents/Helpers/akb" dist/bin/*
 
+# App icon (regenerate with assets/brand/generate-app-iconset-macos.sh) and the brand images the
+# UI loads at runtime from Contents/Resources/Brand.
+cp assets/brand/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+mkdir -p "$APP/Contents/Resources/Brand"
+cp -R assets/brand/credential-types assets/brand/menu-bar assets/brand/ui "$APP/Contents/Resources/Brand/"
+find "$APP/Contents/Resources/Brand" -name '*.svg' -delete
+
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -31,6 +38,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>CFBundleDevelopmentRegion</key><string>en</string>
   <key>CFBundleDisplayName</key><string>AgentKeyBox</string>
   <key>CFBundleExecutable</key><string>AgentKeyBox</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundleIdentifier</key><string>dev.agentkeybox.app</string>
   <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
   <key>CFBundleName</key><string>AgentKeyBox</string>

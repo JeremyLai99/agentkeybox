@@ -3,10 +3,15 @@
 These are individual production assets, not design-board crops.
 
 ## App icon
-- `app-icon/AppIcon-1024.png` — primary master
-- `app-icon/AppIcon-512.png`, `256`, `128`, `64`, `32`, `16`
-- `app-icon/AppIcon-Simplified.svg` + rendered `128/64/32/16`
-- `AppIcon.appiconset/` — macOS asset-catalog-ready set
+- `agentkeybox-app-icon.png` — raster master for 128 px and larger
+- `app-icon/AppIcon-Simplified.svg` (64 px) and `app-icon/AppIcon-Tiny.svg` (16/32 px)
+- `AppIcon.icns` and `AppIcon.appiconset/` — generated; do not edit by hand
+
+Regenerate after changing a master:
+
+```bash
+./assets/brand/generate-app-iconset-macos.sh
+```
 
 For small sizes, use the simplified artwork rather than blindly downscaling the 1024 artwork.
 

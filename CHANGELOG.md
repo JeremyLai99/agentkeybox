@@ -4,6 +4,7 @@
 
 ### Added
 
+- The app ships the brand icon: `AppIcon.icns` rendered onto Apple's icon grid from the brand masters, credential-type glyphs in the sidebar, the branded request glyph in approval prompts, AgentKey Blue as the accent color, and a menu bar item (template icon) showing pending requests and recent access.
 - `http_request` MCP tool: AgentKeyBox performs one approved HTTPS request with the credential placed in a header via `{{secret}}`. Enforces https, per-credential allowed hosts (prefilled from provider presets), header-only placement, no redirects, a timeout, and a redacted, size-limited response.
 - `akb run [--only …] -- <command>`: one Touch ID approval, then the command runs in your terminal with the project's secrets in its environment — a drop-in replacement for `.env` files for dev servers.
 - `request_credential` MCP tool: when a credential is missing, the user enters it in an AgentKeyBox prompt (with a link to the provider's dashboard) instead of pasting it into chat; the agent receives only the new credential ID.

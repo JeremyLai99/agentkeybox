@@ -327,12 +327,11 @@ The first production-ready icon asset set now lives under `assets/brand/`.
 
 `assets/brand/app-icon/`
 
-- `AppIcon-1024.png` is the primary raster master derived from the selected **Key in a Box + Agent** artwork.
-- Standard raster exports are included at 512, 256, 128, 64, 32, and 16 px.
-- `AppIcon-Simplified.svg` provides simplified small-size artwork.
+- `assets/brand/agentkeybox-app-icon.png` is the raster master for 128 px and larger. It is opaque on a light backdrop; the renderer detects and masks its rounded square.
+- `AppIcon-Simplified.svg` provides simplified artwork for 64 px.
 - `AppIcon-Tiny.svg` is pixel-aware artwork specifically for 16/32 px, where the full illustration loses legibility.
 
-`assets/brand/AppIcon.appiconset/` contains a macOS asset-catalog-ready set with `Contents.json`.
+`assets/brand/generate-app-iconset-macos.sh` (using `render-app-icon.swift`) renders every size onto Apple's icon grid (shape 824/1024 of the canvas, transparent corners, soft shadow) and writes `assets/brand/AppIcon.icns` plus the matching `AppIcon.appiconset/`. The release build copies `AppIcon.icns` into the app. Re-run the script after changing any app-icon master and commit the outputs.
 
 Do not generate 16/32 px icons by blindly downscaling the 1024 artwork. Use the dedicated tiny/simplified variants.
 
