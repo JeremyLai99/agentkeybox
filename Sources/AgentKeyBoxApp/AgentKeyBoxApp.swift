@@ -25,7 +25,10 @@
       let panel = self.panel ?? makePanel()
       self.panel = panel
       panel.title = title
-      panel.contentViewController = NSHostingController(rootView: content)
+      let hosting = NSHostingController(rootView: content)
+      // Size the panel from the view's ideal size instead of a fixed frame.
+      hosting.sizingOptions = [.preferredContentSize]
+      panel.contentViewController = hosting
       panel.center()
       NSApp.activate(ignoringOtherApps: true)
       panel.makeKeyAndOrderFront(nil)
@@ -1257,12 +1260,15 @@
           }
           .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxHeight: 420)
+        // A ScrollView has no intrinsic height; without a minimum and ideal height it collapses
+        // to zero in the prompt panel and the user would approve without seeing any details.
+        .frame(minHeight: 180, idealHeight: 380, maxHeight: 420)
 
         Divider()
         Text(footnote)
           .font(.caption)
           .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
 
         HStack {
           Button("Deny") { model.decide(.deny) }
@@ -1474,6 +1480,7 @@
         )
         .font(.caption)
         .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
 
         HStack {
           Button("Cancel") { model.cancelCredentialRequest() }
