@@ -583,6 +583,47 @@ final class AgentKeyBoxCoreTests: XCTestCase {
       ).level, .normal)
   }
 
+  func testCorruptMetadataIsQuarantinedNotOverwritten() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "AgentKeyBoxCorrupt-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let fileURL = root.appendingPathComponent("metadata.json")
+    let original = Data("{\"projects\": [ truncated".utf8)
+    try original.write(to: fileURL)
+
+    let store = MetadataStore(fileURL: fileURL)
+    let (snapshot, quarantined) = store.loadWithRecovery()
+    XCTAssertTrue(snapshot.projects.isEmpty)
+    let backup = try XCTUnwrap(quarantined)
+    XCTAssertEqual(try Data(contentsOf: backup), original)
+
+    // Saving afterwards must leave the quarantined copy untouched.
+    try store.save(MetadataSnapshot(projects: [Project(name: "new", rootPath: "/tmp/new")]))
+    XCTAssertEqual(try Data(contentsOf: backup), original)
+    XCTAssertEqual(store.load().projects.map(\.name), ["new"])
+  }
+
+  func testEnvImportClassifierSeparatesSecretsFromSettings() {
+    let secrets = [
+      ("STRIPE_SECRET_KEY", "sk_test_123"), ("OPENAI_API_KEY", "sk-abc"),
+      ("GITHUB_TOKEN", "ghp_x"), ("DB_PASSWORD", "hunter2"), ("SENTRY_DSN", "https://x@o.io/1"),
+      ("DATABASE_URL", "postgres://app:s3cret@db.example.com:5432/app"),
+    ]
+    for (key, value) in secrets {
+      XCTAssertTrue(EnvImportClassifier.looksSecret(key: key, value: value), key)
+    }
+    let settings = [
+      ("PORT", "3000"), ("NODE_ENV", "development"), ("DEBUG", "true"),
+      ("DATABASE_URL", "postgres://localhost:5432/app"),
+      ("NEXT_PUBLIC_SUPABASE_URL", "https://x.supabase.co"),
+      ("STRIPE_PUBLISHABLE_KEY", "pk_test_123"), ("SUPABASE_ANON_KEY", "eyJ..."),
+    ]
+    for (key, value) in settings {
+      XCTAssertFalse(EnvImportClassifier.looksSecret(key: key, value: value), key)
+    }
+  }
+
   func testExecutableSearchPathCoversFinderLaunchedApps() {
     // The PATH a Finder-launched app actually receives.
     let directories = ExecutableSearchPath.directories(

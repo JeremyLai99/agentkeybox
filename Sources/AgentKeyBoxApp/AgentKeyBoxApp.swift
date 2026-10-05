@@ -29,12 +29,30 @@
     var existingProject: Project?
   }
 
+  /// Parsed `.env` entries awaiting the user's selection. Values stay in memory only until the
+  /// import is confirmed or cancelled.
+  struct EnvImportPreview: Identifiable {
+    struct Entry: Identifiable {
+      var id: String { key }
+      var key: String
+      var value: String
+      var selected: Bool
+      var updatesExisting: Bool
+    }
+
+    let id = UUID()
+    var fileName: String
+    var projectID: UUID?
+    var entries: [Entry]
+  }
+
   @MainActor
   final class AppModel: ObservableObject {
     @Published var projects: [Project]
     @Published var credentials: [CredentialMetadata]
     @Published var pendingRequest: AgentRequest?
     @Published var pendingCredentialRequest: CredentialRequestPrompt?
+    @Published var pendingEnvImport: EnvImportPreview?
     @Published var statusMessage: String?
     @Published var brokerStatus: String = "Starting local broker…"
     @Published var claudeConnectionStatus: String = "Not checked"
@@ -56,9 +74,13 @@
     private var approvalSlotReserved = false
 
     init() {
-      let snapshot = metadataStore.load()
+      let (snapshot, quarantined) = metadataStore.loadWithRecovery()
       self.projects = snapshot.projects
       self.credentials = snapshot.credentials
+      if let quarantined {
+        self.statusMessage =
+          "AgentKeyBox could not read its project list and moved it to \(quarantined.lastPathComponent). Your secrets are still in the Keychain."
+      }
 
       do {
         let authToken = try brokerTokenStore.loadOrCreate()
@@ -152,46 +174,88 @@
       }
     }
 
+    /// Parses a `.env` file and shows which entries will be imported; nothing is stored until
+    /// the user confirms in `confirmEnvImport`.
     func importEnv(at url: URL, projectID: UUID?) {
       do {
         let text = try String(contentsOf: url, encoding: .utf8)
-        let parsed = EnvParser.parse(text)
+        let parsed = EnvParser.parse(text).filter { !$0.value.isEmpty }
         guard !parsed.isEmpty else {
           statusMessage = "No environment variables were found in that file."
           return
         }
-
-        var staged: [CredentialMetadata] = []
-        do {
-          for (key, value) in parsed.sorted(by: { $0.key < $1.key }) where !value.isEmpty {
-            let preset = ProviderCatalog.preset(matchingService: nil, environmentKey: key)
-            let metadata = CredentialMetadata(
-              label: key,
-              service: ProviderCatalog.inferService(fromEnvironmentKey: key),
-              projectID: projectID,
-              kind: .environmentVariable,
-              environmentVariableName: key,
-              allowedHosts: preset.flatMap { $0.allowedHosts.isEmpty ? nil : $0.allowedHosts }
-            )
-            try secretStore.save(secret: Data(value.utf8), id: metadata.id)
-            staged.append(metadata)
-          }
-        } catch {
-          for metadata in staged { try? secretStore.delete(id: metadata.id) }
-          throw error
-        }
-
-        credentials.append(contentsOf: staged)
-        guard persistMetadata() else {
-          let stagedIDs = Set(staged.map(\.id))
-          credentials.removeAll { stagedIDs.contains($0.id) }
-          for metadata in staged { try? secretStore.delete(id: metadata.id) }
-          return
-        }
-        statusMessage = "Imported \(staged.count) secret\(staged.count == 1 ? "" : "s") from .env."
+        pendingEnvImport = EnvImportPreview(
+          fileName: url.lastPathComponent,
+          projectID: projectID,
+          entries: parsed.keys.sorted().map { key in
+            EnvImportPreview.Entry(
+              key: key,
+              value: parsed[key] ?? "",
+              selected: EnvImportClassifier.looksSecret(key: key, value: parsed[key] ?? ""),
+              updatesExisting: existingCredential(named: key, projectID: projectID) != nil)
+          })
       } catch {
         statusMessage = "Could not import .env: \(error.localizedDescription)"
       }
+    }
+
+    func confirmEnvImport(selectedKeys: Set<String>) {
+      guard let preview = pendingEnvImport else { return }
+      pendingEnvImport = nil
+      let chosen = preview.entries.filter { selectedKeys.contains($0.key) }
+      guard !chosen.isEmpty else {
+        statusMessage = "Nothing was imported."
+        return
+      }
+
+      var added: [CredentialMetadata] = []
+      var updated = 0
+      do {
+        for entry in chosen {
+          // Re-importing updates the stored value instead of creating a duplicate.
+          if let existing = existingCredential(named: entry.key, projectID: preview.projectID),
+            let index = credentials.firstIndex(where: { $0.id == existing.id })
+          {
+            try secretStore.save(secret: Data(entry.value.utf8), id: existing.id)
+            credentials[index].updatedAt = Date()
+            updated += 1
+            continue
+          }
+          let preset = ProviderCatalog.preset(matchingService: nil, environmentKey: entry.key)
+          let metadata = CredentialMetadata(
+            label: entry.key,
+            service: ProviderCatalog.inferService(fromEnvironmentKey: entry.key),
+            projectID: preview.projectID,
+            kind: .environmentVariable,
+            environmentVariableName: entry.key,
+            allowedHosts: preset.flatMap { $0.allowedHosts.isEmpty ? nil : $0.allowedHosts }
+          )
+          try secretStore.save(secret: Data(entry.value.utf8), id: metadata.id)
+          added.append(metadata)
+        }
+      } catch {
+        for metadata in added { try? secretStore.delete(id: metadata.id) }
+        statusMessage = "Could not import .env: \(error.localizedDescription)"
+        return
+      }
+
+      credentials.append(contentsOf: added)
+      guard persistMetadata() else {
+        let addedIDs = Set(added.map(\.id))
+        credentials.removeAll { addedIDs.contains($0.id) }
+        for metadata in added { try? secretStore.delete(id: metadata.id) }
+        return
+      }
+      statusMessage =
+        "Imported \(added.count) new and updated \(updated) existing secret(s) from \(preview.fileName)."
+    }
+
+    func cancelEnvImport() {
+      pendingEnvImport = nil
+    }
+
+    private func existingCredential(named key: String, projectID: UUID?) -> CredentialMetadata? {
+      credentials.first { $0.projectID == projectID && $0.injectionVariableName == key }
     }
 
     func importCredentialFile(at url: URL, projectID: UUID?) {
@@ -988,6 +1052,10 @@
         ApprovalView(request: request)
           .environmentObject(model)
       }
+      .sheet(item: $model.pendingEnvImport) { preview in
+        EnvImportView(preview: preview)
+          .environmentObject(model)
+      }
       .sheet(item: $model.pendingCredentialRequest) { prompt in
         CredentialRequestView(prompt: prompt)
           .environmentObject(model)
@@ -1245,6 +1313,59 @@
         return
           "These secrets are handed to this command and everything it starts, in your terminal. AgentKeyBox cannot redact its output. Only allow commands you started yourself."
       }
+    }
+  }
+
+  struct EnvImportView: View {
+    @EnvironmentObject private var model: AppModel
+    let preview: EnvImportPreview
+    @State private var selected: Set<String>
+
+    init(preview: EnvImportPreview) {
+      self.preview = preview
+      _selected = State(initialValue: Set(preview.entries.filter(\.selected).map(\.key)))
+    }
+
+    var body: some View {
+      VStack(alignment: .leading, spacing: 14) {
+        Text("Import \(preview.fileName)").font(.title2.bold())
+        Text(
+          "Choose which entries are secrets. Likely secrets are preselected; settings such as PORT or NODE_ENV and public keys are not."
+        )
+        .font(.callout)
+        .foregroundStyle(.secondary)
+
+        List(preview.entries) { entry in
+          Toggle(
+            isOn: Binding(
+              get: { selected.contains(entry.key) },
+              set: { if $0 { selected.insert(entry.key) } else { selected.remove(entry.key) } }
+            )
+          ) {
+            HStack {
+              Text(entry.key).font(.system(.body, design: .monospaced))
+              Spacer()
+              Text(
+                entry.updatesExisting
+                  ? "updates existing · \(entry.value.count) chars" : "\(entry.value.count) chars"
+              )
+              .font(.caption)
+              .foregroundStyle(.secondary)
+            }
+          }
+        }
+        .frame(minHeight: 220)
+
+        HStack {
+          Button("Cancel") { model.cancelEnvImport() }
+          Spacer()
+          Button("Import \(selected.count)") { model.confirmEnvImport(selectedKeys: selected) }
+            .buttonStyle(.borderedProminent)
+            .disabled(selected.isEmpty)
+        }
+      }
+      .padding(24)
+      .frame(width: 560, height: 460)
     }
   }
 

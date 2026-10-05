@@ -34,14 +34,34 @@ public final class MetadataStore: @unchecked Sendable {
   }
 
   public func load() -> MetadataSnapshot {
+    loadWithRecovery().snapshot
+  }
+
+  /// Loads the snapshot. An unreadable or undecodable file is moved aside to
+  /// `metadata.corrupt-<timestamp>.json` before returning an empty snapshot, so the next save
+  /// cannot overwrite the only copy of the user's projects and credential list.
+  public func loadWithRecovery() -> (snapshot: MetadataSnapshot, quarantinedFile: URL?) {
     lock.lock()
     defer { lock.unlock() }
-    guard let data = try? Data(contentsOf: fileURL),
-      let snapshot = try? decoder.decode(MetadataSnapshot.self, from: data)
-    else {
-      return MetadataSnapshot()
+    guard FileManager.default.fileExists(atPath: fileURL.path) else {
+      return (MetadataSnapshot(), nil)
     }
-    return snapshot
+    if let data = try? Data(contentsOf: fileURL),
+      let snapshot = try? decoder.decode(MetadataSnapshot.self, from: data)
+    {
+      return (snapshot, nil)
+    }
+
+    let stamp = ISO8601DateFormatter().string(from: Date())
+      .replacingOccurrences(of: ":", with: "-")
+    let backup = fileURL.deletingLastPathComponent()
+      .appendingPathComponent("metadata.corrupt-\(stamp).json")
+    do {
+      try FileManager.default.moveItem(at: fileURL, to: backup)
+      return (MetadataSnapshot(), backup)
+    } catch {
+      return (MetadataSnapshot(), nil)
+    }
   }
 
   public func save(_ snapshot: MetadataSnapshot) throws {
