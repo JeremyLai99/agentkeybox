@@ -652,6 +652,20 @@ final class AgentKeyBoxCoreTests: XCTestCase {
   }
 
   #if os(macOS)
+    /// The listener binds asynchronously; slower CI machines need more than a fixed delay.
+    private func waitForSocket(_ socket: URL, timeout: TimeInterval = 5) async throws {
+      let deadline = Date().addingTimeInterval(timeout)
+      while !FileManager.default.fileExists(atPath: socket.path) {
+        guard Date() < deadline else {
+          XCTFail("Broker socket was not created within \(timeout)s")
+          return
+        }
+        try await Task.sleep(for: .milliseconds(20))
+      }
+      // The socket file appears at bind time; give the listener a moment to start accepting.
+      try await Task.sleep(for: .milliseconds(100))
+    }
+
     /// Short root so the socket path stays under the 103-byte `sun_path` limit.
     private func makeBrokerFixture() throws -> (root: URL, socket: URL, tokens: BrokerTokenStore) {
       let root = FileManager.default.temporaryDirectory.appendingPathComponent(
@@ -672,7 +686,7 @@ final class AgentKeyBoxCoreTests: XCTestCase {
       }
       try server.start()
       defer { server.stop() }
-      try await Task.sleep(for: .milliseconds(200))
+      try await waitForSocket(fixture.socket)
 
       let directoryPerms =
         (try FileManager.default.attributesOfItem(atPath: fixture.root.path)[.posixPermissions]
@@ -696,7 +710,7 @@ final class AgentKeyBoxCoreTests: XCTestCase {
       ) { _ in BrokerResponse(ok: true) }
       try server.start()
       defer { server.stop() }
-      try await Task.sleep(for: .milliseconds(200))
+      try await waitForSocket(fixture.socket)
 
       let client = LocalBrokerClient(
         socketURL: fixture.socket, tokenStore: fixture.tokens, timeoutSeconds: 5)
