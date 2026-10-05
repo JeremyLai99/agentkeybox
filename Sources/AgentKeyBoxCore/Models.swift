@@ -64,9 +64,10 @@ public struct CredentialMetadata: Identifiable, Codable, Hashable, Sendable {
   /// `environmentVariableName` existed falls back to the label when it is a valid name.
   public var injectionVariableName: String? {
     if let environmentVariableName, !environmentVariableName.isEmpty {
-      return environmentVariableName
+      return ApprovedCommandRunner.isAllowedInjectionTarget(environmentVariableName)
+        ? environmentVariableName : nil
     }
-    return ApprovedCommandRunner.isValidEnvironmentVariable(label) ? label : nil
+    return ApprovedCommandRunner.isAllowedInjectionTarget(label) ? label : nil
   }
 
   /// File-style credentials are delivered as temporary files, not as environment text.

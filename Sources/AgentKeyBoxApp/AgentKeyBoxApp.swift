@@ -488,7 +488,7 @@
       guard let executablePath = brokerRequest.executablePath,
         executablePath.hasPrefix("/"),
         let environmentVariable = brokerRequest.environmentVariable,
-        ApprovedCommandRunner.isValidEnvironmentVariable(environmentVariable)
+        ApprovedCommandRunner.isAllowedInjectionTarget(environmentVariable)
       else {
         return BrokerResponse(ok: false, error: "Invalid execution request.")
       }
@@ -584,9 +584,11 @@
 
     private func handleCredentialRequest(_ brokerRequest: BrokerRequest) async -> BrokerResponse {
       guard let variable = brokerRequest.environmentVariable,
-        ApprovedCommandRunner.isValidEnvironmentVariable(variable)
+        ApprovedCommandRunner.isAllowedInjectionTarget(variable)
       else {
-        return BrokerResponse(ok: false, error: "env_var must be a valid environment variable name.")
+        return BrokerResponse(
+          ok: false,
+          error: "env_var must be a valid, non-reserved environment variable name (not PATH, HOME, DYLD_*, …).")
       }
       let projectPath = normalize(brokerRequest.projectPath)
 
@@ -835,7 +837,8 @@
         return nil
       }
       return CommandRiskAnalyzer.assess(
-        executablePath: executablePath, arguments: request.arguments)
+        executablePath: executablePath, arguments: request.arguments,
+        projectPath: request.projectPath)
     }
   }
 
@@ -1105,7 +1108,7 @@
           .disabled(
             label.isEmpty || service.isEmpty || secret.isEmpty
               || (!environmentVariableName.isEmpty
-                && !ApprovedCommandRunner.isValidEnvironmentVariable(environmentVariableName)))
+                && !ApprovedCommandRunner.isAllowedInjectionTarget(environmentVariableName)))
         }
       }
       .padding(24)

@@ -16,7 +16,6 @@ public enum CommandRunnerError: Error, LocalizedError, Equatable {
   case executableNotFound
   case invalidEnvironmentVariable
   case invalidWorkingDirectory
-  case outputFileUnavailable
   case secretNotUTF8
   case executionTimedOut
   case temporarySecretFileUnavailable
@@ -28,11 +27,10 @@ public enum CommandRunnerError: Error, LocalizedError, Equatable {
     case .executableNotFound:
       return "The approved executable does not exist or is not executable."
     case .invalidEnvironmentVariable:
-      return "The requested environment variable name is invalid."
+      return
+        "The requested environment variable name is invalid or reserved (e.g. PATH, HOME, DYLD_*, LD_*)."
     case .invalidWorkingDirectory:
       return "The requested project directory does not exist."
-    case .outputFileUnavailable:
-      return "AgentKeyBox could not capture command output."
     case .secretNotUTF8:
       return
         "This credential cannot be injected directly as text. Use temporary-file delivery instead."
@@ -104,9 +102,9 @@ public enum SecretRedactor {
   ) -> (text: String, truncated: Bool) {
     let redacted = redact(String(decoding: data, as: UTF8.self), secretData: secretData)
     guard redacted.utf8.count > maxBytes else { return (redacted, false) }
-    var visible = Substring(redacted)
-    while visible.utf8.count > maxBytes { visible = visible.dropLast() }
-    return (String(visible) + "\n[OUTPUT_TRUNCATED_BY_AGENTKEYBOX]", true)
+    // A multi-byte character split at the cut becomes U+FFFD, which is harmless here.
+    let visible = String(decoding: redacted.utf8.prefix(maxBytes), as: UTF8.self)
+    return (visible + "\n[OUTPUT_TRUNCATED_BY_AGENTKEYBOX]", true)
   }
 }
 
@@ -127,7 +125,7 @@ public enum ApprovedCommandRunner {
     guard FileManager.default.isExecutableFile(atPath: executablePath) else {
       throw CommandRunnerError.executableNotFound
     }
-    guard isValidEnvironmentVariable(environmentVariable) else {
+    guard isAllowedInjectionTarget(environmentVariable) else {
       throw CommandRunnerError.invalidEnvironmentVariable
     }
 
@@ -138,26 +136,12 @@ public enum ApprovedCommandRunner {
       throw CommandRunnerError.invalidWorkingDirectory
     }
 
-    let outputURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("AgentKeyBox-output-\(UUID().uuidString)")
-    _ = FileManager.default.createFile(
-      atPath: outputURL.path,
-      contents: nil,
-      attributes: [.posixPermissions: 0o600]
-    )
-    defer { try? FileManager.default.removeItem(at: outputURL) }
-
-    guard let outputHandle = try? FileHandle(forWritingTo: outputURL) else {
-      throw CommandRunnerError.outputFileUnavailable
-    }
-
     var tempSecretDirectory: URL?
     var environment = safeBaseEnvironment()
 
     switch deliveryMode {
     case .environment:
       guard let value = String(data: secretData, encoding: .utf8) else {
-        try? outputHandle.close()
         throw CommandRunnerError.secretNotUTF8
       }
       environment[environmentVariable] = value
@@ -178,7 +162,6 @@ public enum ApprovedCommandRunner {
         tempSecretDirectory = directory
         environment[environmentVariable] = secretURL.path
       } catch {
-        try? outputHandle.close()
         try? FileManager.default.removeItem(at: directory)
         throw CommandRunnerError.temporarySecretFileUnavailable
       }
@@ -190,13 +173,26 @@ public enum ApprovedCommandRunner {
       }
     }
 
+    // Output goes through a pipe into memory, keeping only what can be shown plus a redaction
+    // margin and discarding the rest, so a chatty command cannot fill the disk.
+    let pipe = Pipe()
+    let collector = OutputCollector(limit: maxOutputBytes + SecretRedactor.margin(for: secretData))
+    let readerFinished = DispatchSemaphore(value: 0)
+    let readHandle = pipe.fileHandleForReading
+    DispatchQueue.global(qos: .userInitiated).async {
+      while let chunk = try? readHandle.read(upToCount: 64 * 1024), !chunk.isEmpty {
+        collector.append(chunk)
+      }
+      readerFinished.signal()
+    }
+
     let process = Process()
     process.executableURL = URL(fileURLWithPath: executablePath)
     process.arguments = arguments
     process.currentDirectoryURL = URL(fileURLWithPath: workingDirectory)
     process.environment = environment
-    process.standardOutput = outputHandle
-    process.standardError = outputHandle
+    process.standardOutput = pipe
+    process.standardError = pipe
 
     let semaphore = DispatchSemaphore(value: 0)
     process.terminationHandler = { _ in semaphore.signal() }
@@ -204,9 +200,11 @@ public enum ApprovedCommandRunner {
     do {
       try process.run()
     } catch {
-      try? outputHandle.close()
+      try? pipe.fileHandleForWriting.close()
       throw error
     }
+    // Only the child should hold the write end, so EOF arrives when it exits.
+    try? pipe.fileHandleForWriting.close()
 
     let waitResult = semaphore.wait(timeout: .now() + timeoutSeconds)
     if waitResult == .timedOut {
@@ -218,33 +216,49 @@ public enum ApprovedCommandRunner {
           _ = semaphore.wait(timeout: .now() + 2)
         }
       }
-      try? outputHandle.synchronize()
-      try? outputHandle.close()
       throw CommandRunnerError.executionTimedOut
     }
 
-    try? outputHandle.synchronize()
-    try? outputHandle.close()
-
-    let reader = try FileHandle(forReadingFrom: outputURL)
-    defer { try? reader.close() }
-    let data = try reader.read(upToCount: maxOutputBytes + 1) ?? Data()
-    let truncated = data.count > maxOutputBytes
-    let visible = truncated ? Data(data.prefix(maxOutputBytes)) : data
-    let decoded = String(decoding: visible, as: UTF8.self)
-    let redacted = SecretRedactor.redact(decoded, secretData: secretData)
-    let suffix = truncated ? "\n[OUTPUT_TRUNCATED_BY_AGENTKEYBOX]" : ""
+    // A background grandchild may keep the pipe open; do not wait for it indefinitely.
+    _ = readerFinished.wait(timeout: .now() + 2)
+    let captured = collector.snapshot()
+    let (text, truncated) = SecretRedactor.redactThenTruncate(
+      captured.data, secretData: secretData, maxBytes: maxOutputBytes)
 
     return CommandExecutionResult(
       exitCode: process.terminationStatus,
-      output: redacted + suffix,
-      outputTruncated: truncated
+      output: text,
+      outputTruncated: truncated || captured.discardedBytes
     )
   }
 
+  /// Portable names only: ASCII letters, digits, and underscores, not starting with a digit.
   public static func isValidEnvironmentVariable(_ value: String) -> Bool {
-    guard let first = value.first, first == "_" || first.isLetter else { return false }
-    return value.dropFirst().allSatisfy { $0 == "_" || $0.isLetter || $0.isNumber }
+    let scalars = value.unicodeScalars
+    guard let first = scalars.first, first == "_" || isASCIILetter(first) else { return false }
+    return scalars.allSatisfy { $0 == "_" || isASCIILetter($0) || ("0"..."9").contains($0) }
+  }
+
+  /// Variables that control how the approved program or its runtime behaves. Putting a secret
+  /// into them would break or subvert the command instead of configuring it.
+  static let reservedVariables: Set<String> = [
+    "PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "PWD", "OLDPWD", "TERM", "LANG", "IFS",
+    "ENV", "BASH_ENV", "PS4", "PROMPT_COMMAND", "NODE_OPTIONS", "NODE_PATH", "PYTHONPATH",
+    "PYTHONHOME", "PYTHONSTARTUP", "PERL5OPT", "PERL5LIB", "RUBYOPT", "RUBYLIB",
+    "GIT_SSH_COMMAND", "GIT_EXEC_PATH",
+  ]
+  static let reservedPrefixes = ["DYLD_", "LD_", "LC_"]
+
+  /// A valid name that is not reserved; the only names a credential may be injected as.
+  public static func isAllowedInjectionTarget(_ name: String) -> Bool {
+    guard isValidEnvironmentVariable(name) else { return false }
+    let upper = name.uppercased()
+    return !reservedVariables.contains(upper)
+      && !reservedPrefixes.contains(where: { upper.hasPrefix($0) })
+  }
+
+  private static func isASCIILetter(_ scalar: Unicode.Scalar) -> Bool {
+    ("A"..."Z").contains(scalar) || ("a"..."z").contains(scalar)
   }
 
   private static func safeBaseEnvironment() -> [String: String] {
@@ -260,5 +274,33 @@ public enum ApprovedCommandRunner {
       result["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
     }
     return result
+  }
+}
+
+/// Keeps the first `limit` bytes of a stream and counts whether anything was dropped.
+private final class OutputCollector: @unchecked Sendable {
+  private let limit: Int
+  private let lock = NSLock()
+  private var data = Data()
+  private var dropped = false
+
+  init(limit: Int) {
+    self.limit = limit
+  }
+
+  func append(_ chunk: Data) {
+    lock.withLock {
+      let room = limit - data.count
+      if chunk.count > room {
+        if room > 0 { data.append(chunk.prefix(room)) }
+        dropped = true
+      } else {
+        data.append(chunk)
+      }
+    }
+  }
+
+  func snapshot() -> (data: Data, discardedBytes: Bool) {
+    lock.withLock { (data, dropped) }
   }
 }

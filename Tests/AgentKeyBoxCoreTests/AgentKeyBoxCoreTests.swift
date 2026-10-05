@@ -524,6 +524,65 @@ final class AgentKeyBoxCoreTests: XCTestCase {
     }
   #endif
 
+  // MARK: - Review items 7, 15, 16
+
+  func testRunnerRedactsSecretStraddlingOutputLimitAndBoundsMemory() throws {
+    #if os(Linux) || os(macOS)
+      let secret = "sk_test_STRADDLE_0123456789"
+      // 95 filler bytes, then the secret across the 100-byte limit, then 2 MB of noise.
+      let script =
+        "printf '%095d' 0; printf %s \"$AKB_SECRET\"; head -c 2000000 /dev/zero | tr '\\0' y"
+      let result = try ApprovedCommandRunner.run(
+        executablePath: "/bin/sh",
+        arguments: ["-c", script],
+        workingDirectory: FileManager.default.temporaryDirectory.path,
+        environmentVariable: "AKB_SECRET",
+        secretData: Data(secret.utf8),
+        maxOutputBytes: 100
+      )
+      XCTAssertTrue(result.outputTruncated)
+      XCTAssertFalse(result.output.contains("sk_test"), "a secret prefix leaked at the limit")
+      XCTAssertLessThan(result.output.utf8.count, 200)
+    #endif
+  }
+
+  func testReservedVariablesCannotReceiveSecrets() {
+    XCTAssertTrue(ApprovedCommandRunner.isAllowedInjectionTarget("STRIPE_SECRET_KEY"))
+    for reserved in ["PATH", "home", "DYLD_INSERT_LIBRARIES", "LD_PRELOAD", "NODE_OPTIONS", "LC_ALL"]
+    {
+      XCTAssertFalse(ApprovedCommandRunner.isAllowedInjectionTarget(reserved), reserved)
+    }
+    XCTAssertFalse(ApprovedCommandRunner.isValidEnvironmentVariable("ÅPI_KEY"), "ASCII only")
+    XCTAssertThrowsError(
+      try ApprovedCommandRunner.run(
+        executablePath: "/usr/bin/true", arguments: [],
+        workingDirectory: FileManager.default.temporaryDirectory.path,
+        environmentVariable: "PATH", secretData: Data("x".utf8))
+    ) { XCTAssertEqual($0 as? CommandRunnerError, .invalidEnvironmentVariable) }
+  }
+
+  func testRiskAnalyzerFlagsVersionedInterpretersAndProjectCode() {
+    XCTAssertEqual(
+      CommandRiskAnalyzer.assess(executablePath: "/usr/bin/python3.12", arguments: []).level, .high)
+    XCTAssertEqual(
+      CommandRiskAnalyzer.assess(executablePath: "/opt/homebrew/bin/bun", arguments: []).level,
+      .high)
+    XCTAssertEqual(
+      CommandRiskAnalyzer.assess(executablePath: "/usr/bin/env", arguments: ["node"]).level, .high)
+    XCTAssertEqual(
+      CommandRiskAnalyzer.assess(executablePath: "/opt/homebrew/bin/npm", arguments: ["test"])
+        .level, .elevated)
+
+    let insideProject = CommandRiskAnalyzer.assess(
+      executablePath: "/tmp/akb-project/scripts/deploy.sh", arguments: [],
+      projectPath: "/tmp/akb-project")
+    XCTAssertEqual(insideProject.level, .elevated)
+    XCTAssertEqual(
+      CommandRiskAnalyzer.assess(
+        executablePath: "/usr/bin/true", arguments: [], projectPath: "/tmp/akb-project"
+      ).level, .normal)
+  }
+
   func testExecutableSearchPathCoversFinderLaunchedApps() {
     // The PATH a Finder-launched app actually receives.
     let directories = ExecutableSearchPath.directories(

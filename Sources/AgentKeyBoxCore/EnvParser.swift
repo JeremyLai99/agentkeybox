@@ -50,8 +50,7 @@ public enum EnvParser {
   }
 
   private static func isValidKey(_ key: String) -> Bool {
-    guard let first = key.first, first == "_" || first.isLetter else { return false }
-    return key.dropFirst().allSatisfy { $0 == "_" || $0.isLetter || $0.isNumber }
+    ApprovedCommandRunner.isValidEnvironmentVariable(key)
   }
 
   private static func closingQuoteIndex(in value: String, quote: Character) -> String.Index? {
