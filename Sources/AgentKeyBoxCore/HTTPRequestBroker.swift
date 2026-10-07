@@ -16,7 +16,6 @@ public enum HTTPRequestPolicyError: Error, LocalizedError, Equatable {
   case forbiddenHeader(String)
   case placeholderMissing
   case placeholderOutsideHeaders
-  case hostNotAllowed(host: String, allowed: [String])
   case bodyTooLarge
 
   public var errorDescription: String? {
@@ -38,13 +37,21 @@ public enum HTTPRequestPolicyError: Error, LocalizedError, Equatable {
         "Put {{secret}} in a header value where the credential belongs, e.g. Authorization: Bearer {{secret}}."
     case .placeholderOutsideHeaders:
       return "{{secret}} is only allowed in header values, not in the URL or body."
-    case .hostNotAllowed(let host, let allowed):
-      return
-        "This credential may only be sent to \(allowed.joined(separator: ", ")), not \(host). Change the credential's allowed hosts in AgentKeyBox if this is intended."
     case .bodyTooLarge:
       return "The request body exceeds AgentKeyBox's 256 KiB limit."
     }
   }
+}
+
+/// Where the request goes relative to the credential's allowed hosts.
+public enum HTTPHostStatus: Codable, Hashable, Sendable {
+  /// The host is on the credential's list.
+  case listed
+  /// The credential has no list, so any host is allowed.
+  case unrestricted
+  /// The credential has a list and this host is not on it. The user decides in the approval
+  /// prompt, which warns and defaults to Deny.
+  case unlisted(allowed: [String])
 }
 
 /// A request that passed `HTTPRequestPolicy`; the secret has not been inserted yet.
@@ -54,8 +61,7 @@ public struct ValidatedHTTPRequest: Hashable, Sendable {
   public var host: String
   public var headers: [String: String]
   public var body: String?
-  /// False when the credential has no allowlist; the approval prompt warns about it.
-  public var hostRestricted: Bool
+  public var hostStatus: HTTPHostStatus
 }
 
 public enum HTTPRequestPolicy {
@@ -106,13 +112,18 @@ public enum HTTPRequestPolicy {
     }
 
     let restriction = (allowedHosts ?? []).filter { !$0.isEmpty }
-    if !restriction.isEmpty, !restriction.contains(where: { hostMatches(host, pattern: $0) }) {
-      throw HTTPRequestPolicyError.hostNotAllowed(host: host, allowed: restriction)
+    let hostStatus: HTTPHostStatus
+    if restriction.isEmpty {
+      hostStatus = .unrestricted
+    } else if restriction.contains(where: { hostMatches(host, pattern: $0) }) {
+      hostStatus = .listed
+    } else {
+      hostStatus = .unlisted(allowed: restriction)
     }
 
     return ValidatedHTTPRequest(
       method: method, url: url, host: host, headers: headers, body: body,
-      hostRestricted: !restriction.isEmpty)
+      hostStatus: hostStatus)
   }
 
   /// `*.supabase.co` matches `abc.supabase.co` but not `supabase.co` or `evil-supabase.co`.

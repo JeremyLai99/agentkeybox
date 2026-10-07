@@ -95,7 +95,7 @@ public struct AgentRequest: Identifiable, Codable, Hashable, Sendable {
   public var url: String?
   public var headerNames: [String] = []
   public var bodyPreview: String?
-  public var hostAllowed: Bool?
+  public var hostStatus: HTTPHostStatus?
   /// For `.environment`: variable names that will be revealed to the requesting terminal.
   public var environmentVariables: [String] = []
   public var agentID: String

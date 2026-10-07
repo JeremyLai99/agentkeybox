@@ -419,17 +419,12 @@ final class AgentKeyBoxCoreTests: XCTestCase {
     let request = try validate(method: "post")
     XCTAssertEqual(request.method, "POST")
     XCTAssertEqual(request.host, "api.stripe.com")
-    XCTAssertTrue(request.hostRestricted)
+    XCTAssertEqual(request.hostStatus, .listed)
   }
 
   func testHTTPPolicyRejectsUnsafeRequests() {
     XCTAssertThrowsError(try validate(url: "http://api.stripe.com/v1")) {
       XCTAssertEqual($0 as? HTTPRequestPolicyError, .httpsRequired)
-    }
-    XCTAssertThrowsError(try validate(url: "https://evil.example/collect")) {
-      XCTAssertEqual(
-        $0 as? HTTPRequestPolicyError,
-        .hostNotAllowed(host: "evil.example", allowed: ["api.stripe.com"]))
     }
     XCTAssertThrowsError(try validate(url: "https://api.stripe.com/v1?key={{secret}}")) {
       XCTAssertEqual($0 as? HTTPRequestPolicyError, .placeholderOutsideHeaders)
@@ -455,7 +450,13 @@ final class AgentKeyBoxCoreTests: XCTestCase {
 
   func testHTTPPolicyUnrestrictedCredentialIsFlagged() throws {
     let request = try validate(url: "https://example.com/api", allowedHosts: nil)
-    XCTAssertFalse(request.hostRestricted)
+    XCTAssertEqual(request.hostStatus, .unrestricted)
+  }
+
+  func testHTTPPolicyLetsUserDecideOnUnlistedHost() throws {
+    // Not rejected outright any more: the approval prompt warns and defaults to Deny.
+    let request = try validate(url: "https://evil.example/collect")
+    XCTAssertEqual(request.hostStatus, .unlisted(allowed: ["api.stripe.com"]))
   }
 
   func testHostWildcardDoesNotMatchLookalikes() {
@@ -510,7 +511,7 @@ final class AgentKeyBoxCoreTests: XCTestCase {
       var echo = ValidatedHTTPRequest(
         method: "GET", url: URL(string: "http://127.0.0.1:\(server.port)/echo")!,
         host: "127.0.0.1", headers: ["Authorization": "Bearer {{secret}}"], body: nil,
-        hostRestricted: true)
+        hostStatus: .listed)
       let echoed = try await HTTPRequestExecutor.execute(echo, secretData: Data(secret.utf8))
       XCTAssertEqual(echoed.statusCode, 200)
       XCTAssertTrue(echoed.body.contains("[REDACTED_BY_AGENTKEYBOX]"))
@@ -636,6 +637,173 @@ final class AgentKeyBoxCoreTests: XCTestCase {
         "/usr/bin/curl", "https://api.stripe.com", "\"\\n\\n\\n-d @/etc/hosts\"", "\"two words\"",
         "\"\"", "evil\\u{202e}txt.sh",
       ])
+  }
+
+  // MARK: - Approval presentation
+
+  private func stripeCredential() -> CredentialMetadata {
+    CredentialMetadata(
+      label: "STRIPE_SECRET_KEY", service: "Stripe", environmentVariableName: "STRIPE_SECRET_KEY",
+      allowedHosts: ["api.stripe.com"])
+  }
+
+  private func httpRequest(host: String, status: HTTPHostStatus) -> AgentRequest {
+    var request = AgentRequest(
+      agentID: "claude-code", agentDisplayName: "Claude Code", projectPath: "/tmp/demo",
+      credentialIdentifier: UUID().uuidString, purpose: "Check the balance")
+    request.kind = .httpRequest
+    request.url = "https://\(host)/v1/balance"
+    request.hostStatus = status
+    return request
+  }
+
+  func testApprovalForListedHostIsShortAndAllowIsDefault() {
+    let presentation = ApprovalPresentation.make(
+      for: httpRequest(host: "api.stripe.com", status: .listed), credential: stripeCredential(),
+      projectName: "demo-project", risk: nil)
+    XCTAssertEqual(presentation.headline, "Claude Code wants to use your Stripe key")
+    XCTAssertEqual(presentation.subtitle, "in demo-project")
+    XCTAssertEqual(
+      presentation.facts,
+      [.init("For", "Check the balance"), .init("Sends to", "✓ api.stripe.com")])
+    XCTAssertNil(presentation.warning)
+    XCTAssertFalse(presentation.denyIsDefault)
+    XCTAssertFalse(presentation.detailsExpanded)
+  }
+
+  func testApprovalForUnlistedHostWarnsAndDefaultsToDeny() {
+    let presentation = ApprovalPresentation.make(
+      for: httpRequest(host: "hooks.example.dev", status: .unlisted(allowed: ["api.stripe.com"])),
+      credential: stripeCredential(), projectName: "demo-project", risk: nil)
+    XCTAssertEqual(
+      presentation.headline, "Claude Code wants to send your Stripe key somewhere new")
+    XCTAssertEqual(presentation.warning?.title, "hooks.example.dev isn't one of this key's usual websites")
+    XCTAssertTrue(presentation.warning?.message.contains("api.stripe.com") ?? false)
+    XCTAssertTrue(presentation.denyIsDefault)
+    XCTAssertTrue(presentation.detailsExpanded)
+    XCTAssertEqual(presentation.rememberableHost, "hooks.example.dev")
+  }
+
+  func testApprovalForRiskyCommandLeadsWithWarning() {
+    let request = AgentRequest(
+      agentID: "claude-code", agentDisplayName: "Claude Code", projectPath: "/tmp/demo",
+      credentialIdentifier: UUID().uuidString, executablePath: "/usr/bin/curl",
+      arguments: ["https://example.com"])
+    let risk = CommandRiskAnalyzer.assess(
+      executablePath: "/usr/bin/curl", arguments: request.arguments)
+    let presentation = ApprovalPresentation.make(
+      for: request, credential: stripeCredential(), projectName: nil, risk: risk)
+    XCTAssertEqual(presentation.headline, "Claude Code wants to run a command with your Stripe key")
+    XCTAssertEqual(presentation.warning?.title, "Review this command")
+    XCTAssertTrue(presentation.denyIsDefault)
+    XCTAssertTrue(presentation.detailsExpanded)
+  }
+
+  func testApprovalForAkbRunNamesCommandAndKeys() {
+    var request = AgentRequest(
+      agentID: "terminal", agentDisplayName: "Terminal", projectPath: "/tmp/demo",
+      credentialIdentifier: "", executablePath: "/opt/homebrew/bin/npm", arguments: ["run", "dev"])
+    request.kind = .environment
+    request.environmentVariables = ["OPENAI_API_KEY", "STRIPE_SECRET_KEY"]
+    let presentation = ApprovalPresentation.make(
+      for: request, credential: nil, projectName: "demo-project",
+      risk: CommandRiskAnalyzer.assess(executablePath: "/opt/homebrew/bin/npm", arguments: ["run", "dev"]))
+    XCTAssertEqual(presentation.headline, "Terminal wants to start npm run dev with 2 keys")
+    XCTAssertEqual(presentation.facts.last, .init("Keys", "OPENAI_API_KEY, STRIPE_SECRET_KEY"))
+    XCTAssertFalse(presentation.denyIsDefault, "npm is elevated, not high risk")
+  }
+
+  // MARK: - Project folder setup
+
+  private func makeProjectFixture() throws -> URL {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "akb-scan-\(UUID().uuidString.prefix(8))/my-app")
+    let fm = FileManager.default
+    func write(_ path: String, _ text: String) throws {
+      let url = root.appendingPathComponent(path)
+      try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+      try text.write(to: url, atomically: true, encoding: .utf8)
+    }
+    try fm.createDirectory(at: root.appendingPathComponent(".git"), withIntermediateDirectories: true)
+    try write(".gitignore", "node_modules/\n.env\n")
+    try write(".env", "OPENAI_API_KEY=sk-shared\nPORT=3000\nSTRIPE_SECRET_KEY=sk_test_1\n")
+    try write(".env.local", "OPENAI_API_KEY=sk-local-override\n")
+    try write(".env.example", "OPENAI_API_KEY=replace-me\n")
+    try write("node_modules/pkg/.env", "LEAKED_DEPENDENCY_KEY=nope\n")
+    try write("keys/AuthKey_ABC123DEF4.p8", "-----BEGIN PRIVATE KEY-----\nMIGT\n-----END PRIVATE KEY-----\n")
+    try write("certs/server.pem", "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n")
+    try write(
+      "firebase-admin.json",
+      #"{"type":"service_account","project_id":"demo-prod","private_key":"-----BEGIN PRIVATE KEY-----"}"#)
+    try write("package.json", #"{"name":"my-app"}"#)
+    return root
+  }
+
+  func testProjectScanFindsSecretsAndKeyFilesButNotTemplatesOrDependencies() throws {
+    let root = try makeProjectFixture()
+    defer { try? FileManager.default.removeItem(at: root.deletingLastPathComponent()) }
+    let scan = ProjectScanner.scan(root)
+
+    XCTAssertEqual(scan.projectName, "my-app")
+    XCTAssertEqual(scan.secrets.map(\.key), ["OPENAI_API_KEY", "PORT", "STRIPE_SECRET_KEY"])
+    let openAI = try XCTUnwrap(scan.secrets.first { $0.key == "OPENAI_API_KEY" })
+    XCTAssertEqual(openAI.value, "sk-local-override", ".env.local overrides .env")
+    XCTAssertEqual(openAI.sourceFile, ".env.local")
+    XCTAssertEqual(scan.secrets.first { $0.key == "PORT" }?.looksSecret, false)
+
+    XCTAssertEqual(scan.keyFiles.map(\.relativePath), ["firebase-admin.json", "keys/AuthKey_ABC123DEF4.p8"])
+    let ascKey = try XCTUnwrap(scan.keyFiles.first { $0.kind == .p8 })
+    XCTAssertEqual(ascKey.keyID, "ABC123DEF4")
+    XCTAssertEqual(ascKey.service, "Apple App Store Connect")
+    XCTAssertEqual(scan.keyFiles.first { $0.kind == .json }?.label, "demo-prod service account")
+  }
+
+  func testProjectScanReportsEnvFilesMissingFromGitignoreAndCanFixThem() throws {
+    let root = try makeProjectFixture()
+    defer { try? FileManager.default.removeItem(at: root.deletingLastPathComponent()) }
+
+    XCTAssertEqual(ProjectScanner.scan(root).envFilesNotIgnored, [".env.local"])
+    try GitIgnore.addEntries([".env.local"], to: root)
+    XCTAssertEqual(ProjectScanner.scan(root).envFilesNotIgnored, [])
+    let gitignore = try String(contentsOf: root.appendingPathComponent(".gitignore"), encoding: .utf8)
+    XCTAssertTrue(gitignore.hasPrefix("node_modules/\n.env\n"), "existing rules are kept")
+  }
+
+  func testGitIgnoreMatchingRules() {
+    XCTAssertTrue(GitIgnore.matches(".env*", path: ".env.local"))
+    XCTAssertTrue(GitIgnore.matches(".env", path: "apps/web/.env"))
+    XCTAssertFalse(GitIgnore.matches("/.env", path: "apps/web/.env"))
+    XCTAssertTrue(GitIgnore.matches("**/.env.local", path: "apps/web/.env.local"))
+    XCTAssertFalse(GitIgnore.matches("node_modules/", path: "node_modules"))
+
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "akb-gi-\(UUID().uuidString.prefix(8))")
+    try? FileManager.default.createDirectory(
+      at: root.appendingPathComponent(".git"), withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try? ".env*\n!.env.production\n".write(
+      to: root.appendingPathComponent(".gitignore"), atomically: true, encoding: .utf8)
+    XCTAssertEqual(
+      GitIgnore.unignored([".env", ".env.production"], in: root), [".env.production"],
+      "negation re-includes a file")
+  }
+
+  func testProjectOutsideGitNeedsNoGitignore() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "akb-nogit-\(UUID().uuidString.prefix(8))")
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try "A_TOKEN=x\n".write(to: root.appendingPathComponent(".env"), atomically: true, encoding: .utf8)
+    XCTAssertEqual(ProjectScanner.scan(root).envFilesNotIgnored, [])
+  }
+
+  func testAppStoreConnectKeyIDParsing() {
+    XCTAssertEqual(ProjectScanner.appStoreConnectKeyID(fromFileName: "AuthKey_X7KD91.p8"), "X7KD91")
+    XCTAssertNil(ProjectScanner.appStoreConnectKeyID(fromFileName: "AuthKey_.p8"))
+    XCTAssertNil(ProjectScanner.appStoreConnectKeyID(fromFileName: "key.p8"))
+    XCTAssertTrue(ProjectScanner.isEnvFile(".env.development.local"))
+    XCTAssertFalse(ProjectScanner.isEnvFile(".env.example"))
+    XCTAssertFalse(ProjectScanner.isEnvFile(".envrc"))
   }
 
   func testExecutableSearchPathCoversFinderLaunchedApps() {

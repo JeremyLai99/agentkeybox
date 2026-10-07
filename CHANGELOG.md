@@ -4,6 +4,9 @@
 
 ### Added
 
+- One-step project setup: drop a project folder on the window (or choose it) and AgentKeyBox finds `.env*` files, `.p8`/`.pem` private keys, and service-account JSON (skipping templates, dependencies, and build output), preselects the real secrets, offers to add unignored `.env` files to `.gitignore`, and connects installed coding agents — one Set Up click. First-time setup drops from about 10 actions to 2.
+- Plain-language approval prompt: one-sentence headline, purpose and destination only, technical details collapsed; warnings lead and make Deny the default.
+- A request to a host outside a key's list now asks the user (with a warning and Deny as default) instead of failing, and can remember the host for that key.
 - The app ships the brand icon: `AppIcon.icns` rendered onto Apple's icon grid from the brand masters, credential-type glyphs in the sidebar, the branded request glyph in approval prompts, AgentKey Blue as the accent color, and a menu bar item (template icon) showing pending requests and recent access.
 - `http_request` MCP tool: AgentKeyBox performs one approved HTTPS request with the credential placed in a header via `{{secret}}`. Enforces https, per-credential allowed hosts (prefilled from provider presets), header-only placement, no redirects, a timeout, and a redacted, size-limited response.
 - `akb run [--only …] -- <command>`: one Touch ID approval, then the command runs in your terminal with the project's secrets in its environment — a drop-in replacement for `.env` files for dev servers.
