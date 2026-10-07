@@ -36,23 +36,23 @@ final class AgentKeyBoxCoreTests: XCTestCase {
       agentDisplayName: "Claude Code",
       projectPath: "/tmp/project-a",
       credentialIdentifier: "credential-1",
-      requestedScope: .session,
+      executablePath: "/usr/bin/true",
       sessionID: "session-1"
     )
 
-    await engine.record(
-      decision: .allowSession,
-      request: request,
-      credentialLabel: "OpenAI"
-    )
-
-    let same = await engine.preauthorizedDecision(for: request)
-    XCTAssertEqual(same, .allowSession)
+    await engine.grantSession(for: request, authentication: nil)
+    let same = await engine.sessionApproval(for: request)
+    XCTAssertNotNil(same)
 
     var otherSession = request
     otherSession.sessionID = "session-2"
-    let different = await engine.preauthorizedDecision(for: otherSession)
+    let different = await engine.sessionApproval(for: otherSession)
     XCTAssertNil(different)
+
+    var otherProject = request
+    otherProject.projectPath = "/tmp/project-b"
+    let elsewhere = await engine.sessionApproval(for: otherProject)
+    XCTAssertNil(elsewhere)
   }
 
   func testApprovalHistoryNeverContainsSecretMaterial() async {
@@ -311,28 +311,128 @@ final class AgentKeyBoxCoreTests: XCTestCase {
       arguments: [],
       environmentVariable: "API_KEY",
       deliveryMode: .environment,
-      requestedScope: .session,
       sessionID: "s1"
     )
-    await engine.record(decision: .allowSession, request: base, credentialLabel: "Demo")
-    let baseDecision = await engine.preauthorizedDecision(for: base)
-    XCTAssertEqual(baseDecision, .allowSession)
+    await engine.grantSession(for: base, authentication: nil)
+    let baseApproval = await engine.sessionApproval(for: base)
+    XCTAssertNotNil(baseApproval)
 
     var changedCommand = base
-    changedCommand.operation = "/usr/bin/env"
     changedCommand.executablePath = "/usr/bin/env"
-    let changedDecision = await engine.preauthorizedDecision(for: changedCommand)
-    XCTAssertNil(changedDecision)
+    let changedApproval = await engine.sessionApproval(for: changedCommand)
+    XCTAssertNil(changedApproval)
 
     var changedArguments = base
     changedArguments.arguments = ["--version"]
-    let argumentsDecision = await engine.preauthorizedDecision(for: changedArguments)
-    XCTAssertNil(argumentsDecision)
+    let argumentsApproval = await engine.sessionApproval(for: changedArguments)
+    XCTAssertNil(argumentsApproval)
 
     var changedDelivery = base
     changedDelivery.deliveryMode = .tempFile
-    let deliveryDecision = await engine.preauthorizedDecision(for: changedDelivery)
-    XCTAssertNil(deliveryDecision)
+    let deliveryApproval = await engine.sessionApproval(for: changedDelivery)
+    XCTAssertNil(deliveryApproval)
+  }
+
+  private func sessionHTTPRequest(host: String, status: HTTPHostStatus) -> AgentRequest {
+    var request = AgentRequest(
+      agentID: "claude-code", agentDisplayName: "Claude Code", projectPath: "/tmp/demo",
+      credentialIdentifier: "stripe", purpose: "Check the balance", sessionID: "s1")
+    request.kind = .httpRequest
+    request.url = "https://\(host)/v1/balance"
+    request.hostStatus = status
+    return request
+  }
+
+  func testSessionApprovalForHTTPCoversTheSameListedHostOnly() async {
+    let engine = ApprovalEngine()
+    let balance = sessionHTTPRequest(host: "api.stripe.com", status: .listed)
+    await engine.grantSession(for: balance, authentication: nil)
+
+    var charges = balance
+    charges.url = "https://api.stripe.com/v1/charges"
+    let sameHost = await engine.sessionApproval(for: charges)
+    XCTAssertNotNil(sameHost, "a different path on the same host is covered")
+
+    let otherHost = await engine.sessionApproval(
+      for: sessionHTTPRequest(host: "files.stripe.com", status: .listed))
+    XCTAssertNil(otherHost)
+  }
+
+  func testUnlistedHostsAndAkbRunAreNeverSessionGranted() async {
+    let engine = ApprovalEngine()
+    let unlisted = sessionHTTPRequest(
+      host: "hooks.example.dev", status: .unlisted(allowed: ["api.stripe.com"]))
+    XCTAssertFalse(ApprovalEngine.canGrantSession(for: unlisted))
+    await engine.grantSession(for: unlisted, authentication: nil)
+    let unlistedApproval = await engine.sessionApproval(for: unlisted)
+    XCTAssertNil(unlistedApproval)
+
+    var akbRun = AgentRequest(
+      agentID: "terminal", agentDisplayName: "Terminal", projectPath: "/tmp/demo",
+      credentialIdentifier: "", executablePath: "/opt/homebrew/bin/npm", sessionID: "s1")
+    akbRun.kind = .environment
+    XCTAssertFalse(ApprovalEngine.canGrantSession(for: akbRun))
+
+    var noSession = sessionHTTPRequest(host: "api.stripe.com", status: .listed)
+    noSession.sessionID = nil
+    XCTAssertFalse(ApprovalEngine.canGrantSession(for: noSession))
+  }
+
+  func testSessionApprovalsExpireAndCanBeRevoked() async {
+    let engine = ApprovalEngine()
+    let request = sessionHTTPRequest(host: "api.stripe.com", status: .listed)
+    let start = Date(timeIntervalSince1970: 1_000_000)
+    await engine.grantSession(for: request, authentication: nil, now: start)
+
+    let withinLimit = await engine.sessionApproval(
+      for: request, now: start.addingTimeInterval(ApprovalEngine.maxSessionAge - 60))
+    XCTAssertNotNil(withinLimit)
+    let activeCount = await engine.activeSessionCount(now: start)
+    XCTAssertEqual(activeCount, 1)
+    let expired = await engine.sessionApproval(
+      for: request, now: start.addingTimeInterval(ApprovalEngine.maxSessionAge + 1))
+    XCTAssertNil(expired)
+
+    await engine.grantSession(for: request, authentication: nil)
+    await engine.revokeAllSessions()
+    let revoked = await engine.sessionApproval(for: request)
+    XCTAssertNil(revoked)
+    let countAfterRevoke = await engine.activeSessionCount()
+    XCTAssertEqual(countAfterRevoke, 0)
+  }
+
+  func testPromptOffersSessionApprovalOnlyWithoutWarnings() {
+    let credential = CredentialMetadata(
+      label: "STRIPE_SECRET_KEY", service: "Stripe", allowedHosts: ["api.stripe.com"])
+    let listed = ApprovalPresentation.make(
+      for: sessionHTTPRequest(host: "api.stripe.com", status: .listed), credential: credential,
+      projectName: "demo", risk: nil)
+    XCTAssertEqual(
+      listed.sessionApprovalLabel,
+      "Don't ask again for api.stripe.com during this Claude Code session")
+
+    let unlisted = ApprovalPresentation.make(
+      for: sessionHTTPRequest(
+        host: "hooks.example.dev", status: .unlisted(allowed: ["api.stripe.com"])),
+      credential: credential, projectName: "demo", risk: nil)
+    XCTAssertNil(unlisted.sessionApprovalLabel)
+
+    let curl = AgentRequest(
+      agentID: "claude-code", agentDisplayName: "Claude Code", projectPath: "/tmp/demo",
+      credentialIdentifier: "stripe", executablePath: "/usr/bin/curl",
+      arguments: ["https://example.com"], sessionID: "s1")
+    let risky = ApprovalPresentation.make(
+      for: curl, credential: credential, projectName: "demo",
+      risk: CommandRiskAnalyzer.assess(executablePath: "/usr/bin/curl", arguments: curl.arguments))
+    XCTAssertNil(risky.sessionApprovalLabel, "flagged commands are decided one at a time")
+
+    let script = AgentRequest(
+      agentID: "claude-code", agentDisplayName: "Claude Code", projectPath: "/tmp/demo",
+      credentialIdentifier: "stripe", executablePath: "/usr/bin/true", sessionID: "s1")
+    XCTAssertEqual(
+      ApprovalPresentation.make(for: script, credential: credential, projectName: "demo", risk: nil)
+        .sessionApprovalLabel,
+      "Don't ask again for this command during this Claude Code session")
   }
 
   func testApprovedCommandRunnerTimesOut() throws {

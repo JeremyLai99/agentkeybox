@@ -1,39 +1,81 @@
 import Foundation
 
+/// Approval history and "don't ask again this session" grants.
+///
+/// A session is one coding-agent session: the MCP helper creates a random session ID when the
+/// agent starts it, so a new agent session, or restarting AgentKeyBox, asks again. Grants are
+/// deliberately narrow:
+/// - HTTP: the same agent, project, and key, sent to the same host, and only for hosts on the
+///   key's list. A host outside the list always asks.
+/// - Commands: the exact same executable, arguments, variable, and delivery. Changing anything
+///   asks again, so a granted `npm test` cannot become a different command.
+/// - `akb run` hands secrets to a terminal process and is never granted for a session.
+/// Every grant also expires after `maxSessionAge`.
 public actor ApprovalEngine {
-  private struct GrantKey: Hashable, Sendable {
+  private enum Scope: Hashable, Sendable {
+    case command(
+      executable: String, arguments: [String], variable: String, delivery: SecretDeliveryMode)
+    case http(host: String)
+  }
+
+  private struct SessionKey: Hashable, Sendable {
+    var sessionID: String
     var agentID: String
     var projectPath: String
     var credentialIdentifier: String
-    var executablePath: String
-    var arguments: [String]
-    var environmentVariable: String
-    var deliveryMode: SecretDeliveryMode
+    var scope: Scope
   }
 
-  private struct SessionGrantKey: Hashable, Sendable {
-    var grant: GrantKey
-    var sessionID: String
+  private struct SessionGrant: Sendable {
+    var authentication: AuthenticationGrant?
+    var expiresAt: Date
   }
 
-  private var sessionApprovals: Set<SessionGrantKey> = []
-  private var projectApprovals: Set<GrantKey> = []
+  /// A live grant. `authentication` is the Touch ID evaluation from when the user granted it,
+  /// reused so later reads of the key do not prompt again.
+  public struct SessionApproval: Sendable {
+    public var authentication: AuthenticationGrant?
+  }
+
+  public static let maxSessionAge: TimeInterval = 8 * 60 * 60
+
+  private var sessionGrants: [SessionKey: SessionGrant] = [:]
   private var events: [AccessEvent] = []
 
   public init() {}
 
-  public func preauthorizedDecision(for request: AgentRequest) -> ApprovalDecision? {
-    if let sessionID = request.sessionID,
-      sessionApprovals.contains(SessionGrantKey(grant: grantKey(request), sessionID: sessionID))
-    {
-      return .allowSession
-    }
+  /// Whether the prompt may offer "don't ask again this session" for this request.
+  public nonisolated static func canGrantSession(for request: AgentRequest) -> Bool {
+    request.sessionID != nil && scope(for: request) != nil
+  }
 
-    if projectApprovals.contains(grantKey(request)) {
-      return .allowProject
-    }
+  public func grantSession(
+    for request: AgentRequest, authentication: AuthenticationGrant?, now: Date = Date()
+  ) {
+    guard let key = Self.key(for: request) else { return }
+    sessionGrants[key] = SessionGrant(
+      authentication: authentication, expiresAt: now.addingTimeInterval(Self.maxSessionAge))
+  }
 
-    return nil
+  public func sessionApproval(for request: AgentRequest, now: Date = Date()) -> SessionApproval? {
+    guard let key = Self.key(for: request), let grant = sessionGrants[key] else { return nil }
+    guard grant.expiresAt > now else {
+      grant.authentication?.invalidate()
+      sessionGrants[key] = nil
+      return nil
+    }
+    return SessionApproval(authentication: grant.authentication)
+  }
+
+  /// Agent sessions that currently have at least one live grant.
+  public func activeSessionCount(now: Date = Date()) -> Int {
+    Set(sessionGrants.filter { $0.value.expiresAt > now }.map(\.key.sessionID)).count
+  }
+
+  /// "Ask every time again": drops every grant and invalidates the saved authentications.
+  public func revokeAllSessions() {
+    for grant in sessionGrants.values { grant.authentication?.invalidate() }
+    sessionGrants.removeAll()
   }
 
   @discardableResult
@@ -43,17 +85,6 @@ public actor ApprovalEngine {
     credentialLabel: String,
     credentialIDs: [UUID] = []
   ) -> AccessEvent {
-    switch decision {
-    case .allowSession:
-      if let sessionID = request.sessionID {
-        sessionApprovals.insert(SessionGrantKey(grant: grantKey(request), sessionID: sessionID))
-      }
-    case .allowProject:
-      projectApprovals.insert(grantKey(request))
-    case .allowOnce, .deny:
-      break
-    }
-
     let event = AccessEvent(
       requestID: request.id,
       agentDisplayName: request.agentDisplayName,
@@ -70,19 +101,27 @@ public actor ApprovalEngine {
     events.sorted { $0.timestamp > $1.timestamp }
   }
 
-  public func clearSessionApprovals() {
-    sessionApprovals.removeAll()
+  private static func key(for request: AgentRequest) -> SessionKey? {
+    guard let sessionID = request.sessionID, let scope = scope(for: request) else { return nil }
+    return SessionKey(
+      sessionID: sessionID, agentID: request.agentID, projectPath: request.projectPath,
+      credentialIdentifier: request.credentialIdentifier, scope: scope)
   }
 
-  private func grantKey(_ request: AgentRequest) -> GrantKey {
-    GrantKey(
-      agentID: request.agentID,
-      projectPath: request.projectPath,
-      credentialIdentifier: request.credentialIdentifier,
-      executablePath: request.executablePath ?? "",
-      arguments: request.arguments,
-      environmentVariable: request.environmentVariable ?? "",
-      deliveryMode: request.deliveryMode
-    )
+  private static func scope(for request: AgentRequest) -> Scope? {
+    switch request.kind {
+    case .command:
+      guard let executable = request.executablePath else { return nil }
+      return .command(
+        executable: executable, arguments: request.arguments,
+        variable: request.environmentVariable ?? "", delivery: request.deliveryMode)
+    case .httpRequest:
+      guard request.hostStatus == .listed,
+        let host = request.url.flatMap({ URLComponents(string: $0)?.host?.lowercased() })
+      else { return nil }
+      return .http(host: host)
+    case .environment:
+      return nil
+    }
   }
 }

@@ -638,6 +638,18 @@
           }
           agentRow("Codex", status: model.codexConnectionStatus) { model.connectCodex() }
         }
+        if model.activeSessionCount > 0 {
+          Section("This session") {
+            HStack {
+              Text(
+                model.activeSessionCount == 1
+                  ? "Not asking again in 1 agent session"
+                  : "Not asking again in \(model.activeSessionCount) agent sessions")
+              Spacer()
+              Button("Ask Every Time") { model.revokeSessionApprovals() }
+            }
+          }
+        }
         Section("Security") {
           Text(model.keychainStatus)
             .foregroundStyle(.secondary)
@@ -652,7 +664,9 @@
             HStack {
               Text("\(event.agentDisplayName) → \(event.credentialLabel)")
               Spacer()
-              Text(event.decision == .deny ? "Denied" : "Allowed")
+              Text(
+                event.decision == .deny
+                  ? "Denied" : event.decision == .allowSession ? "Allowed (session)" : "Allowed")
                 .foregroundStyle(event.decision == .deny ? .orange : .secondary)
               Text(event.timestamp, style: .relative)
                 .foregroundStyle(.secondary)

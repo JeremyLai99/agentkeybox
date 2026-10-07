@@ -74,6 +74,10 @@ struct AgentKeyBoxMCP {
 
 private final class MCPServer: @unchecked Sendable {
   private let client = LocalBrokerClient()
+  /// One ID per helper process. The agent starts one helper per agent session, so this is what
+  /// "don't ask again during this session" is bound to.
+  private let sessionID =
+    ProcessInfo.processInfo.environment["AGENTKEYBOX_SESSION_ID"] ?? UUID().uuidString
   private let encoder = JSONEncoder()
   private let decoder = JSONDecoder()
 
@@ -230,7 +234,7 @@ private final class MCPServer: @unchecked Sendable {
           environmentVariable: envVar,
           deliveryMode: deliveryMode,
           requestedScope: .once,
-          sessionID: ProcessInfo.processInfo.environment["AGENTKEYBOX_SESSION_ID"]
+          sessionID: sessionID
         ))
 
       guard response.decision != .deny else {
@@ -278,6 +282,7 @@ private final class MCPServer: @unchecked Sendable {
           projectPath: trustedProjectPath(),
           credentialIdentifier: credentialID,
           purpose: args["purpose"]?.stringValue,
+          sessionID: sessionID,
           httpMethod: args["method"]?.stringValue ?? "GET",
           url: url,
           headers: headers,

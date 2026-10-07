@@ -118,11 +118,22 @@
         Text("No pending requests")
       }
 
+      if model.activeSessionCount > 0 {
+        Divider()
+        Text(
+          model.activeSessionCount == 1
+            ? "Not asking again in 1 agent session"
+            : "Not asking again in \(model.activeSessionCount) agent sessions")
+        Button("Ask Every Time") { model.revokeSessionApprovals() }
+      }
+
       if !model.accessLog.isEmpty {
         Divider()
         Text("Recent")
         ForEach(model.accessLog.prefix(5)) { event in
-          Text("\(event.agentDisplayName) → \(event.credentialLabel) · \(event.decision.rawValue)")
+          Text(
+            "\(event.agentDisplayName) → \(event.credentialLabel) · \(event.decision == .deny ? "Denied" : "Allowed")"
+          )
         }
       }
 
@@ -275,6 +286,8 @@
     @Published var codexConnectionStatus: String = "Not checked"
     /// Persisted approval history, newest first (metadata only).
     @Published var accessLog: [AccessEvent] = []
+    /// Agent sessions that currently skip the prompt for some requests.
+    @Published var activeSessionCount = 0
     @Published var selection: SidebarItem? {
       // A message like "Saved DEMO_API_KEY." belongs to the page it came from.
       didSet { if selection != oldValue { statusMessage = nil } }
@@ -656,7 +669,9 @@
 
     /// - Parameter rememberHost: for a request to a host outside the key's list, also add that
     ///   host to the list once the user has authenticated.
-    func decide(_ decision: ApprovalDecision, rememberHost: Bool = false) {
+    func decide(
+      _ decision: ApprovalDecision, rememberHost: Bool = false, rememberSession: Bool = false
+    ) {
       guard !decisionInProgress, let request = pendingRequest else { return }
       let credential = credentialSummary(for: request)
       if request.kind != .environment, credential == nil {
@@ -705,6 +720,15 @@
         if decision != .deny, rememberHost, let credential {
           self.rememberAllowedHost(for: request, credentialID: credential.id)
         }
+        // "Don't ask again this session": keep this authentication for identical requests.
+        let recordedDecision: ApprovalDecision
+        if decision != .deny, rememberSession, ApprovalEngine.canGrantSession(for: request) {
+          await approvalEngine.grantSession(for: request, authentication: grant)
+          self.activeSessionCount = await approvalEngine.activeSessionCount()
+          recordedDecision = .allowSession
+        } else {
+          recordedDecision = decision
+        }
 
         let usedIDs =
           request.kind == .environment
@@ -713,7 +737,7 @@
           ).values.map(\.id)
           : credential.map { [$0.id] } ?? []
         let event = await approvalEngine.record(
-          decision: decision, request: request, credentialLabel: historyLabel,
+          decision: recordedDecision, request: request, credentialLabel: historyLabel,
           credentialIDs: usedIDs)
         self.recordAccess(event)
 
@@ -912,12 +936,11 @@
         sessionID: brokerRequest.sessionID
       )
 
-      if let preauthorized = await approvalEngine.preauthorizedDecision(for: request),
-        preauthorized != .deny
-      {
-        // No grant: the data protection keychain shows its own user-presence prompt.
+      if let approval = await approvalEngine.sessionApproval(for: request) {
+        await recordSessionUse(request, credential: credential)
         return await executeApprovedCommand(
-          brokerRequest, credentialID: credential.id, decision: preauthorized, grant: nil)
+          brokerRequest, credentialID: credential.id, decision: .allowSession,
+          grant: approval.authentication)
       }
       return await presentForApproval(request, brokerRequest: brokerRequest)
     }
@@ -953,6 +976,13 @@
       request.headerNames = validated.headers.keys.sorted()
       request.bodyPreview = validated.body.map { String($0.prefix(400)) }
       request.hostStatus = validated.hostStatus
+      request.sessionID = brokerRequest.sessionID
+      if let approval = await approvalEngine.sessionApproval(for: request) {
+        await recordSessionUse(request, credential: credential)
+        return await executeApprovedHTTPRequest(
+          brokerRequest, credential: credential, decision: .allowSession,
+          grant: approval.authentication)
+      }
       return await presentForApproval(request, brokerRequest: brokerRequest)
     }
 
@@ -1303,6 +1333,24 @@
       return true
     }
 
+    /// A request answered by a session grant still leaves a trace in the history.
+    private func recordSessionUse(_ request: AgentRequest, credential: CredentialMetadata) async {
+      let event = await approvalEngine.record(
+        decision: .allowSession, request: request, credentialLabel: credential.label,
+        credentialIDs: [credential.id])
+      recordAccess(event)
+      activeSessionCount = await approvalEngine.activeSessionCount()
+    }
+
+    /// "Ask every time": ends all session grants.
+    func revokeSessionApprovals() {
+      Task {
+        await approvalEngine.revokeAllSessions()
+        self.activeSessionCount = 0
+        self.statusMessage = "AgentKeyBox will ask every time again."
+      }
+    }
+
     private func recordAccess(_ event: AccessEvent) {
       do {
         accessLog = try accessLogStore.append(event)
@@ -1389,6 +1437,7 @@
     let presentation: ApprovalPresentation
     @State private var showDetails: Bool
     @State private var rememberHost = false
+    @State private var rememberSession = false
 
     init(request: AgentRequest, presentation: ApprovalPresentation) {
       self.request = request
@@ -1440,6 +1489,10 @@
           Toggle("Always allow \(host) for this key", isOn: $rememberHost)
             .toggleStyle(.checkbox)
         }
+        if let label = presentation.sessionApprovalLabel {
+          Toggle(label, isOn: $rememberSession)
+            .toggleStyle(.checkbox)
+        }
 
         DisclosureGroup("Details", isExpanded: $showDetails) {
           // A ScrollView has no intrinsic height; the explicit minimum and ideal height keep it
@@ -1483,9 +1536,9 @@
     @ViewBuilder private var allowButton: some View {
       if presentation.denyIsDefault {
         // No keyboard shortcut: allowing a flagged request takes a deliberate click.
-        Button("Allow Once") { model.decide(.allowOnce, rememberHost: rememberHost) }
+        Button("Allow Once") { model.decide(.allowOnce, rememberHost: rememberHost, rememberSession: rememberSession) }
       } else {
-        Button("Allow Once") { model.decide(.allowOnce, rememberHost: rememberHost) }
+        Button("Allow Once") { model.decide(.allowOnce, rememberHost: rememberHost, rememberSession: rememberSession) }
           .buttonStyle(.borderedProminent)
           .keyboardShortcut(.defaultAction)
       }

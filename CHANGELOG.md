@@ -4,6 +4,7 @@
 
 ### Added
 
+- "Don't ask again during this session": an approval can cover identical requests for the rest of the coding-agent session (one session ID per MCP helper process), reusing that Touch ID authentication. Scope is narrow — the same listed host for `http_request`, the exact same command for `run_with_secret`; never for unlisted hosts, flagged requests, or `akb run` — and grants expire after 8 hours. The menu bar and Settings show active sessions with an "Ask Every Time" button.
 - Project-centric main window: the sidebar lists projects and Global keys; each project shows its keys as cards with "Used by Claude Code · 2 min ago" and only flags keys that need attention (e.g. "Can be sent to any website" with a one-click fix). Agent status moves to the sidebar footer; connections, Keychain mode, and recent access move to Settings (⌘,).
 - Three-field key editor (name, project, paste a new key) with the variable name and allowed websites under Advanced; a simpler Add Key sheet that fills everything from the chosen service.
 - Approval history persists across launches (metadata only, owner-only file, last 500 events) so cards can show when a key was last used.

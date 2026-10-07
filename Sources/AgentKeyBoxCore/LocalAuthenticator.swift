@@ -21,6 +21,11 @@ public enum LocalAuthenticationError: Error, LocalizedError {
     init(context: LAContext) {
       self.context = context
     }
+
+    /// Ends the authentication so it can no longer unlock keychain items.
+    public func invalidate() {
+      context.invalidate()
+    }
   }
 
   public final class LocalAuthenticator: @unchecked Sendable {
@@ -73,7 +78,9 @@ public enum LocalAuthenticationError: Error, LocalizedError {
     }
   }
 #else
-  public final class AuthenticationGrant: @unchecked Sendable {}
+  public final class AuthenticationGrant: @unchecked Sendable {
+    public func invalidate() {}
+  }
 
   public final class LocalAuthenticator: @unchecked Sendable {
     public init() {}

@@ -31,8 +31,34 @@ public struct ApprovalPresentation: Equatable, Sendable {
   public var denyIsDefault: Bool
   /// For a host outside the key's list: offered as "Always allow <host> for this key".
   public var rememberableHost: String?
+  /// Checkbox text for "don't ask again this session", or nil when it is not offered. Never
+  /// offered next to a warning: flagged requests are decided one at a time.
+  public var sessionApprovalLabel: String?
 
   public static func make(
+    for request: AgentRequest,
+    credential: CredentialMetadata?,
+    projectName: String?,
+    risk: CommandRiskAssessment?
+  ) -> ApprovalPresentation {
+    var presentation = base(
+      for: request, credential: credential, projectName: projectName, risk: risk)
+    if presentation.warning == nil, ApprovalEngine.canGrantSession(for: request) {
+      let agent = request.agentDisplayName
+      if request.kind == .httpRequest,
+        let host = request.url.flatMap({ URLComponents(string: $0)?.host })
+      {
+        presentation.sessionApprovalLabel =
+          "Don't ask again for \(host) during this \(agent) session"
+      } else {
+        presentation.sessionApprovalLabel =
+          "Don't ask again for this command during this \(agent) session"
+      }
+    }
+    return presentation
+  }
+
+  private static func base(
     for request: AgentRequest,
     credential: CredentialMetadata?,
     projectName: String?,
@@ -55,13 +81,13 @@ public struct ApprovalPresentation: Equatable, Sendable {
         return ApprovalPresentation(
           headline: "\(agent) wants to use your \(keyName) key", subtitle: subtitle,
           facts: facts, warning: nil, detailsExpanded: false, denyIsDefault: false,
-          rememberableHost: nil)
+          rememberableHost: nil, sessionApprovalLabel: nil)
       case .unrestricted:
         facts.append(Fact("Sends to", "\(host) (this key can go to any website)"))
         return ApprovalPresentation(
           headline: "\(agent) wants to use your \(keyName) key", subtitle: subtitle,
           facts: facts, warning: nil, detailsExpanded: false, denyIsDefault: false,
-          rememberableHost: nil)
+          rememberableHost: nil, sessionApprovalLabel: nil)
       case .unlisted(let allowed):
         facts.append(Fact("Sends to", host))
         return ApprovalPresentation(
@@ -72,7 +98,8 @@ public struct ApprovalPresentation: Equatable, Sendable {
             message:
               "This key normally only goes to \(allowed.joined(separator: ", ")). Only allow this if you know why."
           ),
-          detailsExpanded: true, denyIsDefault: true, rememberableHost: host)
+          detailsExpanded: true, denyIsDefault: true, rememberableHost: host,
+          sessionApprovalLabel: nil)
       }
 
     case .command, .environment:
@@ -95,7 +122,7 @@ public struct ApprovalPresentation: Equatable, Sendable {
       return ApprovalPresentation(
         headline: headline, subtitle: subtitle, facts: facts, warning: warning,
         detailsExpanded: warning != nil, denyIsDefault: risk?.level == .high,
-        rememberableHost: nil)
+        rememberableHost: nil, sessionApprovalLabel: nil)
     }
   }
 
