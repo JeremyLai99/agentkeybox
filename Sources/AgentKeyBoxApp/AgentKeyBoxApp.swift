@@ -179,6 +179,8 @@
       // Size the panel from the view's ideal size instead of a fixed frame.
       hosting.sizingOptions = [.preferredContentSize]
       panel.contentViewController = hosting
+      // Size to the content before centering; centering first leaves the panel off to one side.
+      panel.setContentSize(hosting.view.fittingSize)
       panel.center()
       NSApp.activate(ignoringOtherApps: true)
       panel.makeKeyAndOrderFront(nil)
@@ -1885,7 +1887,7 @@
         VStack(alignment: .leading, spacing: 8) {
           if !plan.scan.envFilesNotIgnored.isEmpty {
             Toggle(
-              "Add \(plan.scan.envFilesNotIgnored.joined(separator: ", ")) to .gitignore so it isn't committed",
+              "Add \(plan.scan.envFilesNotIgnored.joined(separator: ", ")) to .gitignore so \(plan.scan.envFilesNotIgnored.count == 1 ? "it isn't" : "they aren't") committed",
               isOn: $ignoreEnvFiles)
           }
           ForEach(plan.agents) { agent in
