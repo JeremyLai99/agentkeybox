@@ -36,11 +36,13 @@ public actor ApprovalEngine {
     return nil
   }
 
+  @discardableResult
   public func record(
     decision: ApprovalDecision,
     request: AgentRequest,
-    credentialLabel: String
-  ) {
+    credentialLabel: String,
+    credentialIDs: [UUID] = []
+  ) -> AccessEvent {
     switch decision {
     case .allowSession:
       if let sessionID = request.sessionID {
@@ -52,15 +54,16 @@ public actor ApprovalEngine {
       break
     }
 
-    events.append(
-      AccessEvent(
-        requestID: request.id,
-        agentDisplayName: request.agentDisplayName,
-        credentialLabel: credentialLabel,
-        projectPath: request.projectPath,
-        decision: decision
-      )
+    let event = AccessEvent(
+      requestID: request.id,
+      agentDisplayName: request.agentDisplayName,
+      credentialLabel: credentialLabel,
+      projectPath: request.projectPath,
+      decision: decision,
+      credentialIDs: credentialIDs
     )
+    events.append(event)
+    return event
   }
 
   public func history() -> [AccessEvent] {

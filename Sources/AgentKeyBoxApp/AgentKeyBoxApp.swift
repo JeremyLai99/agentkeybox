@@ -18,6 +18,12 @@
           .tint(.agentKeyBlue)
       }
 
+      Settings {
+        SettingsView()
+          .environmentObject(model)
+          .tint(.agentKeyBlue)
+      }
+
       MenuBarExtra {
         MenuBarContent()
           .environmentObject(model)
@@ -112,10 +118,10 @@
         Text("No pending requests")
       }
 
-      if !model.accessEvents.isEmpty {
+      if !model.accessLog.isEmpty {
         Divider()
         Text("Recent")
-        ForEach(model.accessEvents.prefix(5)) { event in
+        ForEach(model.accessLog.prefix(5)) { event in
           Text("\(event.agentDisplayName) → \(event.credentialLabel) · \(event.decision.rawValue)")
         }
       }
@@ -267,13 +273,19 @@
     @Published var brokerStatus: String = "Starting local broker…"
     @Published var claudeConnectionStatus: String = "Not checked"
     @Published var codexConnectionStatus: String = "Not checked"
-    @Published var accessEvents: [AccessEvent] = []
+    /// Persisted approval history, newest first (metadata only).
+    @Published var accessLog: [AccessEvent] = []
+    @Published var selection: SidebarItem? {
+      // A message like "Saved DEMO_API_KEY." belongs to the page it came from.
+      didSet { if selection != oldValue { statusMessage = nil } }
+    }
 
     private let secretStore = KeychainSecretStore()
     private let approvalEngine = ApprovalEngine()
     private let metadataStore = MetadataStore()
     private let brokerTokenStore = BrokerTokenStore()
     private let authenticator = LocalAuthenticator()
+    private let accessLogStore = AccessLogStore()
     private let promptPanel = PromptPanelController()
     private var brokerServer: LocalBrokerServer?
     private var pendingBrokerContinuation: CheckedContinuation<BrokerResponse, Never>?
@@ -288,6 +300,7 @@
       let (snapshot, quarantined) = metadataStore.loadWithRecovery()
       self.projects = snapshot.projects
       self.credentials = snapshot.credentials
+      self.accessLog = accessLogStore.load()
       if let quarantined {
         self.statusMessage =
           "AgentKeyBox could not read its project list and moved it to \(quarantined.lastPathComponent). Your secrets are still in the Keychain."
@@ -510,6 +523,7 @@
       guard let project = addProject(name: scan.projectName, rootPath: scan.root.path) else {
         return
       }
+      selection = .project(project.id)
       var summary: [String] = []
 
       let chosenSecrets = scan.secrets.filter { selectedSecrets.contains($0.key) }
@@ -692,9 +706,16 @@
           self.rememberAllowedHost(for: request, credentialID: credential.id)
         }
 
-        await approvalEngine.record(
-          decision: decision, request: request, credentialLabel: historyLabel)
-        self.accessEvents = Array((await approvalEngine.history()).prefix(20))
+        let usedIDs =
+          request.kind == .environment
+          ? self.environmentCredentials(
+            projectPath: request.projectPath, only: request.environmentVariables
+          ).values.map(\.id)
+          : credential.map { [$0.id] } ?? []
+        let event = await approvalEngine.record(
+          decision: decision, request: request, credentialLabel: historyLabel,
+          credentialIDs: usedIDs)
+        self.recordAccess(event)
 
         if decision == .deny {
           guard self.pendingRequest?.id == requestID else { return }
@@ -1214,6 +1235,83 @@
       }
     }
 
+    // MARK: - Main window
+
+    var selectedProjectID: UUID? { selection?.projectID }
+
+    func credentials(in item: SidebarItem) -> [CredentialMetadata] {
+      let projectID = item.projectID
+      return credentials
+        .filter { $0.projectID == projectID }
+        .sorted { $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending }
+    }
+
+    func lastUse(of credentialID: UUID) -> AccessEvent? {
+      accessLog.lastUse(of: credentialID)
+    }
+
+    func selectFirstProjectIfNeeded() {
+      if let selection, case .project(let id) = selection,
+        projects.contains(where: { $0.id == id })
+      {
+        return
+      }
+      if selection == .global { return }
+      selection = projects.first.map { .project($0.id) }
+    }
+
+    /// A dropped or chosen file: `.env` files open the import list, key files are stored.
+    func importFile(_ url: URL, projectID: UUID?) {
+      if ProjectScanner.isEnvFile(url.lastPathComponent) {
+        importEnv(at: url, projectID: projectID)
+      } else {
+        importCredentialFile(at: url, projectID: projectID)
+      }
+    }
+
+    /// Saves edits from the key's edit sheet. Returns false (with a status message) on failure.
+    @discardableResult
+    func updateCredential(
+      _ id: UUID, label: String, projectID: UUID?, environmentVariableName: String,
+      allowedHosts: [String], newSecret: String?
+    ) -> Bool {
+      guard let index = credentials.firstIndex(where: { $0.id == id }) else { return false }
+      let variable = environmentVariableName.trimmingCharacters(in: .whitespaces)
+      guard variable.isEmpty || ApprovedCommandRunner.isAllowedInjectionTarget(variable) else {
+        statusMessage = "\(variable) can't be used as a variable name."
+        return false
+      }
+      let original = credentials[index]
+      if let newSecret, !newSecret.isEmpty {
+        do {
+          try secretStore.save(secret: Data(newSecret.utf8), id: id)
+        } catch {
+          statusMessage = "Could not save the new key: \(error.localizedDescription)"
+          return false
+        }
+      }
+      credentials[index].label = label
+      credentials[index].projectID = projectID
+      credentials[index].environmentVariableName = variable.isEmpty ? nil : variable
+      credentials[index].allowedHosts = allowedHosts.isEmpty ? nil : allowedHosts
+      credentials[index].updatedAt = Date()
+      guard persistMetadata() else {
+        credentials[index] = original
+        return false
+      }
+      statusMessage = "Saved \(label)."
+      return true
+    }
+
+    private func recordAccess(_ event: AccessEvent) {
+      do {
+        accessLog = try accessLogStore.append(event)
+      } catch {
+        // History is best-effort; keep it in memory if the file can't be written.
+        accessLog.insert(event, at: 0)
+      }
+    }
+
     func approvalPresentation(for request: AgentRequest) -> ApprovalPresentation {
       ApprovalPresentation.make(
         for: request,
@@ -1282,366 +1380,6 @@
       return CommandRiskAnalyzer.assess(
         executablePath: executablePath, arguments: request.arguments,
         projectPath: request.projectPath)
-    }
-  }
-
-  struct ContentView: View {
-    private enum ImportKind {
-      case env
-      case credentialFile
-    }
-
-    private struct PendingImport {
-      let url: URL
-      let kind: ImportKind
-    }
-
-    @EnvironmentObject private var model: AppModel
-    @State private var showingAddCredential = false
-    @State private var pendingImport: PendingImport?
-    @State private var isDropTargeted = false
-
-    var body: some View {
-      NavigationSplitView {
-        List {
-          Section("Projects") {
-            ForEach(model.projects) { project in
-              VStack(alignment: .leading, spacing: 2) {
-                Label(project.name, systemImage: "folder")
-                Text(project.rootPath)
-                  .font(.caption2)
-                  .foregroundStyle(.secondary)
-                  .lineLimit(1)
-              }
-            }
-            Button("Add Project…") { chooseProjectFolder() }
-          }
-
-          Section("Credentials") {
-            ForEach(model.credentials) { credential in
-              HStack(spacing: 8) {
-                CredentialIcon(kind: credential.kind)
-                credentialRow(credential)
-              }
-              .contextMenu {
-                Button("Delete", role: .destructive) {
-                  model.deleteCredential(credential)
-                }
-              }
-            }
-          }
-        }
-        .navigationTitle("AgentKeyBox")
-      } detail: {
-        detail
-      }
-      .sheet(isPresented: $showingAddCredential) {
-        AddCredentialView()
-          .environmentObject(model)
-      }
-      .confirmationDialog(
-        "Which project should these credentials belong to?",
-        isPresented: Binding(
-          get: { pendingImport != nil },
-          set: { if !$0 { pendingImport = nil } }
-        ),
-        presenting: pendingImport
-      ) { item in
-        ForEach(model.projects) { project in
-          Button(project.name) { performImport(item, projectID: project.id) }
-        }
-        Button("Global (visible to every project)") { performImport(item, projectID: nil) }
-        Button("Cancel", role: .cancel) {}
-      } message: { item in
-        Text(item.url.lastPathComponent)
-      }
-      .sheet(item: $model.pendingEnvImport) { preview in
-        EnvImportView(preview: preview)
-          .environmentObject(model)
-      }
-      .sheet(item: $model.pendingSetup) { plan in
-        SetupView(plan: plan)
-          .environmentObject(model)
-      }
-      // A folder anywhere on the window starts setup; a single file goes to import.
-      .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
-        guard let provider = providers.first else { return false }
-        _ = provider.loadObject(ofClass: URL.self) { url, _ in
-          guard let url else { return }
-          Task { @MainActor in handleDrop(url) }
-        }
-        return true
-      }
-      .overlay {
-        if isDropTargeted, !model.projects.isEmpty {
-          RoundedRectangle(cornerRadius: 14)
-            .strokeBorder(Color.agentKeyBlue, style: StrokeStyle(lineWidth: 3, dash: [10, 6]))
-            .padding(8)
-            .allowsHitTesting(false)
-        }
-      }
-      .task {
-        model.refreshAgentStatuses()
-      }
-    }
-
-    private func handleDrop(_ url: URL) {
-      var isDirectory: ObjCBool = false
-      guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else {
-        return
-      }
-      if isDirectory.boolValue {
-        model.beginSetup(folder: url)
-      } else if ProjectScanner.isEnvFile(url.lastPathComponent) {
-        pendingImport = PendingImport(url: url, kind: .env)
-      } else {
-        pendingImport = PendingImport(url: url, kind: .credentialFile)
-      }
-    }
-
-    private func credentialRow(_ credential: CredentialMetadata) -> some View {
-      VStack(alignment: .leading, spacing: 3) {
-        Text(credential.label)
-        HStack(spacing: 6) {
-          Text(credential.service)
-          if let environment = credential.environment {
-            Text("· \(environment)")
-          }
-        }
-        .font(.caption)
-        .foregroundStyle(.secondary)
-      }
-    }
-
-    @ViewBuilder private var detail: some View {
-      if model.projects.isEmpty {
-        emptyState
-      } else {
-        overview
-      }
-    }
-
-    /// First run: one thing to do.
-    private var emptyState: some View {
-      VStack(spacing: 18) {
-        Image(nsImage: NSApp.applicationIconImage)
-          .resizable()
-          .frame(width: 96, height: 96)
-        Text("Drop your project folder here")
-          .font(.title.bold())
-        Text(
-          "AgentKeyBox finds the keys in it, keeps them in your Keychain, and connects Claude Code. Your coding agent then asks before it uses one."
-        )
-        .multilineTextAlignment(.center)
-        .foregroundStyle(.secondary)
-        .frame(maxWidth: 440)
-        Button("Choose Folder…") { chooseProjectFolder() }
-          .buttonStyle(.borderedProminent)
-          .controlSize(.large)
-        if let message = model.statusMessage {
-          Text(message).font(.callout).foregroundStyle(.secondary)
-        }
-      }
-      .padding(40)
-      .frame(maxWidth: .infinity, maxHeight: .infinity)
-      .background {
-        RoundedRectangle(cornerRadius: 18)
-          .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [8, 6]))
-          .foregroundStyle(isDropTargeted ? Color.agentKeyBlue : Color.secondary.opacity(0.35))
-          .padding(24)
-      }
-    }
-
-    private var overview: some View {
-        VStack(spacing: 18) {
-          Image(nsImage: NSApp.applicationIconImage)
-            .resizable()
-            .frame(width: 88, height: 88)
-          Text("Keys for your AI agents, under your control.")
-            .font(.title2)
-          Text(model.brokerStatus)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-
-          HStack(spacing: 12) {
-            Button("Connect Claude Code") { model.connectClaudeCode() }
-            Text(model.claudeConnectionStatus).font(.caption).foregroundStyle(.secondary)
-            Button("Connect Codex") { model.connectCodex() }
-            Text(model.codexConnectionStatus).font(.caption).foregroundStyle(.secondary)
-            Button("Connect Both") { model.connectAll() }
-          }
-
-          HStack {
-            Button("Add Credential") { showingAddCredential = true }
-              .buttonStyle(.borderedProminent)
-            Button("Import .env…") { chooseEnvFile() }
-            Button("Import Key File…") { chooseCredentialFile() }
-          }
-
-          Text(model.keychainStatus)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .multilineTextAlignment(.center)
-            .frame(maxWidth: 520)
-
-          #if DEBUG
-            HStack {
-              Button("Simulate Claude Request") { model.simulateRequest() }
-                .disabled(model.credentials.isEmpty)
-              Button("Simulate Codex Request") {
-                model.simulateRequest(agentID: "codex", agentName: "Codex")
-              }
-              .disabled(model.credentials.isEmpty)
-            }
-          #endif
-
-          if let message = model.statusMessage {
-            Text(message)
-              .font(.callout)
-              .foregroundStyle(.secondary)
-              .multilineTextAlignment(.center)
-          }
-
-          if !model.accessEvents.isEmpty {
-            Divider()
-            VStack(alignment: .leading, spacing: 6) {
-              Text("Recent access").font(.headline)
-              ForEach(model.accessEvents.prefix(5)) { event in
-                HStack {
-                  Text(event.agentDisplayName)
-                  Text("·")
-                  Text(event.credentialLabel)
-                  Spacer()
-                  Text(event.decision.rawValue)
-                    .foregroundStyle(.secondary)
-                }
-                .font(.caption)
-              }
-            }
-            .frame(maxWidth: 520)
-          }
-          Spacer()
-        }
-        .padding(36)
-    }
-
-    private func chooseProjectFolder() {
-      let panel = NSOpenPanel()
-      panel.canChooseDirectories = true
-      panel.canChooseFiles = false
-      panel.allowsMultipleSelection = false
-      panel.prompt = "Set Up"
-      panel.message = "Choose your project folder. AgentKeyBox will find the keys in it."
-      guard panel.runModal() == .OK, let url = panel.url else { return }
-      model.beginSetup(folder: url)
-    }
-
-    private func chooseEnvFile() {
-      let panel = NSOpenPanel()
-      panel.canChooseDirectories = false
-      panel.canChooseFiles = true
-      panel.allowsMultipleSelection = false
-      panel.prompt = "Import"
-      guard panel.runModal() == .OK, let url = panel.url else { return }
-      pendingImport = PendingImport(url: url, kind: .env)
-    }
-
-    private func chooseCredentialFile() {
-      let panel = NSOpenPanel()
-      panel.canChooseDirectories = false
-      panel.canChooseFiles = true
-      panel.allowsMultipleSelection = false
-      panel.allowedContentTypes = []
-      panel.prompt = "Import"
-      guard panel.runModal() == .OK, let url = panel.url else { return }
-      pendingImport = PendingImport(url: url, kind: .credentialFile)
-    }
-
-    private func performImport(_ item: PendingImport, projectID: UUID?) {
-      switch item.kind {
-      case .env:
-        model.importEnv(at: item.url, projectID: projectID)
-      case .credentialFile:
-        model.importCredentialFile(at: item.url, projectID: projectID)
-      }
-    }
-  }
-
-  struct AddCredentialView: View {
-    @EnvironmentObject private var model: AppModel
-    @Environment(\.dismiss) private var dismiss
-    @State private var label = ""
-    @State private var service = ""
-    @State private var environment = ""
-    @State private var environmentVariableName = ""
-    @State private var allowedHosts = ""
-    @State private var secret = ""
-    @State private var selectedProjectID: UUID?
-    @State private var selectedKind: CredentialKind = .apiKey
-
-    var body: some View {
-      VStack(alignment: .leading, spacing: 14) {
-        Text("Add Credential").font(.title2.bold())
-        Menu("Use Provider Preset") {
-          ForEach(ProviderCatalog.all) { preset in
-            Button(preset.displayName) {
-              service = preset.displayName
-              selectedKind = preset.defaultKind
-              if let key = preset.environmentKeys.first {
-                if label.isEmpty { label = key }
-                if environmentVariableName.isEmpty { environmentVariableName = key }
-              }
-              allowedHosts = preset.allowedHosts.joined(separator: ", ")
-            }
-          }
-        }
-        TextField("Label (e.g. Stripe Production)", text: $label)
-        TextField("Service (e.g. Stripe)", text: $service)
-        TextField("Environment variable (e.g. STRIPE_SECRET_KEY)", text: $environmentVariableName)
-        TextField("Allowed hosts for http_request (e.g. api.stripe.com)", text: $allowedHosts)
-        TextField("Environment (optional)", text: $environment)
-        Picker("Project", selection: $selectedProjectID) {
-          Text("Global").tag(UUID?.none)
-          ForEach(model.projects) { project in
-            Text(project.name).tag(Optional(project.id))
-          }
-        }
-        Picker("Type", selection: $selectedKind) {
-          ForEach(CredentialKind.allCases, id: \.self) { kind in
-            Text(kind.rawValue).tag(kind)
-          }
-        }
-        SecureField("Secret", text: $secret)
-        HStack {
-          Spacer()
-          Button("Cancel") { dismiss() }
-          Button("Save") {
-            let hosts =
-              allowedHosts
-              .split(whereSeparator: { $0 == "," || $0.isWhitespace })
-              .map(String.init)
-            model.addCredential(
-              label: label,
-              service: service,
-              secret: Data(secret.utf8),
-              projectID: selectedProjectID,
-              environment: environment.isEmpty ? nil : environment,
-              kind: selectedKind,
-              environmentVariableName: environmentVariableName.isEmpty
-                ? nil : environmentVariableName,
-              allowedHosts: hosts.isEmpty ? nil : hosts
-            )
-            dismiss()
-          }
-          .buttonStyle(.borderedProminent)
-          .disabled(
-            label.isEmpty || service.isEmpty || secret.isEmpty
-              || (!environmentVariableName.isEmpty
-                && !ApprovedCommandRunner.isAllowedInjectionTarget(environmentVariableName)))
-        }
-      }
-      .padding(24)
-      .frame(width: 500)
     }
   }
 

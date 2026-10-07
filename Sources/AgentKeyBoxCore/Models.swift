@@ -160,6 +160,9 @@ public struct AccessEvent: Identifiable, Codable, Hashable, Sendable {
   public var projectPath: String
   public var decision: ApprovalDecision
   public var timestamp: Date
+  /// The credentials this decision covered (several for `akb run`). Optional so access logs
+  /// written before this field existed still decode.
+  public var credentialIDs: [UUID]?
 
   public init(
     id: UUID = UUID(),
@@ -168,7 +171,8 @@ public struct AccessEvent: Identifiable, Codable, Hashable, Sendable {
     credentialLabel: String,
     projectPath: String,
     decision: ApprovalDecision,
-    timestamp: Date = Date()
+    timestamp: Date = Date(),
+    credentialIDs: [UUID]? = nil
   ) {
     self.id = id
     self.requestID = requestID
@@ -177,5 +181,6 @@ public struct AccessEvent: Identifiable, Codable, Hashable, Sendable {
     self.projectPath = projectPath
     self.decision = decision
     self.timestamp = timestamp
+    self.credentialIDs = credentialIDs
   }
 }

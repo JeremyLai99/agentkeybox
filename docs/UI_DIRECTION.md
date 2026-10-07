@@ -419,15 +419,15 @@ It currently validates:
 
 Before wider public alpha:
 
-- [ ] project-centric primary navigation
-- [ ] drag-and-drop import
-- [ ] guided first-run onboarding
-- [ ] agent connection moved into onboarding/settings
-- [ ] production UI removes simulation/debug controls
-- [ ] simplified approval sheet with expandable technical details
+- [x] project-centric primary navigation
+- [x] drag-and-drop import
+- [x] guided first-run onboarding
+- [x] agent connection moved into onboarding/settings
+- [x] production UI removes simulation/debug controls
+- [x] simplified approval sheet with expandable technical details
 - [ ] dedicated file credential cards
 - [ ] empty states and human-readable errors
-- [ ] credential edit view
+- [x] credential edit view
 
 ### After workflow validation
 

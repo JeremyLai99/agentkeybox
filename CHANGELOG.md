@@ -4,6 +4,10 @@
 
 ### Added
 
+- Project-centric main window: the sidebar lists projects and Global keys; each project shows its keys as cards with "Used by Claude Code · 2 min ago" and only flags keys that need attention (e.g. "Can be sent to any website" with a one-click fix). Agent status moves to the sidebar footer; connections, Keychain mode, and recent access move to Settings (⌘,).
+- Three-field key editor (name, project, paste a new key) with the variable name and allowed websites under Advanced; a simpler Add Key sheet that fills everything from the chosen service.
+- Approval history persists across launches (metadata only, owner-only file, last 500 events) so cards can show when a key was last used.
+- Dropping a file on the window stores it in the selected project in one step.
 - One-step project setup: drop a project folder on the window (or choose it) and AgentKeyBox finds `.env*` files, `.p8`/`.pem` private keys, and service-account JSON (skipping templates, dependencies, and build output), preselects the real secrets, offers to add unignored `.env` files to `.gitignore`, and connects installed coding agents — one Set Up click. First-time setup drops from about 10 actions to 2.
 - Plain-language approval prompt: one-sentence headline, purpose and destination only, technical details collapsed; warnings lead and make Deny the default.
 - A request to a host outside a key's list now asks the user (with a warning and Deny as default) instead of failing, and can remember the host for that key.

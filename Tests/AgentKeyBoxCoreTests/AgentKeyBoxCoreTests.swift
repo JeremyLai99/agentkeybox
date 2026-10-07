@@ -806,6 +806,63 @@ final class AgentKeyBoxCoreTests: XCTestCase {
     XCTAssertFalse(ProjectScanner.isEnvFile(".envrc"))
   }
 
+  // MARK: - Access log and key cards
+
+  func testAccessLogPersistsNewestFirstAndCapsLength() throws {
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "akb-log-\(UUID().uuidString).json")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let store = AccessLogStore(fileURL: url, limit: 3)
+    let key = UUID()
+    for i in 0..<5 {
+      try store.append(
+        AccessEvent(
+          requestID: UUID(), agentDisplayName: "Agent \(i)", credentialLabel: "STRIPE",
+          projectPath: "/tmp", decision: i == 4 ? .deny : .allowOnce,
+          timestamp: Date(timeIntervalSince1970: TimeInterval(i * 60)), credentialIDs: [key]))
+    }
+    let reloaded = AccessLogStore(fileURL: url, limit: 3).load()
+    XCTAssertEqual(reloaded.map(\.agentDisplayName), ["Agent 4", "Agent 3", "Agent 2"])
+    XCTAssertEqual(reloaded.lastUse(of: key)?.agentDisplayName, "Agent 3", "denials are not uses")
+    XCTAssertNil(reloaded.lastUse(of: UUID()))
+    let perms = (try FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions]
+      as? NSNumber)?.intValue
+    XCTAssertEqual(perms, 0o600)
+  }
+
+  func testAccessEventsWithoutCredentialIDsStillDecode() throws {
+    let old = #"[{"id":"3BB35765-FD77-484F-99B2-E2181D934056","requestID":"3BB35765-FD77-484F-99B2-E2181D934057","agentDisplayName":"Claude Code","credentialLabel":"X","projectPath":"/tmp","decision":"allowOnce","timestamp":"2026-10-05T00:00:00Z"}]"#
+    let decoder = JSONDecoder()
+    decoder.dateDecodingStrategy = .iso8601
+    let events = try decoder.decode([AccessEvent].self, from: Data(old.utf8))
+    XCTAssertNil(events.first?.credentialIDs)
+  }
+
+  func testCardUsageAndAttentionText() {
+    let now = Date(timeIntervalSince1970: 1_000_000)
+    func used(_ ago: TimeInterval) -> AccessEvent {
+      AccessEvent(
+        requestID: UUID(), agentDisplayName: "Claude Code", credentialLabel: "X",
+        projectPath: "/tmp", decision: .allowOnce, timestamp: now.addingTimeInterval(-ago))
+    }
+    XCTAssertEqual(CredentialCardText.usage(nil, now: now), "Not used yet")
+    XCTAssertEqual(CredentialCardText.usage(used(20), now: now), "Used by Claude Code · just now")
+    XCTAssertEqual(CredentialCardText.usage(used(125), now: now), "Used by Claude Code · 2 min ago")
+    XCTAssertEqual(CredentialCardText.usage(used(7200), now: now), "Used by Claude Code · 2 hr ago")
+    XCTAssertEqual(CredentialCardText.usage(used(100_000), now: now), "Used by Claude Code · yesterday")
+
+    XCTAssertEqual(
+      CredentialCardText.attention(for: CredentialMetadata(label: "DEMO", service: "Demo")),
+      "Can be sent to any website")
+    XCTAssertNil(
+      CredentialCardText.attention(
+        for: CredentialMetadata(label: "S", service: "Stripe", allowedHosts: ["api.stripe.com"])))
+    XCTAssertNil(
+      CredentialCardText.attention(
+        for: CredentialMetadata(label: "AuthKey.p8", service: "Apple", kind: .p8)),
+      "file keys are never sent by http_request")
+  }
+
   func testExecutableSearchPathCoversFinderLaunchedApps() {
     // The PATH a Finder-launched app actually receives.
     let directories = ExecutableSearchPath.directories(
