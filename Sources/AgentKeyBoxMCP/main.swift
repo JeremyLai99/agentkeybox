@@ -171,13 +171,15 @@ private final class MCPServer: @unchecked Sendable {
             "allowed_hosts=\(item.allowedHosts?.joined(separator: ",") ?? "any")",
             "environment=\(item.environment ?? "unspecified")",
             item.kind.rawValue,
+            "settings=\(Self.settingsText(item.settings))",
           ].joined(separator: " | ")
         }
         let text =
           items.isEmpty
           ? "No credentials are available to this project in AgentKeyBox. Call request_credential with the environment variable name the project expects, so the user can enter it in AgentKeyBox."
-          : "id | label | service | env_var | allowed_hosts | environment | kind\n"
+          : "id | label | service | env_var | allowed_hosts | environment | kind | settings\n"
             + items.joined(separator: "\n")
+            + "\nsettings are non-secret values that go with the key (for example an App Store Connect Key ID and Issuer ID). run_with_secret also sets them as environment variables."
         return toolResult(id: request.id, text: text)
       } catch {
         return toolError(id: request.id, message: error.localizedDescription)
@@ -195,6 +197,12 @@ private final class MCPServer: @unchecked Sendable {
     default:
       return toolError(id: request.id, message: "Unknown AgentKeyBox tool: \(name)")
     }
+  }
+
+  /// `ASC_ISSUER_ID=…,ASC_KEY_ID=…`, sorted, or `-`.
+  static func settingsText(_ settings: [String: String]?) -> String {
+    guard let settings, !settings.isEmpty else { return "-" }
+    return settings.keys.sorted().map { "\($0)=\(settings[$0] ?? "")" }.joined(separator: ",")
   }
 
   private func runWithSecret(requestID: JSONValue?, args: [String: JSONValue]) async -> [String:
@@ -456,7 +464,7 @@ private final class MCPServer: @unchecked Sendable {
     .object([
       "name": .string("run_with_secret"),
       "description": .string(
-        "Ask the user to approve one local command that needs a stored credential. AgentKeyBox runs the approved command itself with the credential injected as an environment variable; the MCP process never receives the raw secret. Use an absolute executable path."
+        "Ask the user to approve one local command that needs a stored credential. AgentKeyBox runs the approved command itself with the credential injected as an environment variable, plus the credential's settings from list_credentials (such as ASC_KEY_ID and ASC_ISSUER_ID) under their own names; the MCP process never receives the raw secret. Use an absolute executable path."
       ),
       "inputSchema": .object([
         "type": .string("object"),

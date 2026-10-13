@@ -260,6 +260,8 @@
       var value: String
       var selected: Bool
       var updatesExisting: Bool
+      /// Provider settings found with this key in the same file, e.g. `SUPABASE_URL`.
+      var settings: [String: String] = [:]
     }
 
     let id = UUID()
@@ -312,7 +314,8 @@
     init() {
       let (snapshot, quarantined) = metadataStore.loadWithRecovery()
       self.projects = snapshot.projects
-      self.credentials = snapshot.credentials
+      // Keys saved before provider bundles get the settings that can be filled in without asking.
+      self.credentials = snapshot.credentials.map(ProviderBundles.migrated)
       self.accessLog = accessLogStore.load()
       if let quarantined {
         self.statusMessage =
@@ -368,7 +371,8 @@
       environment: String? = nil,
       kind: CredentialKind = .apiKey,
       environmentVariableName: String? = nil,
-      allowedHosts: [String]? = nil
+      allowedHosts: [String]? = nil,
+      settings: [String: String]? = nil
     ) -> CredentialMetadata? {
       let metadata = CredentialMetadata(
         label: label,
@@ -377,7 +381,8 @@
         environment: environment,
         kind: kind,
         environmentVariableName: environmentVariableName,
-        allowedHosts: allowedHosts
+        allowedHosts: allowedHosts,
+        settings: settings?.isEmpty == false ? settings : nil
       )
       do {
         try secretStore.save(secret: secret, id: metadata.id)
@@ -421,15 +426,18 @@
           statusMessage = "No environment variables were found in that file."
           return
         }
+        // Same grouping as project setup: SUPABASE_URL becomes part of the Supabase key.
+        let scanned = ProjectScanner.classifyEnv(parsed, sourceFile: url.lastPathComponent)
         pendingEnvImport = EnvImportPreview(
           fileName: url.lastPathComponent,
           projectID: projectID,
-          entries: parsed.keys.sorted().map { key in
+          entries: scanned.map { secret in
             EnvImportPreview.Entry(
-              key: key,
-              value: parsed[key] ?? "",
-              selected: EnvImportClassifier.looksSecret(key: key, value: parsed[key] ?? ""),
-              updatesExisting: existingCredential(named: key, projectID: projectID) != nil)
+              key: secret.key,
+              value: secret.value,
+              selected: secret.looksSecret,
+              updatesExisting: existingCredential(named: secret.key, projectID: projectID) != nil,
+              settings: secret.settings)
           })
       } catch {
         statusMessage = "Could not import .env: \(error.localizedDescription)"
@@ -446,7 +454,7 @@
       }
       guard
         let result = storeEnvSecrets(
-          chosen.map { ($0.key, $0.value) }, projectID: preview.projectID)
+          chosen.map { ($0.key, $0.value, $0.settings) }, projectID: preview.projectID)
       else { return }
       statusMessage =
         "Imported \(result.added) new and updated \(result.updated) existing secret(s) from \(preview.fileName)."
@@ -455,9 +463,9 @@
     /// Saves `.env` entries for a project. An entry whose variable already exists in that
     /// project updates the stored value instead of creating a duplicate. Returns nil (and sets
     /// the status message) if nothing could be saved.
-    private func storeEnvSecrets(_ entries: [(key: String, value: String)], projectID: UUID?)
-      -> (added: Int, updated: Int)?
-    {
+    private func storeEnvSecrets(
+      _ entries: [(key: String, value: String, settings: [String: String])], projectID: UUID?
+    ) -> (added: Int, updated: Int)? {
       var added: [CredentialMetadata] = []
       var updated = 0
       do {
@@ -466,6 +474,10 @@
             let index = credentials.firstIndex(where: { $0.id == existing.id })
           {
             try secretStore.save(secret: Data(entry.value.utf8), id: existing.id)
+            if !entry.settings.isEmpty {
+              credentials[index].settings = (credentials[index].settings ?? [:])
+                .merging(entry.settings) { $1 }
+            }
             credentials[index].updatedAt = Date()
             updated += 1
             continue
@@ -477,7 +489,8 @@
             projectID: projectID,
             kind: .environmentVariable,
             environmentVariableName: entry.key,
-            allowedHosts: preset.flatMap { $0.allowedHosts.isEmpty ? nil : $0.allowedHosts }
+            allowedHosts: preset.flatMap { $0.allowedHosts.isEmpty ? nil : $0.allowedHosts },
+            settings: entry.settings.isEmpty ? nil : entry.settings
           )
           try secretStore.save(secret: Data(entry.value.utf8), id: metadata.id)
           added.append(metadata)
@@ -543,7 +556,7 @@
       if !chosenSecrets.isEmpty {
         guard
           let result = storeEnvSecrets(
-            chosenSecrets.map { ($0.key, $0.value) }, projectID: project.id)
+            chosenSecrets.map { ($0.key, $0.value, $0.settings) }, projectID: project.id)
         else { return }
         summary.append("\(result.added + result.updated) key(s) saved")
       }
@@ -558,7 +571,8 @@
           .allowedHosts ?? []
         if addCredential(
           label: file.label, service: file.service, secret: data, projectID: project.id,
-          kind: file.kind, allowedHosts: hosts.isEmpty ? nil : hosts) != nil
+          kind: file.kind, allowedHosts: hosts.isEmpty ? nil : hosts, settings: file.settings)
+          != nil
         {
           savedFiles += 1
         }
@@ -598,6 +612,16 @@
     func importCredentialFile(at url: URL, projectID: UUID?) {
       do {
         let data = try Data(contentsOf: url)
+        // A recognized key (AuthKey_<ID>.p8, a service account) gets its provider's name,
+        // website list, and settings, the same as during project setup.
+        if let file = ProjectScanner.classifyKeyFile(url) {
+          let hosts = ProviderCatalog.preset(matchingService: file.service, environmentKey: nil)?
+            .allowedHosts ?? []
+          addCredential(
+            label: file.label, service: file.service, secret: data, projectID: projectID,
+            kind: file.kind, allowedHosts: hosts.isEmpty ? nil : hosts, settings: file.settings)
+          return
+        }
         let ext = url.pathExtension.lowercased()
         let kind: CredentialKind
         let service: String
@@ -1126,6 +1150,10 @@
 
       let workingDirectory = normalize(brokerRequest.projectPath)
       let arguments = brokerRequest.arguments ?? []
+      let settings =
+        credentials.first(where: { $0.id == credentialID }).map {
+          ProviderBundles.environment(for: $0, excluding: environmentVariable)
+        } ?? [:]
 
       do {
         let execution = try await Task.detached(priority: .userInitiated) {
@@ -1135,7 +1163,8 @@
             workingDirectory: workingDirectory,
             environmentVariable: environmentVariable,
             secretData: secret,
-            deliveryMode: brokerRequest.deliveryMode
+            deliveryMode: brokerRequest.deliveryMode,
+            settings: settings
           )
         }.value
         return BrokerResponse(ok: true, decision: decision, execution: execution)
@@ -1192,6 +1221,14 @@
           environment[name] = value
         } catch {
           return BrokerResponse(ok: false, error: "Could not read \(name) from Keychain.")
+        }
+      }
+      // Settings that go with the revealed keys (e.g. SUPABASE_URL), never replacing a key.
+      for name in variables {
+        guard let credential = selected[name], environment[name] != nil else { continue }
+        for (setting, value) in ProviderBundles.environment(for: credential, excluding: name)
+        where environment[setting] == nil {
+          environment[setting] = value
         }
       }
       return BrokerResponse(
@@ -1303,7 +1340,7 @@
     @discardableResult
     func updateCredential(
       _ id: UUID, label: String, projectID: UUID?, environmentVariableName: String,
-      allowedHosts: [String], newSecret: String?
+      allowedHosts: [String], settings: [String: String]? = nil, newSecret: String?
     ) -> Bool {
       guard let index = credentials.firstIndex(where: { $0.id == id }) else { return false }
       let variable = environmentVariableName.trimmingCharacters(in: .whitespaces)
@@ -1324,6 +1361,11 @@
       credentials[index].projectID = projectID
       credentials[index].environmentVariableName = variable.isEmpty ? nil : variable
       credentials[index].allowedHosts = allowedHosts.isEmpty ? nil : allowedHosts
+      if let settings {
+        let trimmed = settings.mapValues { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+          .filter { !$0.value.isEmpty }
+        credentials[index].settings = trimmed.isEmpty ? nil : trimmed
+      }
       credentials[index].updatedAt = Date()
       guard persistMetadata() else {
         credentials[index] = original
@@ -1662,14 +1704,15 @@
                 isOn: binding(secret.key, in: $secrets),
                 icon: .environmentVariable,
                 title: secret.key,
-                detail: secret.looksSecret ? secret.sourceFile : "\(secret.sourceFile) · setting")
+                detail: ProviderBundles.includes(settings: secret.settings)
+                  ?? (secret.looksSecret ? secret.sourceFile : "\(secret.sourceFile) · setting"))
             }
             ForEach(plan.scan.keyFiles) { file in
               row(
                 isOn: binding(file.id, in: $keyFiles),
                 icon: file.kind,
                 title: file.label,
-                detail: file.relativePath)
+                detail: ProviderBundles.includes(settings: file.settings) ?? file.relativePath)
             }
           }
           .frame(minHeight: 160, idealHeight: 240, maxHeight: 300)
@@ -1767,8 +1810,9 @@
               Text(entry.key).font(.system(.body, design: .monospaced))
               Spacer()
               Text(
-                entry.updatesExisting
-                  ? "updates existing · \(entry.value.count) chars" : "\(entry.value.count) chars"
+                ProviderBundles.includes(settings: entry.settings)
+                  ?? (entry.updatesExisting
+                    ? "updates existing · \(entry.value.count) chars" : "\(entry.value.count) chars")
               )
               .font(.caption)
               .foregroundStyle(.secondary)

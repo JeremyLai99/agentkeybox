@@ -854,6 +854,7 @@ final class AgentKeyBoxCoreTests: XCTestCase {
     XCTAssertEqual(scan.keyFiles.map(\.relativePath), ["firebase-admin.json", "keys/AuthKey_ABC123DEF4.p8"])
     let ascKey = try XCTUnwrap(scan.keyFiles.first { $0.kind == .p8 })
     XCTAssertEqual(ascKey.keyID, "ABC123DEF4")
+    XCTAssertEqual(ascKey.settings, ["ASC_KEY_ID": "ABC123DEF4"], "Key ID comes from the file name")
     XCTAssertEqual(ascKey.service, "Apple App Store Connect")
     XCTAssertEqual(scan.keyFiles.first { $0.kind == .json }?.label, "demo-prod service account")
   }
@@ -951,16 +952,160 @@ final class AgentKeyBoxCoreTests: XCTestCase {
     XCTAssertEqual(CredentialCardText.usage(used(7200), now: now), "Used by Claude Code · 2 hr ago")
     XCTAssertEqual(CredentialCardText.usage(used(100_000), now: now), "Used by Claude Code · yesterday")
 
-    XCTAssertEqual(
-      CredentialCardText.attention(for: CredentialMetadata(label: "DEMO", service: "Demo")),
-      "Can be sent to any website")
+    let anyWebsite = CredentialCardText.attention(
+      for: CredentialMetadata(label: "DEMO", service: "Demo"))
+    XCTAssertEqual(anyWebsite?.message, "Can be sent to any website")
+    XCTAssertEqual(anyWebsite?.action, "Limit to one website…")
+    XCTAssertEqual(anyWebsite?.opensAdvanced, true)
     XCTAssertNil(
       CredentialCardText.attention(
         for: CredentialMetadata(label: "S", service: "Stripe", allowedHosts: ["api.stripe.com"])))
     XCTAssertNil(
       CredentialCardText.attention(
-        for: CredentialMetadata(label: "AuthKey.p8", service: "Apple", kind: .p8)),
+        for: CredentialMetadata(label: "server.pem", service: "Private key", kind: .pem)),
       "file keys are never sent by http_request")
+  }
+
+  // MARK: - Provider bundles
+
+  func testProjectScanGroupsProviderSettingsWithTheirKey() throws {
+    let root = try makeProjectFixture()
+    defer { try? FileManager.default.removeItem(at: root.deletingLastPathComponent()) }
+    try """
+      SUPABASE_SERVICE_ROLE_KEY=service-role-secret
+      NEXT_PUBLIC_SUPABASE_URL=https://abcdefgh.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJanon
+      ASC_ISSUER_ID=69a6de70-03db-47e3-e053-5b8c7c11a4d1
+      """.write(to: root.appendingPathComponent(".env.production"), atomically: true, encoding: .utf8)
+    let scan = ProjectScanner.scan(root)
+
+    let keys = scan.secrets.map(\.key)
+    XCTAssertTrue(keys.contains("SUPABASE_SERVICE_ROLE_KEY"))
+    for setting in ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY", "ASC_ISSUER_ID"] {
+      XCTAssertFalse(keys.contains(setting), "\(setting) belongs to its key, not its own line")
+    }
+    let supabase = try XCTUnwrap(scan.secrets.first { $0.key == "SUPABASE_SERVICE_ROLE_KEY" })
+    XCTAssertEqual(
+      supabase.settings,
+      ["SUPABASE_URL": "https://abcdefgh.supabase.co", "SUPABASE_ANON_KEY": "eyJanon"])
+    let ascKey = try XCTUnwrap(scan.keyFiles.first { $0.kind == .p8 })
+    XCTAssertEqual(
+      ascKey.settings,
+      ["ASC_KEY_ID": "ABC123DEF4", "ASC_ISSUER_ID": "69a6de70-03db-47e3-e053-5b8c7c11a4d1"])
+    XCTAssertEqual(
+      ProviderBundles.includes(settings: ascKey.settings), "Includes Key ID and Issuer ID")
+    XCTAssertTrue(scan.secrets.first { $0.key == "OPENAI_API_KEY" }?.settings.isEmpty ?? false)
+  }
+
+  func testSettingsWithoutTheirKeyStaySeparateAndUnchecked() {
+    let entries = ProjectScanner.classifyEnv(
+      ["NEXT_PUBLIC_SUPABASE_URL": "https://abcdefgh.supabase.co", "ASC_KEY_ID": "ABC123DEF4"],
+      sourceFile: ".env")
+    XCTAssertEqual(entries.map(\.key), ["ASC_KEY_ID", "NEXT_PUBLIC_SUPABASE_URL"])
+    XCTAssertTrue(entries.allSatisfy { !$0.looksSecret }, "a Key ID or URL is not a secret")
+    XCTAssertFalse(EnvImportClassifier.looksSecret(key: "ASC_ISSUER_ID", value: "x"))
+    XCTAssertTrue(EnvImportClassifier.looksSecret(key: "SUPABASE_SERVICE_ROLE_KEY", value: "x"))
+  }
+
+  func testCardAsksForMissingOrMalformedProviderSettings() {
+    var key = CredentialMetadata(
+      label: "App Store Connect key ABC123DEF4", service: "Apple App Store Connect", kind: .p8)
+    XCTAssertEqual(CredentialCardText.attention(for: key)?.message, "Needs the Key ID and Issuer ID")
+    XCTAssertEqual(CredentialCardText.attention(for: key)?.action, "Add Missing Details…")
+
+    key.settings = ["ASC_KEY_ID": "ABC123DEF4"]
+    XCTAssertEqual(CredentialCardText.attention(for: key)?.message, "Needs the Issuer ID")
+    XCTAssertEqual(CredentialCardText.attention(for: key)?.action, "Add Issuer ID…")
+    XCTAssertEqual(CredentialCardText.attention(for: key)?.opensAdvanced, false)
+
+    key.settings?["ASC_ISSUER_ID"] = "2c0c7f1e"
+    XCTAssertEqual(
+      CredentialCardText.attention(for: key)?.message, "The Issuer ID doesn't look right")
+
+    key.settings?["ASC_ISSUER_ID"] = "2c0c7f1e-6a52-4d1b-9e3a-7d8b5f4a1c90"
+    XCTAssertNil(CredentialCardText.attention(for: key))
+    XCTAssertEqual(ProviderBundles.includes(for: key), "Includes Key ID and Issuer ID")
+
+    let supabase = CredentialMetadata(
+      label: "SUPABASE_SERVICE_ROLE_KEY", service: "Supabase",
+      environmentVariableName: "SUPABASE_SERVICE_ROLE_KEY", allowedHosts: ["*.supabase.co"])
+    XCTAssertEqual(
+      CredentialCardText.attention(for: supabase)?.message, "Needs the Project URL",
+      "the optional anon key is not asked for")
+  }
+
+  func testKeysSavedBeforeBundlesGetTheirKeyID() {
+    let fromSetup = CredentialMetadata(
+      label: "App Store Connect key ABC123DEF4", service: "Apple App Store Connect", kind: .p8)
+    XCTAssertEqual(ProviderBundles.migrated(fromSetup).settings, ["ASC_KEY_ID": "ABC123DEF4"])
+    let fromDrop = CredentialMetadata(label: "AuthKey_X7KD91ZZQ1.p8", service: "Apple", kind: .p8)
+    XCTAssertEqual(ProviderBundles.migrated(fromDrop).settings, ["ASC_KEY_ID": "X7KD91ZZQ1"])
+    let other = CredentialMetadata(label: "STRIPE_SECRET_KEY", service: "Stripe")
+    XCTAssertNil(ProviderBundles.migrated(other).settings)
+  }
+
+  func testMetadataWithoutSettingsStillDecodesAndSummariesCarrySettings() throws {
+    let old = #"{"id":"3BB35765-FD77-484F-99B2-E2181D934056","label":"X","service":"Apple","kind":"p8","createdAt":0,"updatedAt":0}"#
+    let decoded = try JSONDecoder().decode(CredentialMetadata.self, from: Data(old.utf8))
+    XCTAssertNil(decoded.settings)
+    XCTAssertNil(CredentialSummary(metadata: decoded).settings)
+
+    var withSettings = decoded
+    withSettings.settings = ["ASC_KEY_ID": "ABC123DEF4"]
+    XCTAssertEqual(CredentialSummary(metadata: withSettings).settings, ["ASC_KEY_ID": "ABC123DEF4"])
+  }
+
+  func testSingleDroppedKeyFileIsRecognized() throws {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "akb-drop-\(UUID().uuidString.prefix(8))")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = dir.appendingPathComponent("AuthKey_ABC123DEF4.p8")
+    try "-----BEGIN PRIVATE KEY-----\nMIGT\n-----END PRIVATE KEY-----\n".write(
+      to: url, atomically: true, encoding: .utf8)
+    let file = try XCTUnwrap(ProjectScanner.classifyKeyFile(url))
+    XCTAssertEqual(file.service, "Apple App Store Connect")
+    XCTAssertEqual(file.settings, ["ASC_KEY_ID": "ABC123DEF4"])
+  }
+
+  func testApprovedCommandGetsSettingsNextToTheKey() throws {
+    #if os(Linux) || os(macOS)
+      let key = CredentialMetadata(
+        label: "App Store Connect key ABC123DEF4", service: "Apple App Store Connect", kind: .p8,
+        settings: [
+          "ASC_KEY_ID": "ABC123DEF4", "ASC_KEY_PATH": "/tmp/should-not-replace-the-key",
+          "PATH": "/evil", "": "x",
+        ])
+      let settings = ProviderBundles.environment(for: key, excluding: "ASC_KEY_PATH")
+      XCTAssertEqual(settings, ["ASC_KEY_ID": "ABC123DEF4"], "the key's own and unsafe names are left out")
+
+      let result = try ApprovedCommandRunner.run(
+        executablePath: "/bin/sh",
+        arguments: ["-c", #"printf '%s|%s' "$ASC_KEY_ID" "$PATH""#],
+        workingDirectory: FileManager.default.temporaryDirectory.path,
+        environmentVariable: "ASC_KEY_PATH",
+        secretData: Data("-----BEGIN PRIVATE KEY-----".utf8),
+        deliveryMode: .tempFile,
+        settings: ["ASC_KEY_ID": "ABC123DEF4", "PATH": "/evil"])
+      XCTAssertEqual(result.exitCode, 0)
+      XCTAssertTrue(result.output.hasPrefix("ABC123DEF4|"))
+      XCTAssertFalse(result.output.contains("/evil"), "reserved variables cannot be set")
+    #endif
+  }
+
+  func testProviderSettingPatterns() throws {
+    let apple = try XCTUnwrap(ProviderCatalog.preset(id: "apple"))
+    let keyID = try XCTUnwrap(apple.settings.first { $0.variable == "ASC_KEY_ID" })
+    XCTAssertTrue(keyID.isValid("ABC123DEF4"))
+    XCTAssertFalse(keyID.isValid("abc"))
+    let issuer = try XCTUnwrap(apple.settings.first { $0.variable == "ASC_ISSUER_ID" })
+    XCTAssertTrue(issuer.isValid("69a6de70-03db-47e3-e053-5b8c7c11a4d1"))
+    XCTAssertFalse(issuer.isValid("not-an-issuer-id"))
+    let url = try XCTUnwrap(ProviderCatalog.preset(id: "supabase")?.settings.first)
+    XCTAssertTrue(url.isValid("https://abcdefgh.supabase.co"))
+    XCTAssertFalse(url.isValid("abcdefgh.supabase.co"))
+    XCTAssertEqual(ProviderCatalog.setting(named: "vite_supabase_url")?.variable, "SUPABASE_URL")
+    XCTAssertEqual(ProviderBundles.listed(["A", "B", "C"]), "A, B, and C")
   }
 
   func testExecutableSearchPathCoversFinderLaunchedApps() {

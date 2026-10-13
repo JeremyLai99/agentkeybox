@@ -116,6 +116,7 @@ public enum ApprovedCommandRunner {
     environmentVariable: String,
     secretData: Data,
     deliveryMode: SecretDeliveryMode = .environment,
+    settings: [String: String] = [:],
     maxOutputBytes: Int = 128 * 1024,
     timeoutSeconds: TimeInterval = 60
   ) throws -> CommandExecutionResult {
@@ -138,6 +139,11 @@ public enum ApprovedCommandRunner {
 
     var tempSecretDirectory: URL?
     var environment = safeBaseEnvironment()
+    // Non-secret values that go with the key (e.g. its Issuer ID). The key's own variable is
+    // set below and always wins.
+    for (name, value) in settings where isAllowedInjectionTarget(name) {
+      environment[name] = value
+    }
 
     switch deliveryMode {
     case .environment:

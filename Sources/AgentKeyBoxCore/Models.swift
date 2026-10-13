@@ -33,6 +33,10 @@ public struct CredentialMetadata: Identifiable, Codable, Hashable, Sendable {
   /// Hosts `http_request` may send this credential to; `*.example.com` matches subdomains.
   /// Nil means unrestricted, which the approval prompt flags.
   public var allowedHosts: [String]?
+  /// Non-secret values that belong with the key, by variable name, e.g. `ASC_ISSUER_ID` for an
+  /// App Store Connect key or `SUPABASE_URL` for a Supabase key. They are shown on the key's
+  /// card, listed to agents, and set next to the key when an approved command runs.
+  public var settings: [String: String]?
   public var createdAt: Date
   public var updatedAt: Date
 
@@ -45,6 +49,7 @@ public struct CredentialMetadata: Identifiable, Codable, Hashable, Sendable {
     kind: CredentialKind = .apiKey,
     environmentVariableName: String? = nil,
     allowedHosts: [String]? = nil,
+    settings: [String: String]? = nil,
     createdAt: Date = Date(),
     updatedAt: Date = Date()
   ) {
@@ -56,6 +61,7 @@ public struct CredentialMetadata: Identifiable, Codable, Hashable, Sendable {
     self.kind = kind
     self.environmentVariableName = environmentVariableName
     self.allowedHosts = allowedHosts
+    self.settings = settings
     self.createdAt = createdAt
     self.updatedAt = updatedAt
   }

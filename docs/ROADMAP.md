@@ -31,7 +31,7 @@
 - [ ] credential edit flow
 - [ ] search/filter
 - [ ] menu-bar experience
-- [ ] richer App Store Connect credential bundle metadata
+- [x] richer App Store Connect credential bundle metadata
 - [x] safer provider-specific HTTP operations
 
 
@@ -48,7 +48,7 @@ Before broad public alpha, move toward the product direction described in [`UI_D
 - [x] remove simulation/debug controls from production builds
 - [x] simplified approval prompt with expandable command details
 - [ ] first-class file credential cards
-- [ ] provider-aware credential bundles
+- [x] provider-aware credential bundles
 - [ ] human-readable error and empty states
 
 The goal is not simply to make the current prototype prettier. The goal is to make secrets infrastructure disappear behind a workflow that a vibe coder can understand immediately.

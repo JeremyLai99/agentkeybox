@@ -325,7 +325,7 @@
     let edit: (UUID, Bool) -> Void
     @State private var confirmingDelete = false
 
-    private var attention: String? { CredentialCardText.attention(for: key) }
+    private var attention: CredentialCardText.Attention? { CredentialCardText.attention(for: key) }
 
     var body: some View {
       VStack(alignment: .leading, spacing: 8) {
@@ -341,9 +341,15 @@
               .lineLimit(1)
           }
         }
+        if let includes = ProviderBundles.includes(for: key) {
+          Text(includes)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+        }
         if let attention {
-          Text(attention).font(.callout).foregroundStyle(.orange)
-          Button("Limit to one website…") { edit(key.id, true) }
+          Text(attention.message).font(.callout).foregroundStyle(.orange)
+          Button(attention.action) { edit(key.id, attention.opensAdvanced) }
             .buttonStyle(.link)
         } else {
           Text(CredentialCardText.usage(model.lastUse(of: key.id)))
@@ -388,7 +394,10 @@
     @State private var variable: String
     @State private var hosts: [String]
     @State private var newHost = ""
+    @State private var settings: [String: String]
     @State private var confirmingDelete = false
+
+    private var preset: ProviderPreset? { ProviderCatalog.preset(for: credential) }
 
     init(credential: CredentialMetadata, showAdvanced: Bool) {
       self.credential = credential
@@ -398,10 +407,18 @@
       // Older keys have no stored variable and inject as their label; show what really happens.
       _variable = State(initialValue: credential.injectionVariableName ?? "")
       _hosts = State(initialValue: credential.allowedHosts ?? [])
+      _settings = State(initialValue: credential.settings ?? [:])
     }
 
     private var variableIsValid: Bool {
       variable.isEmpty || ApprovedCommandRunner.isAllowedInjectionTarget(variable)
+    }
+
+    private var settingsAreValid: Bool {
+      (preset?.settings ?? []).allSatisfy { setting in
+        let value = (settings[setting.variable] ?? "").trimmingCharacters(in: .whitespaces)
+        return value.isEmpty || setting.isValid(value)
+      }
     }
 
     var body: some View {
@@ -429,6 +446,9 @@
                 Button("Paste New Key…") { replacingKey = true }
               }
             }
+          }
+          if let preset, !preset.settings.isEmpty {
+            ProviderSettingsFields(preset: preset, settings: $settings)
           }
         }
         .formStyle(.columns)
@@ -487,14 +507,16 @@
           Button("Save") {
             if model.updateCredential(
               credential.id, label: name, projectID: projectID, environmentVariableName: variable,
-              allowedHosts: hosts, newSecret: replacingKey ? newKey : nil)
+              allowedHosts: hosts, settings: settings, newSecret: replacingKey ? newKey : nil)
             {
               dismiss()
             }
           }
           .buttonStyle(.borderedProminent)
           .keyboardShortcut(.defaultAction)
-          .disabled(name.isEmpty || !variableIsValid || (replacingKey && newKey.isEmpty))
+          .disabled(
+            name.isEmpty || !variableIsValid || !settingsAreValid
+              || (replacingKey && newKey.isEmpty))
         }
       }
       .padding(24)
@@ -541,6 +563,7 @@
     @State private var showAdvanced = false
     @State private var variable = ""
     @State private var hostsText = ""
+    @State private var settings: [String: String] = [:]
     @State private var chosenProjectID: UUID?
 
     init(projectID: UUID?) {
@@ -560,6 +583,7 @@
             }
           }
           .onChange(of: preset) { _, preset in
+            settings = [:]
             guard let preset else { return }
             name = preset.environmentKeys.first ?? preset.displayName
             variable = preset.environmentKeys.first ?? ""
@@ -567,6 +591,9 @@
           }
           TextField("Name", text: $name, prompt: Text("STRIPE_SECRET_KEY"))
           SecureField("Key", text: $key, prompt: Text("Paste the key"))
+          if let preset, !preset.settings.isEmpty {
+            ProviderSettingsFields(preset: preset, settings: $settings)
+          }
           Picker("Project", selection: $chosenProjectID) {
             ForEach(model.projects) { project in
               Text(project.name).tag(Optional(project.id))
@@ -611,18 +638,66 @@
               projectID: chosenProjectID,
               kind: preset?.defaultKind ?? .apiKey,
               environmentVariableName: resolvedVariable.isEmpty ? nil : resolvedVariable,
-              allowedHosts: hosts.isEmpty ? nil : hosts)
+              allowedHosts: hosts.isEmpty ? nil : hosts,
+              settings: settings.mapValues { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.value.isEmpty })
             dismiss()
           }
           .buttonStyle(.borderedProminent)
           .keyboardShortcut(.defaultAction)
           .disabled(
             name.isEmpty || key.isEmpty
-              || (!variable.isEmpty && !ApprovedCommandRunner.isAllowedInjectionTarget(variable)))
+              || (!variable.isEmpty && !ApprovedCommandRunner.isAllowedInjectionTarget(variable))
+              || !(preset?.settings ?? []).allSatisfy { setting in
+                let value = (settings[setting.variable] ?? "").trimmingCharacters(in: .whitespaces)
+                return value.isEmpty || setting.isValid(value)
+              })
         }
       }
       .padding(24)
       .frame(width: 480)
+    }
+  }
+
+  /// A provider's non-secret settings (Key ID, Issuer ID, Project URL) as form rows, each with a
+  /// hint when the value does not look right, and one link to where the values are shown.
+  struct ProviderSettingsFields: View {
+    let preset: ProviderPreset
+    @Binding var settings: [String: String]
+
+    var body: some View {
+      ForEach(preset.settings, id: \.variable) { setting in
+        LabeledContent(setting.label) {
+          VStack(alignment: .leading, spacing: 4) {
+            TextField(
+              setting.label, text: binding(setting.variable),
+              prompt: Text(setting.required ? setting.example : "Optional")
+            )
+            .labelsHidden()
+            .font(.body.monospaced())
+            let value = (settings[setting.variable] ?? "").trimmingCharacters(in: .whitespaces)
+            if !value.isEmpty, !setting.isValid(value) {
+              Text("Should look like \(setting.example)")
+                .font(.caption)
+                .foregroundStyle(.orange)
+            }
+          }
+        }
+      }
+      if let link = preset.settings.first(where: \.required)?.helpURL, let url = URL(string: link) {
+        LabeledContent("") {
+          Button("Where do I find \(preset.settings.count == 1 ? "this" : "these")?") {
+            NSWorkspace.shared.open(url)
+          }
+          .buttonStyle(.link)
+        }
+      }
+    }
+
+    private func binding(_ variable: String) -> Binding<String> {
+      Binding(
+        get: { settings[variable] ?? "" },
+        set: { settings[variable] = $0 })
     }
   }
 

@@ -76,6 +76,8 @@ Asks the user to enter a missing credential in AgentKeyBox. Waits up to 10 minut
 
 Takes no secret-bearing input. It returns only credential IDs and non-secret metadata that are global or bound to the current project.
 
+The `settings` column lists non-secret values that go with a key, for example `ASC_KEY_ID` and `ASC_ISSUER_ID` for an App Store Connect key, or `SUPABASE_URL` for a Supabase key. `run_with_secret` sets them as environment variables under these names next to the key; `akb run` does the same for the keys it reveals.
+
 ### `run_with_secret`
 
 Input shape:

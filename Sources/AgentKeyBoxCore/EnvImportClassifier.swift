@@ -21,6 +21,10 @@ public enum EnvImportClassifier {
     {
       return false
     }
+    // Values that go with a key, such as an App Store Connect Key ID, are not secrets.
+    if ProviderCatalog.setting(named: upper) != nil {
+      return false
+    }
     if ProviderCatalog.all.contains(where: { $0.environmentKeys.contains(upper) }) {
       return true
     }

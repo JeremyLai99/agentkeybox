@@ -44,6 +44,9 @@ public struct CredentialSummary: Codable, Hashable, Sendable {
   public var kind: CredentialKind
   public var environmentVariableName: String?
   public var allowedHosts: [String]?
+  /// Non-secret values that go with the key, e.g. `ASC_ISSUER_ID`. Optional so older clients
+  /// and servers still decode each other's messages.
+  public var settings: [String: String]?
 
   public init(metadata: CredentialMetadata) {
     self.id = metadata.id
@@ -53,6 +56,7 @@ public struct CredentialSummary: Codable, Hashable, Sendable {
     self.kind = metadata.kind
     self.environmentVariableName = metadata.injectionVariableName
     self.allowedHosts = metadata.allowedHosts
+    self.settings = metadata.settings?.isEmpty == false ? metadata.settings : nil
   }
 }
 

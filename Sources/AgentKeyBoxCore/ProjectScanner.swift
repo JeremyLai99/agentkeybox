@@ -17,6 +17,8 @@ public struct ProjectScan: Sendable {
     public var sourceFile: String
     /// Preselected in the setup list; settings such as PORT start unselected.
     public var looksSecret: Bool
+    /// Provider settings found with this key, e.g. `SUPABASE_URL` for a Supabase key.
+    public var settings: [String: String] = [:]
   }
 
   public struct KeyFile: Identifiable, Hashable, Sendable {
@@ -28,6 +30,8 @@ public struct ProjectScan: Sendable {
     public var label: String
     /// App Store Connect key ID from `AuthKey_<ID>.p8`.
     public var keyID: String?
+    /// Provider settings found with this key, e.g. its Key ID and Issuer ID.
+    public var settings: [String: String] = [:]
   }
 
   public var root: URL
@@ -86,12 +90,71 @@ public enum ProjectScanner {
       }
     }
 
+    let bundled = attachSettings(
+      secrets: secrets.values.map(\.secret).sorted { $0.key < $1.key },
+      keyFiles: keyFiles.sorted { $0.relativePath < $1.relativePath })
     let envRelative = envFiles.map { relativePath($0, root: root) }.sorted()
     return ProjectScan(
       root: root,
-      secrets: secrets.values.map(\.secret).sorted { $0.key < $1.key },
-      keyFiles: keyFiles.sorted { $0.relativePath < $1.relativePath },
+      secrets: bundled.secrets,
+      keyFiles: bundled.keyFiles,
       envFilesNotIgnored: GitIgnore.unignored(envRelative, in: root))
+  }
+
+  /// Gives each provider key the settings found next to it, and drops those settings from the
+  /// list of separate entries, so `SUPABASE_URL` shows as part of the Supabase key instead of
+  /// as another line to decide about.
+  static func attachSettings(secrets: [ProjectScan.Secret], keyFiles: [ProjectScan.KeyFile])
+    -> (secrets: [ProjectScan.Secret], keyFiles: [ProjectScan.KeyFile])
+  {
+    let envValues = Dictionary(secrets.map { ($0.key, $0.value) }, uniquingKeysWith: { a, _ in a })
+    var used = Set<String>()
+    var secrets = secrets
+    var keyFiles = keyFiles
+
+    for index in secrets.indices where secrets[index].looksSecret {
+      guard ProviderCatalog.setting(named: secrets[index].key) == nil,
+        let preset = ProviderCatalog.preset(
+          matchingService: nil, environmentKey: secrets[index].key),
+        !preset.settings.isEmpty
+      else { continue }
+      let found = ProviderBundles.settings(for: preset, keyID: nil, envValues: envValues)
+      secrets[index].settings = found.settings
+      used.formUnion(found.usedNames)
+    }
+    for index in keyFiles.indices {
+      guard
+        let preset = ProviderCatalog.preset(
+          matchingService: keyFiles[index].service, environmentKey: nil),
+        !preset.settings.isEmpty
+      else { continue }
+      let found = ProviderBundles.settings(
+        for: preset, keyID: keyFiles[index].keyID, envValues: envValues)
+      keyFiles[index].settings = found.settings
+      used.formUnion(found.usedNames)
+    }
+    return (secrets.filter { !used.contains($0.key) }, keyFiles)
+  }
+
+  /// Entries of one dropped `.env` file, classified and grouped the same way as during
+  /// project setup.
+  public static func classifyEnv(_ values: [String: String], sourceFile: String)
+    -> [ProjectScan.Secret]
+  {
+    attachSettings(
+      secrets: values.keys.sorted().map { key in
+        ProjectScan.Secret(
+          key: key, value: values[key] ?? "", sourceFile: sourceFile,
+          looksSecret: EnvImportClassifier.looksSecret(key: key, value: values[key] ?? ""))
+      },
+      keyFiles: []
+    ).secrets
+  }
+
+  /// What a single dropped key file is, or nil when it is not a private key AgentKeyBox knows.
+  public static func classifyKeyFile(_ url: URL) -> ProjectScan.KeyFile? {
+    guard let file = keyFile(at: url, root: url.deletingLastPathComponent()) else { return nil }
+    return attachSettings(secrets: [], keyFiles: [file]).keyFiles.first
   }
 
   public static func isEnvFile(_ name: String) -> Bool {
