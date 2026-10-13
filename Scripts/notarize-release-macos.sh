@@ -24,9 +24,11 @@ if ! codesign --verify --deep --strict "$APP"; then
   exit 1
 fi
 
-SIGNING_AUTHORITY="$(codesign -dv --verbose=2 "$APP" 2>&1 | awk -F= '/^Authority=/{print $2; exit}')"
-if [[ -z "$SIGNING_AUTHORITY" ]]; then
-  echo "No Developer ID signing authority found. Rebuild with AGENTKEYBOX_CODESIGN_IDENTITY." >&2
+# Read every line: exiting awk early would SIGPIPE codesign and, with pipefail, end the script
+# silently before anything is submitted.
+SIGNING_AUTHORITY="$(codesign -dv --verbose=2 "$APP" 2>&1 | awk -F= '/^Authority=/ && !found {print $2; found=1}')"
+if [[ "$SIGNING_AUTHORITY" != "Developer ID Application:"* ]]; then
+  echo "Signed by '${SIGNING_AUTHORITY:-nobody}', not Developer ID Application. Rebuild with AGENTKEYBOX_CODESIGN_IDENTITY." >&2
   exit 1
 fi
 
