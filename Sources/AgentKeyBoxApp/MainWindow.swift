@@ -17,11 +17,30 @@
     @State private var addingKey = false
     @State private var editing: EditRequest?
     @State private var fileNeedingProject: URL?
+    @State private var projectToRemove: Project?
 
     var body: some View {
       NavigationSplitView {
         sidebar
           .navigationSplitViewColumnWidth(min: 200, ideal: 230)
+          .confirmationDialog(
+            "Remove \(projectToRemove?.name ?? "project") from AgentKeyBox?",
+            isPresented: Binding(
+              get: { projectToRemove != nil },
+              set: { if !$0 { projectToRemove = nil } }),
+            titleVisibility: .visible,
+            presenting: projectToRemove
+          ) { project in
+            Button("Remove Project", role: .destructive) { model.removeProject(project) }
+            Button("Cancel", role: .cancel) {}
+          } message: { project in
+            let count = model.credentials(in: .project(project.id)).count
+            Text(
+              count == 0
+                ? "Files in the project folder are not changed."
+                : "Its \(count == 1 ? "key is" : "\(count) keys are") deleted from your Keychain, and agents can no longer use \(count == 1 ? "it" : "them"). Files in the project folder are not changed."
+            )
+          }
       } detail: {
         if model.projects.isEmpty {
           EmptyStateView(isDropTargeted: isDropTargeted, chooseFolder: chooseProjectFolder)
@@ -103,6 +122,13 @@
             }
             .tag(SidebarItem.project(project.id))
             .help(project.rootPath)
+            .contextMenu {
+              Button("Show in Finder") {
+                NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: project.rootPath)
+              }
+              Divider()
+              Button("Remove Project…", role: .destructive) { projectToRemove = project }
+            }
           }
         }
         Section("Everywhere") {

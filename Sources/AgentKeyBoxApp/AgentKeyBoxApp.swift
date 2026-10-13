@@ -362,6 +362,33 @@
       return project
     }
 
+    /// Removes a project and deletes its keys from the Keychain. Files in the project folder are
+    /// not touched.
+    func removeProject(_ project: Project) {
+      let keys = credentials.filter { $0.projectID == project.id }
+      let originalProjects = projects
+      let originalCredentials = credentials
+      projects.removeAll { $0.id == project.id }
+      credentials.removeAll { $0.projectID == project.id }
+      guard persistMetadata() else {
+        projects = originalProjects
+        credentials = originalCredentials
+        return
+      }
+      var failed = 0
+      for key in keys {
+        do { try secretStore.delete(id: key.id) } catch { failed += 1 }
+      }
+      if selection == .project(project.id) {
+        selection = nil
+        selectFirstProjectIfNeeded()
+      }
+      statusMessage =
+        failed == 0
+        ? "Removed \(project.name). Its files were not changed."
+        : "Removed \(project.name), but \(failed) key(s) could not be deleted from the Keychain."
+    }
+
     @discardableResult
     func addCredential(
       label: String,
