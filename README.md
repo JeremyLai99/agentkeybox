@@ -1,5 +1,7 @@
 # AgentKeyBox
 
+[繁體中文說明](README.zh-TW.md)
+
 **AgentKeyBox is a local-first credential wallet for AI coding agents.**
 
 Store developer secrets once, organize them by project, and let Claude Code or Codex request access only when needed.
@@ -7,6 +9,42 @@ Store developer secrets once, organize them by project, and let Claude Code or C
 > **AI asks. You approve.**
 
 AgentKeyBox is an experimental macOS utility for vibe coders, indie developers, and AI-first builders who do not want API keys scattered across `.env` files, notes, downloads, shell history, or chat windows.
+
+## Install
+
+**You need:** macOS 14 (Sonoma) or later on an Apple Silicon Mac (M1 or later), and Claude Code or Codex. Touch ID is optional; without it, macOS asks for your login password instead.
+
+1. Download `AgentKeyBox-<version>-macOS.zip` from the [latest release](https://github.com/JeremyLai99/agentkeybox/releases/latest).
+2. Double-click the zip, then open **AgentKeyBox**. macOS asks whether to open an app downloaded from the internet; choose **Open**. The app is signed with a Developer ID and notarized by Apple.
+3. If a banner says AgentKeyBox isn't in your Applications folder yet, click **Move to Applications**. It moves itself there and reopens.
+4. Drag your project folder onto the window (or click **Choose Folder…**). AgentKeyBox shows the keys it found in `.env` files and key files (`.p8`, `.pem`, service-account JSON), with real secrets already checked. Click **Set Up**: the keys move into your Keychain, your files stay where they are, unignored `.env` files can be added to `.gitignore`, and Claude Code / Codex are connected if installed.
+5. Start a **new** Claude Code or Codex session in that project. When the agent needs a key, AgentKeyBox asks you; click **Allow Once** and touch Touch ID.
+
+The interface follows your macOS language (English or Traditional Chinese). Change it in **Settings › Language**.
+
+To check the download, compare `shasum -a 256 AgentKeyBox-<version>-macOS.zip` with the `.sha256` file published next to it.
+
+### Update
+
+Download the new version, open it, and click **Move to Applications**. The older copy goes to the Trash. Your projects, keys, and agent connections are kept: keys live in your Keychain, and agents use a helper at a fixed path that each version refreshes when it starts.
+
+### Uninstall
+
+1. In AgentKeyBox, right-click each project and choose **Remove Project…**. This deletes its keys from your Keychain. Delete any **Global keys** the same way (right-click a key › **Delete…**). Deleting only the app would leave the keys in your Keychain.
+2. Disconnect your coding agents:
+
+   ```bash
+   claude mcp remove --scope user agentkeybox
+   codex mcp remove agentkeybox
+   ```
+
+3. Quit AgentKeyBox (menu bar icon › **Quit AgentKeyBox**) and move it from Applications to the Trash.
+4. Remove its local settings and helper:
+
+   ```bash
+   rm -rf ~/Library/Application\ Support/AgentKeyBox
+   defaults delete dev.agentkeybox.app
+   ```
 
 ## What it does
 
@@ -48,8 +86,11 @@ This is still **not a hard sandbox**: a command you approve can deliberately tra
 - raw/common-encoding output redaction
 - broker authentication, freshness checks, and replay protection
 - `akb doctor` and one-command agent setup
+- provider bundles: an App Store Connect key with its Key ID and Issuer ID, a Supabase key with its project URL, shown as one card
+- "don't ask again during this session" for repeated identical requests
+- English and Traditional Chinese interface
 
-## Quick development start
+## Build from source
 
 ```bash
 swift build
@@ -169,7 +210,7 @@ claude mcp add --scope user \
   --env AGENTKEYBOX_AGENT_ID=claude-code \
   --env "AGENTKEYBOX_AGENT_NAME=Claude Code" \
   --transport stdio \
-  agentkeybox -- /absolute/path/to/agentkeybox-mcp
+  agentkeybox -- "$HOME/Library/Application Support/AgentKeyBox/bin/agentkeybox-mcp"
 ```
 
 Verify with:
@@ -177,6 +218,8 @@ Verify with:
 ```bash
 claude mcp get agentkeybox
 ```
+
+The helper at that fixed path is copied from the app each time AgentKeyBox starts, so the connection survives moving or updating the app; a connected agent that still points elsewhere is re-registered automatically.
 
 Claude Code supplies `CLAUDE_PROJECT_DIR` to local stdio MCP servers; AgentKeyBox uses it to scope project credentials.
 
@@ -188,7 +231,7 @@ The app includes a **Connect Codex** action. Equivalent command:
 codex mcp add agentkeybox \
   --env AGENTKEYBOX_AGENT_ID=codex \
   --env AGENTKEYBOX_AGENT_NAME=Codex \
-  -- /absolute/path/to/agentkeybox-mcp
+  -- "$HOME/Library/Application Support/AgentKeyBox/bin/agentkeybox-mcp"
 ```
 
 Verify with:
@@ -273,7 +316,7 @@ See [`docs/SESSION_STATUS.md`](docs/SESSION_STATUS.md) for the exact boundary be
 
 ## Status
 
-**Experimental / pre-alpha.** The core and MCP protocol can be tested in this repository, but the native SwiftUI/Keychain/broker path still requires a real macOS end-to-end run before public alpha release.
+**Experimental alpha.** Verified on a real Mac: Keychain storage behind Touch ID, the approval prompt, session approvals, Developer ID signing and notarization, and installing from a download. Still to verify end to end: a real Claude Code session and a real Codex session using the tools.
 
 The product hypothesis is simple:
 
@@ -299,9 +342,9 @@ Apache License 2.0. See [LICENSE](LICENSE).
 
 ## Product design direction
 
-The current SwiftUI interface is an engineering prototype. The intended public product is project-centric, import-first, and uses progressive disclosure so users do not need to understand secrets-management infrastructure.
+The interface is project-centric and import-first: drop a project folder, confirm once, and approve requests in plain language. Technical details stay behind progressive disclosure so users do not need to understand secrets-management infrastructure.
 
-See [`docs/UI_DIRECTION.md`](docs/UI_DIRECTION.md) for the planned onboarding, project view, credential cards, approval prompts, and public-alpha UX.
+See [`docs/UI_DIRECTION.md`](docs/UI_DIRECTION.md) for the design direction.
 
 
 ## Brand direction

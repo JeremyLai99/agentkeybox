@@ -4,6 +4,7 @@
 
 ### Added
 
+- README install, update, and uninstall guide for people downloading the app (Apple Silicon, macOS 14+), and a Traditional Chinese README (`README.zh-TW.md`) for users. Agent connection examples now use the helper's fixed path.
 - Coding agents stay connected wherever the app lives. Agents now run a copy of the MCP helper at a fixed path (`~/Library/Application Support/AgentKeyBox/bin/agentkeybox-mcp`), refreshed from the app on every launch; a connected agent that still points elsewhere is re-registered automatically. Previously the connection broke when the app was moved, or when it was opened straight from Downloads (macOS runs it from a temporary translocated copy).
 - When AgentKeyBox runs from outside Applications, a banner offers Move to Applications: it copies the app there (replacing an older copy, which goes to the Trash), clears the quarantine flag on the copy, and reopens it.
 - English and Traditional Chinese throughout: windows, approval prompts, the Touch ID reason, the menu bar, and `akb` output. Settings › Language offers Same as macOS (the default; Traditional Chinese for zh-Hant/TW/HK/MO), English, or 繁體中文, and switches immediately. Messages for coding agents (MCP tool text) and `akb doctor --json` stay English. A test fails if any interface string lacks a translation or loses a placeholder.
