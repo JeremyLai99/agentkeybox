@@ -49,10 +49,10 @@ public struct ApprovalPresentation: Equatable, Sendable {
         let host = request.url.flatMap({ URLComponents(string: $0)?.host })
       {
         presentation.sessionApprovalLabel =
-          "Don't ask again for \(host) during this \(agent) session"
+          L("Don't ask again for %@ during this %@ session", host, agent)
       } else {
         presentation.sessionApprovalLabel =
-          "Don't ask again for this command during this \(agent) session"
+          L("Don't ask again for this command during this %@ session", agent)
       }
     }
     return presentation
@@ -65,38 +65,43 @@ public struct ApprovalPresentation: Equatable, Sendable {
     risk: CommandRiskAssessment?
   ) -> ApprovalPresentation {
     let agent = request.agentDisplayName
-    let keyName = credential.map { $0.service.isEmpty ? $0.label : $0.service } ?? "a"
-    let subtitle = projectName.map { "in \($0)" }
+    let keyName = credential.map { $0.service.isEmpty ? $0.label : $0.service }
+    let useHeadline =
+      keyName.map { L("%@ wants to use your %@ key", agent, $0) }
+      ?? L("%@ wants to use a key", agent)
+    let subtitle = projectName.map { L("in %@", $0) }
     var facts: [Fact] = []
     if let purpose = request.purpose, !purpose.isEmpty {
-      facts.append(Fact("For", purpose))
+      facts.append(Fact(L("For"), purpose))
     }
 
     switch request.kind {
     case .httpRequest:
-      let host = request.url.flatMap { URLComponents(string: $0)?.host } ?? "an unknown website"
+      let host = request.url.flatMap { URLComponents(string: $0)?.host } ?? L("an unknown website")
       switch request.hostStatus ?? .unrestricted {
       case .listed:
-        facts.append(Fact("Sends to", "✓ \(host)"))
+        facts.append(Fact(L("Sends to"), "✓ \(host)"))
         return ApprovalPresentation(
-          headline: "\(agent) wants to use your \(keyName) key", subtitle: subtitle,
+          headline: useHeadline, subtitle: subtitle,
           facts: facts, warning: nil, detailsExpanded: false, denyIsDefault: false,
           rememberableHost: nil, sessionApprovalLabel: nil)
       case .unrestricted:
-        facts.append(Fact("Sends to", "\(host) (this key can go to any website)"))
+        facts.append(Fact(L("Sends to"), L("%@ (this key can go to any website)", host)))
         return ApprovalPresentation(
-          headline: "\(agent) wants to use your \(keyName) key", subtitle: subtitle,
+          headline: useHeadline, subtitle: subtitle,
           facts: facts, warning: nil, detailsExpanded: false, denyIsDefault: false,
           rememberableHost: nil, sessionApprovalLabel: nil)
       case .unlisted(let allowed):
-        facts.append(Fact("Sends to", host))
+        facts.append(Fact(L("Sends to"), host))
         return ApprovalPresentation(
-          headline: "\(agent) wants to send your \(keyName) key somewhere new",
+          headline: keyName.map { L("%@ wants to send your %@ key somewhere new", agent, $0) }
+            ?? L("%@ wants to send a key somewhere new", agent),
           subtitle: subtitle, facts: facts,
           warning: Warning(
-            title: "\(host) isn't one of this key's usual websites",
-            message:
-              "This key normally only goes to \(allowed.joined(separator: ", ")). Only allow this if you know why."
+            title: L("%@ isn't one of this key's usual websites", host),
+            message: L(
+              "This key normally only goes to %@. Only allow this if you know why.",
+              allowed.joined(separator: ", "))
           ),
           detailsExpanded: true, denyIsDefault: true, rememberableHost: host,
           sessionApprovalLabel: nil)
@@ -107,17 +112,21 @@ public struct ApprovalPresentation: Equatable, Sendable {
       if request.kind == .environment {
         let count = request.environmentVariables.count
         headline =
-          "\(agent) wants to start \(commandSummary(request)) with \(count) key\(count == 1 ? "" : "s")"
-        facts.append(Fact("Keys", request.environmentVariables.joined(separator: ", ")))
+          count == 1
+          ? L("%@ wants to start %@ with 1 key", agent, commandSummary(request))
+          : L("%@ wants to start %@ with %@ keys", agent, commandSummary(request), "\(count)")
+        facts.append(Fact(L("Keys"), request.environmentVariables.joined(separator: ", ")))
       } else {
-        headline = "\(agent) wants to run a command with your \(keyName) key"
+        headline =
+          keyName.map { L("%@ wants to run a command with your %@ key", agent, $0) }
+          ?? L("%@ wants to run a command with a key", agent)
       }
 
       var warning: Warning?
       if let risk, risk.level != .normal {
         warning = Warning(
-          title: risk.level == .high ? "Review this command" : "Check this command",
-          message: risk.reasons.first ?? "This command needs a closer look.")
+          title: risk.level == .high ? L("Review this command") : L("Check this command"),
+          message: risk.reasons.first ?? L("This command needs a closer look."))
       }
       return ApprovalPresentation(
         headline: headline, subtitle: subtitle, facts: facts, warning: warning,
@@ -129,7 +138,7 @@ public struct ApprovalPresentation: Equatable, Sendable {
   /// `npm run dev` from `/opt/homebrew/bin/npm` + `["run", "dev"]`, shortened for a headline.
   static func commandSummary(_ request: AgentRequest) -> String {
     let program = request.executablePath.map { URL(fileURLWithPath: $0).lastPathComponent }
-    let words = ([program ?? "a command"] + request.arguments).joined(separator: " ")
+    let words = ([program ?? L("a command")] + request.arguments).joined(separator: " ")
     return words.count > 40 ? String(words.prefix(39)) + "…" : words
   }
 }

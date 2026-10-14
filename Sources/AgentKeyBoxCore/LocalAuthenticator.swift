@@ -42,7 +42,7 @@ public enum LocalAuthenticationError: Error, LocalizedError {
     /// is registered, which previously skipped confirmation entirely and approved on one click.
     public func authenticate(reason: String) async throws -> AuthenticationGrant? {
       let context = LAContext()
-      context.localizedCancelTitle = "Cancel"
+      context.localizedCancelTitle = L("Cancel")
       var error: NSError?
       guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
         return nil
@@ -59,7 +59,7 @@ public enum LocalAuthenticationError: Error, LocalizedError {
           localizedReason: reason
         )
         if !success {
-          throw LocalAuthenticationError.failed("Local authentication was not completed.")
+          throw LocalAuthenticationError.failed(L("Local authentication was not completed."))
         }
         return AuthenticationGrant(context: context)
       } catch {

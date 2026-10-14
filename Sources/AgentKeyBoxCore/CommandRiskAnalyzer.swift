@@ -49,30 +49,30 @@ public enum CommandRiskAnalyzer {
     }
 
     if shells.contains(name) || interpreters.contains(name) {
-      raise(.high, "This executable can run arbitrary code, which could transmit the credential elsewhere.")
+      raise(.high, L("This executable can run arbitrary code, which could transmit the credential elsewhere."))
     } else if launchers.contains(name) {
-      raise(.high, "This executable launches another program named in its arguments.")
+      raise(.high, L("This executable launches another program named in its arguments."))
     } else if networkTools.contains(name) {
-      raise(.high, "This executable can send data over the network.")
+      raise(.high, L("This executable can send data over the network."))
     } else if projectRunners.contains(name) {
       raise(
         .elevated,
-        "This tool runs scripts defined in the project (package.json, Makefile, …), which the agent can edit before asking."
+        L("This tool runs scripts defined in the project (package.json, Makefile, …), which the agent can edit before asking.")
       )
     }
 
     if let projectPath,
       ProjectScopeResolver.contains(projectRoot: projectPath, requestPath: executablePath)
     {
-      raise(.elevated, "The executable is a file inside the project, which the agent can edit.")
+      raise(.elevated, L("The executable is a file inside the project, which the agent can edit."))
     }
 
     if arguments.contains(where: { $0.contains("http://") || $0.contains("https://") }) {
-      raise(.elevated, "The command includes a network URL.")
+      raise(.elevated, L("The command includes a network URL."))
     }
 
     if arguments.contains(where: { inlineCodeFlags.contains($0) }) {
-      raise(.high, "The command includes an inline code or shell execution flag.")
+      raise(.high, L("The command includes an inline code or shell execution flag."))
     }
 
     return CommandRiskAssessment(level: level, reasons: Array(Set(reasons)).sorted())

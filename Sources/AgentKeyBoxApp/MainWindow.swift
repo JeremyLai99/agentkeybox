@@ -24,21 +24,27 @@
         sidebar
           .navigationSplitViewColumnWidth(min: 200, ideal: 230)
           .confirmationDialog(
-            "Remove \(projectToRemove?.name ?? "project") from AgentKeyBox?",
+            L("Remove %@ from AgentKeyBox?", projectToRemove?.name ?? L("project")),
             isPresented: Binding(
               get: { projectToRemove != nil },
               set: { if !$0 { projectToRemove = nil } }),
             titleVisibility: .visible,
             presenting: projectToRemove
           ) { project in
-            Button("Remove Project", role: .destructive) { model.removeProject(project) }
-            Button("Cancel", role: .cancel) {}
+            Button(L("Remove Project"), role: .destructive) { model.removeProject(project) }
+            Button(L("Cancel"), role: .cancel) {}
           } message: { project in
             let count = model.credentials(in: .project(project.id)).count
             Text(
               count == 0
-                ? "Files in the project folder are not changed."
-                : "Its \(count == 1 ? "key is" : "\(count) keys are") deleted from your Keychain, and agents can no longer use \(count == 1 ? "it" : "them"). Files in the project folder are not changed."
+                ? L("Files in the project folder are not changed.")
+                : count == 1
+                  ? L(
+                    "Its key is deleted from your Keychain, and agents can no longer use it. Files in the project folder are not changed."
+                  )
+                  : L(
+                    "Its %@ keys are deleted from your Keychain, and agents can no longer use them. Files in the project folder are not changed.",
+                    "\(count)")
             )
           }
       } detail: {
@@ -50,7 +56,7 @@
             addKey: { addingKey = true },
             edit: { editing = EditRequest(credentialID: $0, showAdvanced: $1) })
         } else {
-          Text("Choose a project").foregroundStyle(.secondary)
+          Text(L("Choose a project")).foregroundStyle(.secondary)
         }
       }
       .sheet(isPresented: $addingKey) {
@@ -72,7 +78,7 @@
           .environmentObject(model)
       }
       .confirmationDialog(
-        "Which project should this key belong to?",
+        L("Which project should this key belong to?"),
         isPresented: Binding(
           get: { fileNeedingProject != nil },
           set: { if !$0 { fileNeedingProject = nil } }),
@@ -81,8 +87,8 @@
         ForEach(model.projects) { project in
           Button(project.name) { model.importFile(url, projectID: project.id) }
         }
-        Button("Every project") { model.importFile(url, projectID: nil) }
-        Button("Cancel", role: .cancel) {}
+        Button(L("Every project")) { model.importFile(url, projectID: nil) }
+        Button(L("Cancel"), role: .cancel) {}
       } message: { url in
         Text(url.lastPathComponent)
       }
@@ -111,7 +117,7 @@
 
     private var sidebar: some View {
       List(selection: $model.selection) {
-        Section("Projects") {
+        Section(L("Projects")) {
           ForEach(model.projects) { project in
             HStack {
               Label(project.name, systemImage: "folder")
@@ -123,17 +129,17 @@
             .tag(SidebarItem.project(project.id))
             .help(project.rootPath)
             .contextMenu {
-              Button("Show in Finder") {
+              Button(L("Show in Finder")) {
                 NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: project.rootPath)
               }
               Divider()
-              Button("Remove Project…", role: .destructive) { projectToRemove = project }
+              Button(L("Remove Project…"), role: .destructive) { projectToRemove = project }
             }
           }
         }
-        Section("Everywhere") {
+        Section(L("Everywhere")) {
           HStack {
-            Label("Global keys", systemImage: "globe")
+            Label(L("Global keys"), systemImage: "globe")
             Spacer()
             Text("\(model.credentials(in: .global).count)")
               .foregroundStyle(.secondary)
@@ -147,7 +153,7 @@
           Button {
             chooseProjectFolder()
           } label: {
-            Label("Add Project…", systemImage: "plus")
+            Label(L("Add Project…"), systemImage: "plus")
           }
           .buttonStyle(.borderless)
           AgentStatusRow()
@@ -177,8 +183,8 @@
       panel.canChooseDirectories = true
       panel.canChooseFiles = false
       panel.allowsMultipleSelection = false
-      panel.prompt = "Set Up"
-      panel.message = "Choose your project folder. AgentKeyBox will find the keys in it."
+      panel.prompt = L("Set Up")
+      panel.message = L("Choose your project folder. AgentKeyBox will find the keys in it.")
       guard panel.runModal() == .OK, let url = panel.url else { return }
       model.beginSetup(folder: url)
     }
@@ -203,14 +209,14 @@
 
     var body: some View {
       if model.claudeConnectionStatus == "Connected" {
-        Label("Claude Code connected", systemImage: "circle.fill")
+        Label(L("Claude Code connected"), systemImage: "circle.fill")
           .font(.caption)
           .foregroundStyle(.secondary)
           .labelStyle(StatusDotLabelStyle(color: .green))
       } else if model.claudeConnectionStatus == "Not installed" {
         EmptyView()
       } else {
-        Button("Connect Claude Code") { model.connectClaudeCode() }
+        Button(L("Connect Claude Code")) { model.connectClaudeCode() }
           .controlSize(.small)
       }
     }
@@ -238,15 +244,17 @@
         Image(nsImage: NSApp.applicationIconImage)
           .resizable()
           .frame(width: 96, height: 96)
-        Text("Drop your project folder here")
+        Text(L("Drop your project folder here"))
           .font(.title.bold())
         Text(
-          "AgentKeyBox finds the keys in it, keeps them in your Keychain, and connects Claude Code. Your coding agent then asks before it uses one."
+          L(
+            "AgentKeyBox finds the keys in it, keeps them in your Keychain, and connects Claude Code. Your coding agent then asks before it uses one."
+          )
         )
         .multilineTextAlignment(.center)
         .foregroundStyle(.secondary)
         .frame(maxWidth: 440)
-        Button("Choose Folder…", action: chooseFolder)
+        Button(L("Choose Folder…"), action: chooseFolder)
           .buttonStyle(.borderedProminent)
           .controlSize(.large)
         if let message = model.statusMessage {
@@ -275,20 +283,20 @@
 
     private var title: String {
       switch item {
-      case .project(let id): return model.projects.first { $0.id == id }?.name ?? "Project"
-      case .global: return "Global keys"
+      case .project(let id): return model.projects.first { $0.id == id }?.name ?? L("Project")
+      case .global: return L("Global keys")
       }
     }
 
     private var subtitle: String {
       let count = keys.count
-      let keyText = count == 1 ? "1 key" : "\(count) keys"
+      let keyText = count == 1 ? L("1 key") : L("%@ keys", "\(count)")
       switch item {
       case .project:
         return model.claudeConnectionStatus == "Connected"
-          ? "\(keyText) · Claude Code can ask for them" : keyText
+          ? L("%@ · Claude Code can ask for them", keyText) : keyText
       case .global:
-        return "\(keyText) · available to every project"
+        return L("%@ · available to every project", keyText)
       }
     }
 
@@ -302,7 +310,7 @@
             }
             Spacer()
             Button(action: addKey) {
-              Label("Add Key", systemImage: "plus")
+              Label(L("Add Key"), systemImage: "plus")
             }
             .buttonStyle(.borderedProminent)
           }
@@ -315,8 +323,8 @@
 
           if keys.isEmpty {
             VStack(spacing: 8) {
-              Text("No keys yet").font(.headline)
-              Text("Drop a .env or key file here, or use Add Key.")
+              Text(L("No keys yet")).font(.headline)
+              Text(L("Drop a .env or key file here, or use Add Key."))
                 .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, minHeight: 160)
@@ -335,7 +343,7 @@
                 KeyCard(key: key, edit: edit)
               }
             }
-            Text("Drop files or another project folder anywhere in this window.")
+            Text(L("Drop files or another project folder anywhere in this window."))
               .font(.caption)
               .foregroundStyle(.secondary)
           }
@@ -358,7 +366,7 @@
         HStack(spacing: 10) {
           CredentialIcon(kind: key.kind, size: 30)
           VStack(alignment: .leading, spacing: 2) {
-            Text(key.service.isEmpty ? key.label : key.service)
+            Text(key.service.isEmpty ? key.label : L(key.service))
               .font(.headline)
               .lineLimit(1)
             Text(key.label)
@@ -393,16 +401,16 @@
       .contentShape(RoundedRectangle(cornerRadius: 12))
       .onTapGesture(count: 2) { edit(key.id, false) }
       .contextMenu {
-        Button("Edit…") { edit(key.id, false) }
+        Button(L("Edit…")) { edit(key.id, false) }
         Divider()
-        Button("Delete…", role: .destructive) { confirmingDelete = true }
+        Button(L("Delete…"), role: .destructive) { confirmingDelete = true }
       }
       .confirmationDialog(
-        "Delete \(key.label)?", isPresented: $confirmingDelete, titleVisibility: .visible
+        L("Delete %@?", key.label), isPresented: $confirmingDelete, titleVisibility: .visible
       ) {
-        Button("Delete Key", role: .destructive) { model.deleteCredential(key) }
+        Button(L("Delete Key"), role: .destructive) { model.deleteCredential(key) }
       } message: {
-        Text("The key is removed from your Keychain. Agents can no longer ask for it.")
+        Text(L("The key is removed from your Keychain. Agents can no longer ask for it."))
       }
     }
   }
@@ -451,25 +459,25 @@
       VStack(alignment: .leading, spacing: 14) {
         HStack(spacing: 10) {
           CredentialIcon(kind: credential.kind, size: 32)
-          Text(credential.service.isEmpty ? credential.label : credential.service)
+          Text(credential.service.isEmpty ? credential.label : L(credential.service))
             .font(.title2.bold())
         }
 
         Form {
-          TextField("Name", text: $name)
-          Picker("Project", selection: $projectID) {
+          TextField(L("Name"), text: $name)
+          Picker(L("Project"), selection: $projectID) {
             ForEach(model.projects) { project in
               Text(project.name).tag(Optional(project.id))
             }
-            Text("Every project").tag(UUID?.none)
+            Text(L("Every project")).tag(UUID?.none)
           }
-          LabeledContent("Key") {
+          LabeledContent(L("Key")) {
             if replacingKey {
-              SecureField("Paste the new key", text: $newKey)
+              SecureField(L("Paste the new key"), text: $newKey)
             } else {
               HStack {
                 Text("••••••••••••").foregroundStyle(.secondary)
-                Button("Paste New Key…") { replacingKey = true }
+                Button(L("Paste New Key…")) { replacingKey = true }
               }
             }
           }
@@ -479,24 +487,24 @@
         }
         .formStyle(.columns)
 
-        DisclosureGroup("Advanced", isExpanded: $showAdvanced) {
+        DisclosureGroup(L("Advanced"), isExpanded: $showAdvanced) {
           Form {
             if !credential.isFileCredential {
-              LabeledContent("Injects as") {
-                TextField("Injects as", text: $variable, prompt: Text("STRIPE_SECRET_KEY"))
+              LabeledContent(L("Injects as")) {
+                TextField(L("Injects as"), text: $variable, prompt: Text("STRIPE_SECRET_KEY"))
                   .labelsHidden()
                   .font(.body.monospaced())
               }
               if !variableIsValid {
-                Text("Use letters, digits, and _ only, and not PATH, HOME, or DYLD_*.")
+                Text(L("Use letters, digits, and _ only, and not PATH, HOME, or DYLD_*."))
                   .font(.caption)
                   .foregroundStyle(.orange)
               }
             }
-            LabeledContent("Can be sent to") {
+            LabeledContent(L("Can be sent to")) {
               VStack(alignment: .leading, spacing: 6) {
                 if hosts.isEmpty {
-                  Text("Any website").foregroundStyle(.orange)
+                  Text(L("Any website")).foregroundStyle(.orange)
                 }
                 ForEach(hosts, id: \.self) { host in
                   HStack {
@@ -507,14 +515,14 @@
                       Image(systemName: "xmark.circle.fill")
                     }
                     .buttonStyle(.borderless)
-                    .help("Remove \(host)")
+                    .help(L("Remove %@", host))
                   }
                 }
                 HStack {
-                  TextField("Add website", text: $newHost, prompt: Text("api.example.com"))
+                  TextField(L("Add website"), text: $newHost, prompt: Text("api.example.com"))
                     .labelsHidden()
                     .onSubmit(addHost)
-                  Button("Add", action: addHost)
+                  Button(L("Add"), action: addHost)
                     .disabled(normalizedHost(newHost) == nil)
                 }
               }
@@ -526,11 +534,11 @@
 
         Divider()
         HStack {
-          Button("Delete…", role: .destructive) { confirmingDelete = true }
+          Button(L("Delete…"), role: .destructive) { confirmingDelete = true }
           Spacer()
-          Button("Cancel") { dismiss() }
+          Button(L("Cancel")) { dismiss() }
             .keyboardShortcut(.cancelAction)
-          Button("Save") {
+          Button(L("Save")) {
             if model.updateCredential(
               credential.id, label: name, projectID: projectID, environmentVariableName: variable,
               allowedHosts: hosts, settings: settings, newSecret: replacingKey ? newKey : nil)
@@ -548,14 +556,15 @@
       .padding(24)
       .frame(width: 520)
       .confirmationDialog(
-        "Delete \(credential.label)?", isPresented: $confirmingDelete, titleVisibility: .visible
+        L("Delete %@?", credential.label), isPresented: $confirmingDelete,
+        titleVisibility: .visible
       ) {
-        Button("Delete Key", role: .destructive) {
+        Button(L("Delete Key"), role: .destructive) {
           model.deleteCredential(credential)
           dismiss()
         }
       } message: {
-        Text("The key is removed from your Keychain. Agents can no longer ask for it.")
+        Text(L("The key is removed from your Keychain. Agents can no longer ask for it."))
       }
     }
 
@@ -599,10 +608,10 @@
 
     var body: some View {
       VStack(alignment: .leading, spacing: 14) {
-        Text("Add a Key").font(.title2.bold())
+        Text(L("Add a Key")).font(.title2.bold())
         Form {
-          Picker("Service", selection: $preset) {
-            Text("Other").tag(ProviderPreset?.none)
+          Picker(L("Service"), selection: $preset) {
+            Text(L("Other")).tag(ProviderPreset?.none)
             ForEach(ProviderCatalog.all.filter { $0.defaultKind != .json && $0.defaultKind != .p8 })
             { preset in
               Text(preset.displayName).tag(Optional(preset))
@@ -615,33 +624,33 @@
             variable = preset.environmentKeys.first ?? ""
             hostsText = preset.allowedHosts.joined(separator: ", ")
           }
-          TextField("Name", text: $name, prompt: Text("STRIPE_SECRET_KEY"))
-          SecureField("Key", text: $key, prompt: Text("Paste the key"))
+          TextField(L("Name"), text: $name, prompt: Text(verbatim: "STRIPE_SECRET_KEY"))
+          SecureField(L("Key"), text: $key, prompt: Text(L("Paste the key")))
           if let preset, !preset.settings.isEmpty {
             ProviderSettingsFields(preset: preset, settings: $settings)
           }
-          Picker("Project", selection: $chosenProjectID) {
+          Picker(L("Project"), selection: $chosenProjectID) {
             ForEach(model.projects) { project in
               Text(project.name).tag(Optional(project.id))
             }
-            Text("Every project").tag(UUID?.none)
+            Text(L("Every project")).tag(UUID?.none)
           }
         }
         .formStyle(.columns)
 
         if let link = preset?.dashboardURL, let url = URL(string: link) {
-          Button("Get your \(preset?.displayName ?? "") key") { NSWorkspace.shared.open(url) }
+          Button(L("Get your %@ key", preset?.displayName ?? "")) { NSWorkspace.shared.open(url) }
             .buttonStyle(.link)
         }
 
-        DisclosureGroup("Advanced", isExpanded: $showAdvanced) {
+        DisclosureGroup(L("Advanced"), isExpanded: $showAdvanced) {
           Form {
-            LabeledContent("Injects as") {
-              TextField("Injects as", text: $variable, prompt: Text("STRIPE_SECRET_KEY"))
+            LabeledContent(L("Injects as")) {
+              TextField(L("Injects as"), text: $variable, prompt: Text("STRIPE_SECRET_KEY"))
                 .labelsHidden()
                 .font(.body.monospaced())
             }
-            TextField("Can be sent to", text: $hostsText, prompt: Text("api.stripe.com"))
+            TextField(L("Can be sent to"), text: $hostsText, prompt: Text("api.stripe.com"))
           }
           .formStyle(.columns)
           .padding(.top, 6)
@@ -649,9 +658,9 @@
 
         HStack {
           Spacer()
-          Button("Cancel") { dismiss() }
+          Button(L("Cancel")) { dismiss() }
             .keyboardShortcut(.cancelAction)
-          Button("Save") {
+          Button(L("Save")) {
             let hosts = hostsText.split(whereSeparator: { $0 == "," || $0.isWhitespace })
               .map { $0.lowercased() }
             let resolvedVariable =
@@ -693,17 +702,17 @@
 
     var body: some View {
       ForEach(preset.settings, id: \.variable) { setting in
-        LabeledContent(setting.label) {
+        LabeledContent(L(setting.label)) {
           VStack(alignment: .leading, spacing: 4) {
             TextField(
-              setting.label, text: binding(setting.variable),
-              prompt: Text(setting.required ? setting.example : "Optional")
+              L(setting.label), text: binding(setting.variable),
+              prompt: Text(setting.required ? setting.example : L("Optional"))
             )
             .labelsHidden()
             .font(.body.monospaced())
             let value = (settings[setting.variable] ?? "").trimmingCharacters(in: .whitespaces)
             if !value.isEmpty, !setting.isValid(value) {
-              Text("Should look like \(setting.example)")
+              Text(L("Should look like %@", setting.example))
                 .font(.caption)
                 .foregroundStyle(.orange)
             }
@@ -712,7 +721,7 @@
       }
       if let link = preset.settings.first(where: \.required)?.helpURL, let url = URL(string: link) {
         LabeledContent("") {
-          Button("Where do I find \(preset.settings.count == 1 ? "this" : "these")?") {
+          Button(preset.settings.count == 1 ? L("Where do I find this?") : L("Where do I find these?")) {
             NSWorkspace.shared.open(url)
           }
           .buttonStyle(.link)
@@ -733,33 +742,43 @@
 
     var body: some View {
       Form {
-        Section("Coding agents") {
+        Section(L("Language")) {
+          Picker(L("Language"), selection: $model.languagePreference) {
+            ForEach(LanguagePreference.allCases) { language in
+              Text(language.displayName).tag(language)
+            }
+          }
+          Text(L("Menus that come from macOS, such as Edit and Window, switch the next time AgentKeyBox opens."))
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        Section(L("Coding agents")) {
           agentRow("Claude Code", status: model.claudeConnectionStatus) {
             model.connectClaudeCode()
           }
           agentRow("Codex", status: model.codexConnectionStatus) { model.connectCodex() }
         }
         if model.activeSessionCount > 0 {
-          Section("This session") {
+          Section(L("This session")) {
             HStack {
               Text(
                 model.activeSessionCount == 1
-                  ? "Not asking again in 1 agent session"
-                  : "Not asking again in \(model.activeSessionCount) agent sessions")
+                  ? L("Not asking again in 1 agent session")
+                  : L("Not asking again in %@ agent sessions", "\(model.activeSessionCount)"))
               Spacer()
-              Button("Ask Every Time") { model.revokeSessionApprovals() }
+              Button(L("Ask Every Time")) { model.revokeSessionApprovals() }
             }
           }
         }
-        Section("Security") {
+        Section(L("Security")) {
           Text(model.keychainStatus)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
-          Text(model.brokerStatus).foregroundStyle(.secondary)
+          Text(L(model.brokerStatus)).foregroundStyle(.secondary)
         }
-        Section("Recent access") {
+        Section(L("Recent access")) {
           if model.accessLog.isEmpty {
-            Text("No requests yet").foregroundStyle(.secondary)
+            Text(L("No requests yet")).foregroundStyle(.secondary)
           }
           ForEach(model.accessLog.prefix(15)) { event in
             HStack {
@@ -767,7 +786,8 @@
               Spacer()
               Text(
                 event.decision == .deny
-                  ? "Denied" : event.decision == .allowSession ? "Allowed (session)" : "Allowed")
+                  ? L("Denied")
+                  : event.decision == .allowSession ? L("Allowed (session)") : L("Allowed"))
                 .foregroundStyle(event.decision == .deny ? .orange : .secondary)
               Text(event.timestamp, style: .relative)
                 .foregroundStyle(.secondary)
@@ -777,8 +797,8 @@
           }
         }
         #if DEBUG
-          Section("Development") {
-            Button("Simulate Claude Request") { model.simulateRequest() }
+          Section(L("Development")) {
+            Button(L("Simulate Claude Request")) { model.simulateRequest() }
               .disabled(model.credentials.isEmpty)
           }
         #endif
@@ -795,11 +815,11 @@
         Text(name)
         Spacer()
         if status == "Connected" {
-          Label("Connected", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+          Label(L("Connected"), systemImage: "checkmark.circle.fill").foregroundStyle(.green)
         } else if status == "Not installed" {
-          Text("Not installed").foregroundStyle(.secondary)
+          Text(L("Not installed")).foregroundStyle(.secondary)
         } else {
-          Button("Connect", action: connect)
+          Button(L("Connect"), action: connect)
         }
       }
     }

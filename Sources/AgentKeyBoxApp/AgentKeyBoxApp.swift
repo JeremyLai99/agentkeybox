@@ -11,22 +11,28 @@
     var body: some Scene {
       // A single main window, so the menu bar's "Open AgentKeyBox" brings it back instead of
       // opening duplicates.
+      // `.id` rebuilds each window when the language changes, so every `L(_:)` is read again.
       Window("AgentKeyBox", id: "main") {
         ContentView()
           .environmentObject(model)
           .frame(minWidth: 860, minHeight: 560)
           .tint(.agentKeyBlue)
+          .environment(\.locale, Localization.current.locale)
+          .id(model.languagePreference)
       }
 
       Settings {
         SettingsView()
           .environmentObject(model)
           .tint(.agentKeyBlue)
+          .environment(\.locale, Localization.current.locale)
+          .id(model.languagePreference)
       }
 
       MenuBarExtra {
         MenuBarContent()
           .environmentObject(model)
+          .id(model.languagePreference)
       } label: {
         MenuBarLabel(pending: model.hasPendingPrompt)
       }
@@ -113,36 +119,36 @@
 
     var body: some View {
       if let title = model.pendingPromptTitle {
-        Button("Review: \(title)") { model.bringPromptToFront() }
+        Button(L("Review: %@", title)) { model.bringPromptToFront() }
       } else {
-        Text("No pending requests")
+        Text(L("No pending requests"))
       }
 
       if model.activeSessionCount > 0 {
         Divider()
         Text(
           model.activeSessionCount == 1
-            ? "Not asking again in 1 agent session"
-            : "Not asking again in \(model.activeSessionCount) agent sessions")
-        Button("Ask Every Time") { model.revokeSessionApprovals() }
+            ? L("Not asking again in 1 agent session")
+            : L("Not asking again in %@ agent sessions", "\(model.activeSessionCount)"))
+        Button(L("Ask Every Time")) { model.revokeSessionApprovals() }
       }
 
       if !model.accessLog.isEmpty {
         Divider()
-        Text("Recent")
+        Text(L("Recent"))
         ForEach(model.accessLog.prefix(5)) { event in
           Text(
-            "\(event.agentDisplayName) → \(event.credentialLabel) · \(event.decision == .deny ? "Denied" : "Allowed")"
+            "\(event.agentDisplayName) → \(event.credentialLabel) · \(event.decision == .deny ? L("Denied") : L("Allowed"))"
           )
         }
       }
 
       Divider()
-      Button("Open AgentKeyBox") {
+      Button(L("Open AgentKeyBox")) {
         openWindow(id: "main")
         NSApp.activate(ignoringOtherApps: true)
       }
-      Button("Quit AgentKeyBox") { NSApp.terminate(nil) }
+      Button(L("Quit AgentKeyBox")) { NSApp.terminate(nil) }
         .keyboardShortcut("q")
     }
   }
@@ -283,6 +289,18 @@
     @Published var pendingEnvImport: EnvImportPreview?
     @Published var pendingSetup: SetupPlan?
     @Published var statusMessage: String?
+    /// Interface language. Text switches immediately; macOS's own menus (Edit, Window) follow
+    /// on the next launch through this app's `AppleLanguages`.
+    @Published var languagePreference: LanguagePreference = Localization.preference {
+      didSet {
+        Localization.preference = languagePreference
+        if languagePreference == .system {
+          UserDefaults.standard.removeObject(forKey: "AppleLanguages")
+        } else {
+          UserDefaults.standard.set([languagePreference.rawValue], forKey: "AppleLanguages")
+        }
+      }
+    }
     @Published var brokerStatus: String = "Starting local broker…"
     @Published var claudeConnectionStatus: String = "Not checked"
     @Published var codexConnectionStatus: String = "Not checked"
@@ -319,7 +337,9 @@
       self.accessLog = accessLogStore.load()
       if let quarantined {
         self.statusMessage =
-          "AgentKeyBox could not read its project list and moved it to \(quarantined.lastPathComponent). Your secrets are still in the Keychain."
+          L(
+            "AgentKeyBox could not read its project list and moved it to %@. Your secrets are still in the Keychain.",
+            quarantined.lastPathComponent)
       }
 
       do {
@@ -334,7 +354,7 @@
         try server.start()
         self.brokerStatus = "Local broker ready on this Mac"
       } catch {
-        self.brokerStatus = "Broker unavailable: \(error.localizedDescription)"
+        self.brokerStatus = L("Broker unavailable: %@", error.localizedDescription)
       }
     }
 
@@ -349,7 +369,7 @@
     func addProject(name: String, rootPath: String) -> Project? {
       let normalizedPath = normalize(rootPath)
       if let existing = projects.first(where: { normalize($0.rootPath) == normalizedPath }) {
-        statusMessage = "That project is already in AgentKeyBox."
+        statusMessage = L("That project is already in AgentKeyBox.")
         return existing
       }
       let project = Project(name: name, rootPath: normalizedPath)
@@ -358,7 +378,7 @@
         projects.removeAll { $0.id == project.id }
         return nil
       }
-      statusMessage = "Project added."
+      statusMessage = L("Project added.")
       return project
     }
 
@@ -385,8 +405,10 @@
       }
       statusMessage =
         failed == 0
-        ? "Removed \(project.name). Its files were not changed."
-        : "Removed \(project.name), but \(failed) key(s) could not be deleted from the Keychain."
+        ? L("Removed %@. Its files were not changed.", project.name)
+        : L(
+          "Removed %@, but %@ key(s) could not be deleted from the Keychain.", project.name,
+          "\(failed)")
     }
 
     @discardableResult
@@ -419,10 +441,10 @@
           try? secretStore.delete(id: metadata.id)
           return nil
         }
-        statusMessage = "Saved securely in Keychain."
+        statusMessage = L("Saved securely in Keychain.")
         return metadata
       } catch {
-        statusMessage = "Could not save secret: \(error.localizedDescription)"
+        statusMessage = L("Could not save secret: %@", error.localizedDescription)
         return nil
       }
     }
@@ -436,10 +458,12 @@
       }
       do {
         try secretStore.delete(id: credential.id)
-        statusMessage = "Credential deleted."
+        statusMessage = L("Credential deleted.")
       } catch {
         statusMessage =
-          "Credential metadata was removed, but Keychain cleanup failed: \(error.localizedDescription)"
+          L(
+            "Credential metadata was removed, but Keychain cleanup failed: %@",
+            error.localizedDescription)
       }
     }
 
@@ -450,7 +474,7 @@
         let text = try String(contentsOf: url, encoding: .utf8)
         let parsed = EnvParser.parse(text).filter { !$0.value.isEmpty }
         guard !parsed.isEmpty else {
-          statusMessage = "No environment variables were found in that file."
+          statusMessage = L("No environment variables were found in that file.")
           return
         }
         // Same grouping as project setup: SUPABASE_URL becomes part of the Supabase key.
@@ -467,7 +491,7 @@
               settings: secret.settings)
           })
       } catch {
-        statusMessage = "Could not import .env: \(error.localizedDescription)"
+        statusMessage = L("Could not import .env: %@", error.localizedDescription)
       }
     }
 
@@ -476,7 +500,7 @@
       pendingEnvImport = nil
       let chosen = preview.entries.filter { selectedKeys.contains($0.key) }
       guard !chosen.isEmpty else {
-        statusMessage = "Nothing was imported."
+        statusMessage = L("Nothing was imported.")
         return
       }
       guard
@@ -484,7 +508,9 @@
           chosen.map { ($0.key, $0.value, $0.settings) }, projectID: preview.projectID)
       else { return }
       statusMessage =
-        "Imported \(result.added) new and updated \(result.updated) existing secret(s) from \(preview.fileName)."
+        L(
+          "Imported %@ new and updated %@ existing secret(s) from %@.", "\(result.added)",
+          "\(result.updated)", preview.fileName)
     }
 
     /// Saves `.env` entries for a project. An entry whose variable already exists in that
@@ -524,7 +550,7 @@
         }
       } catch {
         for metadata in added { try? secretStore.delete(id: metadata.id) }
-        statusMessage = "Could not save keys: \(error.localizedDescription)"
+        statusMessage = L("Could not save keys: %@", error.localizedDescription)
         return nil
       }
 
@@ -543,7 +569,7 @@
     /// Scans a dropped project folder and shows the setup sheet. Nothing is stored until the
     /// user presses Set Up.
     func beginSetup(folder: URL) {
-      statusMessage = "Looking for keys in \(folder.lastPathComponent)…"
+      statusMessage = L("Looking for keys in %@…", folder.lastPathComponent)
       Task {
         let scan = await Task.detached(priority: .userInitiated) {
           ProjectScanner.scan(folder)
@@ -585,7 +611,7 @@
           let result = storeEnvSecrets(
             chosenSecrets.map { ($0.key, $0.value, $0.settings) }, projectID: project.id)
         else { return }
-        summary.append("\(result.added + result.updated) key(s) saved")
+        summary.append(L("%@ key(s) saved", "\(result.added + result.updated)"))
       }
 
       var savedFiles = 0
@@ -604,14 +630,15 @@
           savedFiles += 1
         }
       }
-      if savedFiles > 0 { summary.append("\(savedFiles) key file(s) saved") }
+      if savedFiles > 0 { summary.append(L("%@ key file(s) saved", "\(savedFiles)")) }
 
       if ignoreEnvFiles, !scan.envFilesNotIgnored.isEmpty {
         do {
           try GitIgnore.addEntries(scan.envFilesNotIgnored, to: scan.root)
-          summary.append("\(scan.envFilesNotIgnored.joined(separator: ", ")) added to .gitignore")
+          summary.append(
+            L("%@ added to .gitignore", scan.envFilesNotIgnored.joined(separator: ", ")))
         } catch {
-          summary.append("could not update .gitignore (\(error.localizedDescription))")
+          summary.append(L("could not update .gitignore (%@)", error.localizedDescription))
         }
       }
 
@@ -621,11 +648,13 @@
         case CodexAdapter().id: connectCodex()
         default: break
         }
-        summary.append("connecting \(agent.name)")
+        summary.append(L("connecting %@", agent.name))
       }
 
       statusMessage =
-        "\(project.name) is ready" + (summary.isEmpty ? "." : ": " + summary.joined(separator: ", ") + ".")
+        summary.isEmpty
+        ? L("%@ is ready.", project.name)
+        : L("%@ is ready: %@.", project.name, summary.joined(separator: L(", ")))
     }
 
     func cancelEnvImport() {
@@ -663,7 +692,7 @@
           kind = .json
           service = "Service Account"
         default:
-          statusMessage = "Supported credential files are .p8, .pem, and .json."
+          statusMessage = L("Supported credential files are .p8, .pem, and .json.")
           return
         }
 
@@ -675,18 +704,18 @@
           kind: kind
         )
       } catch {
-        statusMessage = "Could not import credential file: \(error.localizedDescription)"
+        statusMessage = L("Could not import credential file: %@", error.localizedDescription)
       }
     }
 
     #if DEBUG
     func simulateRequest(agentID: String = "claude-code", agentName: String = "Claude Code") {
       guard let credential = credentials.first else {
-        statusMessage = "Add a credential first."
+        statusMessage = L("Add a credential first.")
         return
       }
       guard !approvalSlotReserved, pendingRequest == nil, pendingCredentialRequest == nil else {
-        statusMessage = "Finish the pending approval first."
+        statusMessage = L("Finish the pending approval first.")
         return
       }
       let project = projects.first
@@ -707,8 +736,12 @@
 
     var keychainStatus: String {
       secretStore.usesDataProtectionKeychain
-        ? "Every approval requires Touch ID or your login password. Secrets are protected by Touch ID in the data protection keychain."
-        : "Every approval requires Touch ID or your login password. This unsigned development build uses the legacy keychain, so macOS may also ask for your login password after each rebuild."
+        ? L(
+          "Every approval requires Touch ID or your login password. Secrets are protected by Touch ID in the data protection keychain."
+        )
+        : L(
+          "Every approval requires Touch ID or your login password. This unsigned development build uses the legacy keychain, so macOS may also ask for your login password after each rebuild."
+        )
     }
 
     func credentialSummary(for request: AgentRequest) -> CredentialMetadata? {
@@ -728,7 +761,7 @@
       if request.kind != .environment, credential == nil {
         finishPrompt(
           BrokerResponse(ok: false, error: "Credential was not found."),
-          message: "Credential was not found."
+          message: L("Credential was not found.")
         )
         return
       }
@@ -748,13 +781,17 @@
         if decision != .deny {
           do {
             grant = try await authenticator.authenticate(
-              reason: "Allow \(request.agentDisplayName) to use \(historyLabel)?"
+              reason: request.kind == .environment
+                ? L(
+                  "Allow %@ to use %@ secret(s) for akb run?", request.agentDisplayName,
+                  "\(request.environmentVariables.count)")
+                : L("Allow %@ to use %@?", request.agentDisplayName, historyLabel)
             )
           } catch {
             guard self.pendingRequest?.id == requestID else { return }
             self.finishPrompt(
               BrokerResponse(ok: true, decision: .deny),
-              message: "Local authentication cancelled or failed."
+              message: L("Local authentication cancelled or failed.")
             )
             return
           }
@@ -794,7 +831,8 @@
 
         if decision == .deny {
           guard self.pendingRequest?.id == requestID else { return }
-          self.finishPrompt(BrokerResponse(ok: true, decision: .deny), message: "Access denied.")
+          self.finishPrompt(
+            BrokerResponse(ok: true, decision: .deny), message: L("Access denied."))
           return
         }
 
@@ -802,7 +840,7 @@
           guard self.pendingRequest?.id == requestID else { return }
           self.finishPrompt(
             BrokerResponse(ok: true, decision: decision),
-            message: "Access approved: \(decision.rawValue)."
+            message: L("Access approved.")
           )
           return
         }
@@ -827,7 +865,8 @@
         self.finishPrompt(
           response,
           message: response.ok
-            ? "Approved request completed." : (response.error ?? "Approved request failed.")
+            ? L("Approved request completed.")
+            : L("Approved request failed: %@", response.error ?? L("unknown error"))
         )
       }
     }
@@ -846,7 +885,7 @@
           rootPath: prompt.projectPath)
       }
       guard let project else {
-        statusMessage = "Could not add the project folder."
+        statusMessage = L("Could not add the project folder.")
         return
       }
 
@@ -865,7 +904,7 @@
 
       finishPrompt(
         BrokerResponse(ok: true, credentials: [CredentialSummary(metadata: metadata)]),
-        message: "Saved \(prompt.environmentVariable) for \(project.name)."
+        message: L("Saved %@ for %@.", prompt.environmentVariable, project.name)
       )
     }
 
@@ -873,7 +912,7 @@
       guard pendingCredentialRequest != nil else { return }
       finishPrompt(
         BrokerResponse(ok: false, error: "The user declined to provide the credential."),
-        message: "Credential request declined."
+        message: L("Credential request declined.")
       )
     }
 
@@ -913,8 +952,9 @@
         do {
           try await adapter.installIntegration(mcpExecutablePath: helper)
           update("Connected")
-          self.statusMessage =
-            "Connected AgentKeyBox to \(adapter.displayName). Start a new agent session to load the MCP tools."
+          self.statusMessage = L(
+            "Connected AgentKeyBox to %@. Start a new agent session to load the MCP tools.",
+            adapter.displayName)
         } catch {
           update("Failed")
           self.statusMessage = error.localizedDescription
@@ -1132,7 +1172,7 @@
           guard !Task.isCancelled, let self, self.currentPromptID == promptID else { return }
           self.finishPrompt(
             BrokerResponse(ok: false, error: "Approval timed out."),
-            message: "Approval timed out."
+            message: L("Approval timed out.")
           )
         }
       }
@@ -1311,7 +1351,7 @@
         try metadataStore.save(MetadataSnapshot(projects: projects, credentials: credentials))
         return true
       } catch {
-        statusMessage = "Metadata could not be persisted: \(error.localizedDescription)"
+        statusMessage = L("Metadata could not be persisted: %@", error.localizedDescription)
         return false
       }
     }
@@ -1372,7 +1412,7 @@
       guard let index = credentials.firstIndex(where: { $0.id == id }) else { return false }
       let variable = environmentVariableName.trimmingCharacters(in: .whitespaces)
       guard variable.isEmpty || ApprovedCommandRunner.isAllowedInjectionTarget(variable) else {
-        statusMessage = "\(variable) can't be used as a variable name."
+        statusMessage = L("%@ can't be used as a variable name.", variable)
         return false
       }
       let original = credentials[index]
@@ -1380,7 +1420,7 @@
         do {
           try secretStore.save(secret: Data(newSecret.utf8), id: id)
         } catch {
-          statusMessage = "Could not save the new key: \(error.localizedDescription)"
+          statusMessage = L("Could not save the new key: %@", error.localizedDescription)
           return false
         }
       }
@@ -1398,7 +1438,7 @@
         credentials[index] = original
         return false
       }
-      statusMessage = "Saved \(label)."
+      statusMessage = L("Saved %@.", label)
       return true
     }
 
@@ -1416,7 +1456,7 @@
       Task {
         await approvalEngine.revokeAllSessions()
         self.activeSessionCount = 0
-        self.statusMessage = "AgentKeyBox will ask every time again."
+        self.statusMessage = L("AgentKeyBox will ask every time again.")
       }
     }
 
@@ -1461,9 +1501,9 @@
     }
 
     var pendingPromptTitle: String? {
-      if let request = pendingRequest { return "\(request.agentDisplayName) wants access" }
+      if let request = pendingRequest { return L("%@ wants access", request.agentDisplayName) }
       if let prompt = pendingCredentialRequest {
-        return "\(prompt.agentDisplayName) needs a credential"
+        return L("%@ needs a credential", prompt.agentDisplayName)
       }
       return nil
     }
@@ -1480,11 +1520,11 @@
         promptPanel.show(
           ApprovalView(request: request, presentation: approvalPresentation(for: request))
             .environmentObject(self).tint(.agentKeyBlue),
-          title: "\(request.agentDisplayName) wants access")
+          title: L("%@ wants access", request.agentDisplayName))
       } else if let prompt = pendingCredentialRequest {
         promptPanel.show(
           CredentialRequestView(prompt: prompt).environmentObject(self).tint(.agentKeyBlue),
-          title: "\(prompt.agentDisplayName) needs a credential")
+          title: L("%@ needs a credential", prompt.agentDisplayName))
       } else {
         promptPanel.close()
       }
@@ -1555,7 +1595,7 @@
         }
 
         if let host = presentation.rememberableHost {
-          Toggle("Always allow \(host) for this key", isOn: $rememberHost)
+          Toggle(L("Always allow %@ for this key", host), isOn: $rememberHost)
             .toggleStyle(.checkbox)
         }
         if let label = presentation.sessionApprovalLabel {
@@ -1563,7 +1603,7 @@
             .toggleStyle(.checkbox)
         }
 
-        DisclosureGroup("Details", isExpanded: $showDetails) {
+        DisclosureGroup(L("Details"), isExpanded: $showDetails) {
           // A ScrollView has no intrinsic height; the explicit minimum and ideal height keep it
           // from collapsing to zero inside the prompt panel.
           ScrollView {
@@ -1579,7 +1619,7 @@
         HStack {
           denyButton
           Spacer()
-          Label("Touch ID next", systemImage: "touchid")
+          Label(L("Touch ID next"), systemImage: "touchid")
             .font(.caption)
             .foregroundStyle(.secondary)
           allowButton
@@ -1593,11 +1633,11 @@
     // carries a warning. Escape denies ordinary requests.
     @ViewBuilder private var denyButton: some View {
       if presentation.denyIsDefault {
-        Button("Deny") { model.decide(.deny) }
+        Button(L("Deny")) { model.decide(.deny) }
           .buttonStyle(.borderedProminent)
           .keyboardShortcut(.defaultAction)
       } else {
-        Button("Deny") { model.decide(.deny) }
+        Button(L("Deny")) { model.decide(.deny) }
           .keyboardShortcut(.cancelAction)
       }
     }
@@ -1605,9 +1645,9 @@
     @ViewBuilder private var allowButton: some View {
       if presentation.denyIsDefault {
         // No keyboard shortcut: allowing a flagged request takes a deliberate click.
-        Button("Allow Once") { model.decide(.allowOnce, rememberHost: rememberHost, rememberSession: rememberSession) }
+        Button(L("Allow Once")) { model.decide(.allowOnce, rememberHost: rememberHost, rememberSession: rememberSession) }
       } else {
-        Button("Allow Once") { model.decide(.allowOnce, rememberHost: rememberHost, rememberSession: rememberSession) }
+        Button(L("Allow Once")) { model.decide(.allowOnce, rememberHost: rememberHost, rememberSession: rememberSession) }
           .buttonStyle(.borderedProminent)
           .keyboardShortcut(.defaultAction)
       }
@@ -1616,25 +1656,25 @@
     @ViewBuilder private var details: some View {
       VStack(alignment: .leading, spacing: 10) {
         if let credential = model.credentialSummary(for: request) {
-          LabeledContent("Key", value: credential.label)
+          LabeledContent(L("Key"), value: credential.label)
         }
-        LabeledContent("Folder", value: request.projectPath)
+        LabeledContent(L("Folder"), value: request.projectPath)
         switch request.kind {
         case .command:
           commandBlock
           if let variable = request.environmentVariable {
             LabeledContent(
-              "Delivered as",
+              L("Delivered as"),
               value: request.deliveryMode == .tempFile
-                ? "Temporary file path in \(variable)" : "Environment variable \(variable)")
+                ? L("Temporary file path in %@", variable) : L("Environment variable %@", variable))
           }
         case .httpRequest:
-          monospacedBlock("Request", "\(request.httpMethod ?? "GET") \(request.url ?? "")")
+          monospacedBlock(L("Request"), "\(request.httpMethod ?? "GET") \(request.url ?? "")")
           if !request.headerNames.isEmpty {
-            LabeledContent("Headers", value: request.headerNames.joined(separator: ", "))
+            LabeledContent(L("Headers"), value: request.headerNames.joined(separator: ", "))
           }
           if let body = request.bodyPreview, !body.isEmpty {
-            monospacedBlock("Body", body)
+            monospacedBlock(L("Body"), body)
           }
         case .environment:
           commandBlock
@@ -1656,10 +1696,10 @@
     @ViewBuilder private var commandBlock: some View {
       if let executable = request.executablePath {
         monospacedBlock(
-          request.arguments.isEmpty ? "Command" : "Command and arguments (one per line)",
+          request.arguments.isEmpty ? L("Command") : L("Command and arguments (one per line)"),
           CommandDisplay.lines(executable: executable, arguments: request.arguments))
       } else if let operation = request.operation, !operation.isEmpty {
-        monospacedBlock("Command", operation)
+        monospacedBlock(L("Command"), operation)
       }
     }
 
@@ -1675,14 +1715,17 @@
     private var footnote: String {
       switch request.kind {
       case .command:
-        return
+        return L(
           "AgentKeyBox runs this command on your Mac and returns redacted output. The agent never sees the key, but the command itself could send it elsewhere."
+        )
       case .httpRequest:
-        return
+        return L(
           "AgentKeyBox sends this one request itself and returns the redacted response. The agent never sees the key, and redirects are not followed."
+        )
       case .environment:
-        return
+        return L(
           "The keys are handed to this command in your terminal and to anything it starts. Only allow commands you started yourself."
+        )
       }
     }
   }
@@ -1714,11 +1757,11 @@
             .resizable()
             .frame(width: 52, height: 52)
           VStack(alignment: .leading, spacing: 2) {
-            Text("Set up \(plan.scan.projectName)").font(.title2.bold())
+            Text(L("Set up %@", plan.scan.projectName)).font(.title2.bold())
             Text(
               foundNothing
-                ? "No keys found in this folder. You can add them later."
-                : "We found these in the folder. Likely secrets are already checked."
+                ? L("No keys found in this folder. You can add them later.")
+                : L("We found these in the folder. Likely secrets are already checked.")
             )
             .foregroundStyle(.secondary)
           }
@@ -1732,7 +1775,7 @@
                 icon: .environmentVariable,
                 title: secret.key,
                 detail: ProviderBundles.includes(settings: secret.settings)
-                  ?? (secret.looksSecret ? secret.sourceFile : "\(secret.sourceFile) · setting"))
+                  ?? (secret.looksSecret ? secret.sourceFile : L("%@ · setting", secret.sourceFile)))
             }
             ForEach(plan.scan.keyFiles) { file in
               row(
@@ -1748,15 +1791,21 @@
         VStack(alignment: .leading, spacing: 8) {
           if !plan.scan.envFilesNotIgnored.isEmpty {
             Toggle(
-              "Add \(plan.scan.envFilesNotIgnored.joined(separator: ", ")) to .gitignore so \(plan.scan.envFilesNotIgnored.count == 1 ? "it isn't" : "they aren't") committed",
+              plan.scan.envFilesNotIgnored.count == 1
+                ? L(
+                  "Add %@ to .gitignore so it isn't committed",
+                  plan.scan.envFilesNotIgnored[0])
+                : L(
+                  "Add %@ to .gitignore so they aren't committed",
+                  plan.scan.envFilesNotIgnored.joined(separator: ", ")),
               isOn: $ignoreEnvFiles)
           }
           ForEach(plan.agents) { agent in
             if agent.status == .configured {
-              Label("\(agent.name) is connected", systemImage: "checkmark.circle.fill")
+              Label(L("%@ is connected", agent.name), systemImage: "checkmark.circle.fill")
                 .foregroundStyle(.green)
             } else {
-              Toggle("Connect \(agent.name)", isOn: binding(agent.id, in: $connect))
+              Toggle(L("Connect %@", agent.name), isOn: binding(agent.id, in: $connect))
             }
           }
         }
@@ -1767,18 +1816,18 @@
             plan, secrets: secrets, keyFiles: keyFiles, ignoreEnvFiles: ignoreEnvFiles,
             connect: connect)
         } label: {
-          Text(foundNothing ? "Add Project" : "Set Up").frame(maxWidth: .infinity)
+          Text(foundNothing ? L("Add Project") : L("Set Up")).frame(maxWidth: .infinity)
         }
         .buttonStyle(.borderedProminent)
         .controlSize(.large)
         .keyboardShortcut(.defaultAction)
 
         HStack {
-          Text("Keys move into your Keychain. Your files stay where they are.")
+          Text(L("Keys move into your Keychain. Your files stay where they are."))
             .font(.caption)
             .foregroundStyle(.secondary)
           Spacer()
-          Button("Cancel") { model.cancelSetup() }
+          Button(L("Cancel")) { model.cancelSetup() }
             .keyboardShortcut(.cancelAction)
         }
       }
@@ -1819,9 +1868,11 @@
 
     var body: some View {
       VStack(alignment: .leading, spacing: 14) {
-        Text("Import \(preview.fileName)").font(.title2.bold())
+        Text(L("Import %@", preview.fileName)).font(.title2.bold())
         Text(
-          "Choose which entries are secrets. Likely secrets are preselected; settings such as PORT or NODE_ENV and public keys are not."
+          L(
+            "Choose which entries are secrets. Likely secrets are preselected; settings such as PORT or NODE_ENV and public keys are not."
+          )
         )
         .font(.callout)
         .foregroundStyle(.secondary)
@@ -1839,7 +1890,8 @@
               Text(
                 ProviderBundles.includes(settings: entry.settings)
                   ?? (entry.updatesExisting
-                    ? "updates existing · \(entry.value.count) chars" : "\(entry.value.count) chars")
+                    ? L("updates existing · %@ chars", "\(entry.value.count)")
+                    : L("%@ chars", "\(entry.value.count)"))
               )
               .font(.caption)
               .foregroundStyle(.secondary)
@@ -1849,9 +1901,9 @@
         .frame(minHeight: 220)
 
         HStack {
-          Button("Cancel") { model.cancelEnvImport() }
+          Button(L("Cancel")) { model.cancelEnvImport() }
           Spacer()
-          Button("Import \(selected.count)") { model.confirmEnvImport(selectedKeys: selected) }
+          Button(L("Import %@", "\(selected.count)")) { model.confirmEnvImport(selectedKeys: selected) }
             .buttonStyle(.borderedProminent)
             .disabled(selected.isEmpty)
         }
@@ -1870,43 +1922,46 @@
       VStack(alignment: .leading, spacing: 16) {
         HStack(spacing: 12) {
           ApprovalGlyph()
-          Text("\(prompt.agentDisplayName) needs a credential")
+          Text(L("%@ needs a credential", prompt.agentDisplayName))
             .font(.title2.bold())
         }
 
-        LabeledContent("Variable", value: prompt.environmentVariable)
-        LabeledContent("Service", value: prompt.service)
+        LabeledContent(L("Variable"), value: prompt.environmentVariable)
+        LabeledContent(L("Service"), value: prompt.service)
         LabeledContent(
-          "Project",
+          L("Project"),
           value: prompt.existingProject?.name
-            ?? "\(URL(fileURLWithPath: prompt.projectPath).lastPathComponent) (will be added)")
+            ?? L(
+              "%@ (will be added)", URL(fileURLWithPath: prompt.projectPath).lastPathComponent))
         if let purpose = prompt.purpose, !purpose.isEmpty {
-          LabeledContent("Purpose", value: purpose)
+          LabeledContent(L("Purpose"), value: purpose)
         }
         if let hosts = prompt.preset?.allowedHosts, !hosts.isEmpty {
-          LabeledContent("Allowed hosts", value: hosts.joined(separator: ", "))
+          LabeledContent(L("Can be sent to"), value: hosts.joined(separator: ", "))
         }
 
         if let link = prompt.preset?.dashboardURL, let url = URL(string: link) {
-          Button("Open \(prompt.service) dashboard to get the key") {
+          Button(L("Open the %@ dashboard to get the key", prompt.service)) {
             NSWorkspace.shared.open(url)
           }
         }
 
-        SecureField("Paste the \(prompt.service) key here", text: $secret)
+        SecureField(L("Paste the %@ key here", prompt.service), text: $secret)
 
         Divider()
         Text(
-          "The key is saved in your Keychain and never sent to \(prompt.agentDisplayName). The agent only learns that the credential now exists, and every use still needs your approval."
+          L(
+            "The key is saved in your Keychain and never sent to %@. The agent only learns that the credential now exists, and every use still needs your approval.",
+            prompt.agentDisplayName)
         )
         .font(.caption)
         .foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
 
         HStack {
-          Button("Cancel") { model.cancelCredentialRequest() }
+          Button(L("Cancel")) { model.cancelCredentialRequest() }
           Spacer()
-          Button("Save") { model.submitCredentialRequest(secret: secret) }
+          Button(L("Save")) { model.submitCredentialRequest(secret: secret) }
             .buttonStyle(.borderedProminent)
             .disabled(secret.isEmpty)
         }

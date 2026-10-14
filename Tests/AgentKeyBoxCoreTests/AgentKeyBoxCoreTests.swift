@@ -3,6 +3,17 @@ import XCTest
 @testable import AgentKeyBoxCore
 
 final class AgentKeyBoxCoreTests: XCTestCase {
+  // Assertions below use the English interface text, whatever this Mac's language is.
+  override func setUp() {
+    super.setUp()
+    Localization.setOverride(.english)
+  }
+
+  override func tearDown() {
+    Localization.setOverride(nil)
+    super.tearDown()
+  }
+
   func testInMemorySecretStoreRoundTrip() throws {
     let store = InMemorySecretStore()
     let id = UUID()

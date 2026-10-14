@@ -26,6 +26,12 @@ chmod +x "$APP/Contents/MacOS/AgentKeyBox" "$APP/Contents/Helpers/agentkeybox-mc
 # App icon (regenerate with assets/brand/generate-app-iconset-macos.sh) and the brand images the
 # UI loads at runtime from Contents/Resources/Brand.
 cp assets/brand/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+# The interface text is translated in code (AgentKeyBoxCore/Translations.swift). These folders
+# tell macOS the app speaks both languages, so its own menus (Edit, Window, Services) follow.
+for language in en zh-Hant; do
+  mkdir -p "$APP/Contents/Resources/$language.lproj"
+  printf '"CFBundleDisplayName" = "AgentKeyBox";\n' > "$APP/Contents/Resources/$language.lproj/InfoPlist.strings"
+done
 mkdir -p "$APP/Contents/Resources/Brand"
 cp -R assets/brand/credential-types assets/brand/menu-bar assets/brand/ui "$APP/Contents/Resources/Brand/"
 find "$APP/Contents/Resources/Brand" -name '*.svg' -delete
@@ -36,6 +42,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 <plist version="1.0">
 <dict>
   <key>CFBundleDevelopmentRegion</key><string>en</string>
+  <key>CFBundleLocalizations</key><array><string>en</string><string>zh-Hant</string></array>
+  <key>CFBundleAllowMixedLocalizations</key><true/>
   <key>CFBundleDisplayName</key><string>AgentKeyBox</string>
   <key>CFBundleExecutable</key><string>AgentKeyBox</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>

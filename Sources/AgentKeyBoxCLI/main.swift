@@ -26,14 +26,15 @@ struct AgentKeyBoxCLI {
       await doctor(json: json)
     case "connect":
       guard args.count >= 2 else {
-        writeError("Usage: akb connect <claude|codex|all> [--helper /path/to/agentkeybox-mcp]\n")
+        writeError(L("Usage: akb connect <claude|codex|all> [--helper /path/to/agentkeybox-mcp]") + "\n")
         exit(2)
       }
       let target = args[1]
       let helper = argumentValue("--helper", in: args) ?? MCPExecutableLocator.locate()
       guard let helper else {
         writeError(
-          "agentkeybox-mcp was not found. Build/install AgentKeyBox first or pass --helper.\n")
+          L("agentkeybox-mcp was not found. Build/install AgentKeyBox first or pass --helper.")
+            + "\n")
         exit(1)
       }
       await connect(target: target, helper: helper)
@@ -48,13 +49,15 @@ struct AgentKeyBoxCLI {
     case "help", "--help", "-h":
       printHelp()
     default:
-      writeError("Unknown command: \(command)\n\n")
+      writeError(L("Unknown command: %@", command) + "\n\n")
       printHelp()
       exit(2)
     }
   }
 
   private static func doctor(json: Bool) async {
+    // Machine-readable output stays English whatever the interface language.
+    if json { Localization.setOverride(.english) }
     var checks: [DoctorCheck] = []
 
     #if os(macOS)
@@ -62,25 +65,25 @@ struct AgentKeyBoxCLI {
     #else
       checks.append(
         DoctorCheck(
-          name: "platform", status: "warn", detail: "Native AgentKeyBox UI/broker requires macOS."))
+          name: "platform", status: "warn", detail: L("Native AgentKeyBox UI/broker requires macOS.")))
     #endif
 
     if let helper = MCPExecutableLocator.locate() {
       checks.append(DoctorCheck(name: "mcp-helper", status: "ok", detail: helper))
     } else {
       checks.append(
-        DoctorCheck(name: "mcp-helper", status: "fail", detail: "agentkeybox-mcp not found."))
+        DoctorCheck(name: "mcp-helper", status: "fail", detail: L("agentkeybox-mcp not found.")))
     }
 
     let tokenStore = BrokerTokenStore()
     if let token = try? tokenStore.load(), token.count >= 32 {
       checks.append(
-        DoctorCheck(name: "broker-auth", status: "ok", detail: "Local broker token exists."))
+        DoctorCheck(name: "broker-auth", status: "ok", detail: L("Local broker token exists.")))
     } else {
       checks.append(
         DoctorCheck(
           name: "broker-auth", status: "warn",
-          detail: "Open AgentKeyBox once to initialize local broker authentication."))
+          detail: L("Open AgentKeyBox once to initialize local broker authentication.")))
     }
 
     #if os(macOS)
@@ -96,14 +99,14 @@ struct AgentKeyBoxCLI {
         checks.append(
           DoctorCheck(
             name: "broker", status: "ok",
-            detail: "AgentKeyBox broker responded; \(count) credential(s) visible here."))
+            detail: L("AgentKeyBox broker responded; %@ credential(s) visible here.", "\(count)")))
       } catch {
         checks.append(
           DoctorCheck(name: "broker", status: "warn", detail: error.localizedDescription))
       }
     #else
       checks.append(
-        DoctorCheck(name: "broker", status: "skip", detail: "Broker check only runs on macOS."))
+        DoctorCheck(name: "broker", status: "skip", detail: L("Broker check only runs on macOS.")))
     #endif
 
     await appendAgentCheck(ClaudeCodeAdapter(), to: &checks)
@@ -116,7 +119,7 @@ struct AgentKeyBoxCLI {
         print(text)
       }
     } else {
-      print("AgentKeyBox doctor")
+      print(L("AgentKeyBox doctor"))
       for check in checks {
         let icon: String
         switch check.status {
@@ -142,19 +145,19 @@ struct AgentKeyBoxCLI {
     case .notInstalled:
       checks.append(
         DoctorCheck(
-          name: adapter.id, status: "skip", detail: "\(adapter.displayName) is not installed."))
+          name: adapter.id, status: "skip", detail: L("%@ is not installed.", adapter.displayName)))
     case .notConfigured:
       checks.append(
         DoctorCheck(
           name: adapter.id, status: "warn",
-          detail: "Installed, but AgentKeyBox MCP is not configured."))
+          detail: L("Installed, but AgentKeyBox MCP is not configured.")))
     case .configured:
       checks.append(
-        DoctorCheck(name: adapter.id, status: "ok", detail: "AgentKeyBox MCP is configured."))
+        DoctorCheck(name: adapter.id, status: "ok", detail: L("AgentKeyBox MCP is configured.")))
     case .error:
       checks.append(
         DoctorCheck(
-          name: adapter.id, status: "warn", detail: "Could not determine integration status."))
+          name: adapter.id, status: "warn", detail: L("Could not determine integration status.")))
     }
   }
 
@@ -165,7 +168,7 @@ struct AgentKeyBoxCLI {
     if normalized == "claude" || normalized == "all" {
       do {
         try await ClaudeCodeAdapter().installIntegration(mcpExecutablePath: helper)
-        print("✓ Connected Claude Code")
+        print("✓ " + L("Connected %@", "Claude Code"))
       } catch {
         failures += 1
         writeError("✗ Claude Code: \(error.localizedDescription)\n")
@@ -175,7 +178,7 @@ struct AgentKeyBoxCLI {
     if normalized == "codex" || normalized == "all" {
       do {
         try await CodexAdapter().installIntegration(mcpExecutablePath: helper)
-        print("✓ Connected Codex")
+        print("✓ " + L("Connected %@", "Codex"))
       } catch {
         failures += 1
         writeError("✗ Codex: \(error.localizedDescription)\n")
@@ -183,7 +186,7 @@ struct AgentKeyBoxCLI {
     }
 
     if !["claude", "codex", "all"].contains(normalized) {
-      writeError("Unknown agent: \(target). Use claude, codex, or all.\n")
+      writeError(L("Unknown agent: %@. Use claude, codex, or all.", target) + "\n")
       exit(2)
     }
     if failures > 0 { exit(1) }
@@ -203,7 +206,7 @@ struct AgentKeyBoxCLI {
       options = arguments.filter { $0.hasPrefix("--") }
     }
     guard let program = command.first else {
-      writeError("Usage: akb run [--only VAR1,VAR2] -- <command> [args…]\n")
+      writeError(L("Usage: akb run [--only VAR1,VAR2] -- <command> [args…]") + "\n")
       exit(2)
     }
 
@@ -215,7 +218,7 @@ struct AgentKeyBoxCLI {
     } else if let found = executablePath(named: program) {
       resolved = found
     } else {
-      writeError("akb: command not found: \(program)\n")
+      writeError("akb: " + L("command not found: %@", program) + "\n")
       exit(127)
     }
     let commandArguments = Array(command.dropFirst())
@@ -226,9 +229,9 @@ struct AgentKeyBoxCLI {
         BrokerRequest(
           action: .revealEnvironment,
           agentID: "terminal",
-          agentDisplayName: "Terminal (akb run)",
+          agentDisplayName: L("Terminal (akb run)"),
           projectPath: FileManager.default.currentDirectoryPath,
-          purpose: "Run a command from your terminal with this project's secrets",
+          purpose: L("Run a command from your terminal with this project's secrets"),
           executablePath: resolved,
           arguments: commandArguments,
           requestedEnvironmentVariables: only
@@ -238,22 +241,23 @@ struct AgentKeyBoxCLI {
       exit(1)
     }
     guard response.decision != .deny, let environment = response.environment else {
-      writeError("akb: access was denied.\n")
+      writeError("akb: " + L("access was denied.") + "\n")
       exit(1)
     }
 
     for (name, value) in environment {
       setenv(name, value, 1)
     }
-    writeError("akb: injected \(environment.keys.sorted().joined(separator: ", "))\n")
+    writeError("akb: " + L("injected %@", environment.keys.sorted().joined(separator: ", ")) + "\n")
     if let skipped = response.skippedEnvironmentVariables, !skipped.isEmpty {
-      writeError("akb: skipped \(skipped.joined(separator: ", ")) (not text)\n")
+      writeError("akb: " + L("skipped %@ (not text)", skipped.joined(separator: ", ")) + "\n")
     }
 
     var argv: [UnsafeMutablePointer<CChar>?] = ([resolved] + commandArguments).map { strdup($0) }
     argv.append(nil)
     execv(resolved, argv)
-    writeError("akb: could not run \(resolved): \(String(cString: strerror(errno)))\n")
+    writeError(
+      "akb: " + L("could not run %@: %@", resolved, String(cString: strerror(errno))) + "\n")
     exit(126)
   }
 
@@ -269,19 +273,20 @@ struct AgentKeyBoxCLI {
   }
 
   private static func printHelp() {
-    print(
-      """
-      AgentKeyBox CLI (akb)
-
-      Usage:
-        akb doctor [--json]             Check local installation and agent integrations
-        akb status [--json]             Alias for doctor
-        akb connect claude              Configure Claude Code MCP integration
-        akb connect codex               Configure Codex MCP integration
-        akb connect all                 Configure both supported agents
-        akb run [--only A,B] -- <cmd>   Run a command with this project's secrets after approval
-        akb helper-path                 Print the discovered agentkeybox-mcp path
-        akb help
-      """)
+    let rows: [(String, String)] = [
+      ("akb doctor [--json]", L("Check local installation and agent integrations")),
+      ("akb status [--json]", L("Alias for doctor")),
+      ("akb connect claude", L("Configure Claude Code MCP integration")),
+      ("akb connect codex", L("Configure Codex MCP integration")),
+      ("akb connect all", L("Configure both supported agents")),
+      ("akb run [--only A,B] -- <cmd>", L("Run a command with this project's secrets after approval")),
+      ("akb helper-path", L("Print the discovered agentkeybox-mcp path")),
+      ("akb help", ""),
+    ]
+    let usage = rows.map { command, summary in
+      summary.isEmpty
+        ? "  \(command)" : "  \(command.padding(toLength: 32, withPad: " ", startingAt: 0))\(summary)"
+    }
+    print("AgentKeyBox CLI (akb)\n\n" + L("Usage:") + "\n" + usage.joined(separator: "\n"))
   }
 }

@@ -8,10 +8,11 @@ public enum AgentIntegrationError: Error, LocalizedError, Equatable {
   public var errorDescription: String? {
     switch self {
     case .executableNotFound(let name):
-      return "\(name) is not installed or could not be found."
+      return L("%@ is not installed or could not be found.", name)
     case .helperNotFound:
-      return
+      return L(
         "agentkeybox-mcp could not be found next to the AgentKeyBox app or in a standard local bin directory."
+      )
     case .commandFailed(let message):
       return message
     }
@@ -239,7 +240,8 @@ public func runExecutable(_ path: String, arguments: [String]) throws -> String 
     let message = output.trimmingCharacters(in: .whitespacesAndNewlines)
     throw AgentIntegrationError.commandFailed(
       message.isEmpty
-        ? "Agent integration command failed with exit code \(process.terminationStatus)." : message
+        ? L("Agent integration command failed with exit code %@.", "\(process.terminationStatus)")
+        : message
     )
   }
   return output

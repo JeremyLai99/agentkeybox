@@ -33,7 +33,7 @@ public enum ProviderBundles {
       !(settings[$0.variable] ?? "").isEmpty
     }
     guard !present.isEmpty else { return nil }
-    return "Includes " + listed(present.map(\.label))
+    return L("Includes %@", listed(present.map { L($0.label) }))
   }
 
   /// Settings to set next to the key when an approved command runs. Names that are not safe to
@@ -87,13 +87,15 @@ public enum ProviderBundles {
     return updated
   }
 
-  /// "Key ID", "Key ID and Issuer ID", "A, B, and C".
+  /// "Key ID", "Key ID and Issuer ID", "A, B, and C" (「A、B 和 C」 in Chinese).
   public static func listed(_ items: [String]) -> String {
     switch items.count {
     case 0: return ""
     case 1: return items[0]
-    case 2: return "\(items[0]) and \(items[1])"
-    default: return items.dropLast().joined(separator: ", ") + ", and " + (items.last ?? "")
+    case 2: return L("%@ and %@", items[0], items[1])
+    default:
+      return L(
+        "%@, and %@", items.dropLast().joined(separator: L(", ")), items.last ?? "")
     }
   }
 }

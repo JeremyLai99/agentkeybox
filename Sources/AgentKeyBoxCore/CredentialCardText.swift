@@ -4,8 +4,8 @@ import Foundation
 public enum CredentialCardText {
   /// "Used by Claude Code · 2 min ago", or "Not used yet".
   public static func usage(_ lastUse: AccessEvent?, now: Date = Date()) -> String {
-    guard let lastUse else { return "Not used yet" }
-    return "Used by \(lastUse.agentDisplayName) · \(relative(lastUse.timestamp, now: now))"
+    guard let lastUse else { return L("Not used yet") }
+    return L("Used by %@ · %@", lastUse.agentDisplayName, relative(lastUse.timestamp, now: now))
   }
 
   /// Something the user should fix on a key's card, and the button that fixes it.
@@ -23,35 +23,37 @@ public enum CredentialCardText {
   public static func attention(for credential: CredentialMetadata) -> Attention? {
     let settings = ProviderBundles.settingsNeedingAttention(for: credential)
     if !settings.missing.isEmpty {
-      let names = settings.missing.map(\.label)
+      let names = settings.missing.map { L($0.label) }
       return Attention(
-        message: "Needs the \(ProviderBundles.listed(names))",
-        action: "Add \(names.count == 1 ? names[0] : "Missing Details")…", opensAdvanced: false)
+        message: L("Needs the %@", ProviderBundles.listed(names)),
+        action: names.count == 1 ? L("Add %@…", names[0]) : L("Add Missing Details…"),
+        opensAdvanced: false)
     }
     if let invalid = settings.invalid.first {
       return Attention(
-        message: "The \(invalid.label) doesn't look right", action: "Fix \(invalid.label)…",
+        message: L("The %@ doesn't look right", L(invalid.label)), action: L("Fix %@…", L(invalid.label)),
         opensAdvanced: false)
     }
     guard !credential.isFileCredential else { return nil }
     let hosts = (credential.allowedHosts ?? []).filter { !$0.isEmpty }
     return hosts.isEmpty
       ? Attention(
-        message: "Can be sent to any website", action: "Limit to one website…", opensAdvanced: true)
+        message: L("Can be sent to any website"), action: L("Limit to one website…"),
+        opensAdvanced: true)
       : nil
   }
 
   static func relative(_ date: Date, now: Date) -> String {
     let seconds = max(0, now.timeIntervalSince(date))
     switch seconds {
-    case ..<60: return "just now"
-    case ..<3600: return "\(Int(seconds / 60)) min ago"
-    case ..<86_400: return "\(Int(seconds / 3600)) hr ago"
-    case ..<172_800: return "yesterday"
+    case ..<60: return L("just now")
+    case ..<3600: return L("%@ min ago", "\(Int(seconds / 60))")
+    case ..<86_400: return L("%@ hr ago", "\(Int(seconds / 3600))")
+    case ..<172_800: return L("yesterday")
     default:
       let formatter = DateFormatter()
-      formatter.locale = Locale(identifier: "en_US_POSIX")
-      formatter.setLocalizedDateFormatFromTemplate("MMM d")
+      formatter.locale = Localization.current.locale
+      formatter.setLocalizedDateFormatFromTemplate("MMMd")
       return formatter.string(from: date)
     }
   }
