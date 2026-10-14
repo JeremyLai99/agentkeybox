@@ -289,6 +289,8 @@
     @Published var pendingEnvImport: EnvImportPreview?
     @Published var pendingSetup: SetupPlan?
     @Published var statusMessage: String?
+    /// Shown as a banner while the app runs from outside Applications (e.g. from Downloads).
+    @Published var offersMoveToApplications = InstallLocation.shouldOfferMove(Bundle.main.bundleURL)
     /// Interface language. Text switches immediately; macOS's own menus (Edit, Window) follow
     /// on the next launch through this app's `AppleLanguages`.
     @Published var languagePreference: LanguagePreference = Localization.preference {
@@ -356,6 +358,7 @@
       } catch {
         self.brokerStatus = L("Broker unavailable: %@", error.localizedDescription)
       }
+      keepAgentsConnected()
     }
 
     deinit {
@@ -918,6 +921,75 @@
 
     // MARK: - Agent integrations
 
+    /// Keeps connected agents pointed at the helper's fixed path. Runs once per launch: refreshes
+    /// the installed helper from this app and re-registers any connected agent that still points
+    /// somewhere else (e.g. into an app bundle that has since moved). Agents the user has not
+    /// connected are left alone.
+    func keepAgentsConnected() {
+      Task {
+        guard
+          let helper = await Task.detached(priority: .utility, operation: {
+            HelperInstaller.installBundledHelper()
+          }).value
+        else { return }
+        for adapter in [ClaudeCodeAdapter() as any AgentAdapter, CodexAdapter()] {
+          let key = Self.registeredHelperKey(adapter.id)
+          guard UserDefaults.standard.string(forKey: key) != helper,
+            await adapter.integrationStatus() == .configured
+          else { continue }
+          do {
+            try await adapter.installIntegration(mcpExecutablePath: helper)
+            UserDefaults.standard.set(helper, forKey: key)
+          } catch {
+            // The next launch tries again; the existing connection is no worse than before.
+          }
+        }
+        refreshAgentStatuses()
+      }
+    }
+
+    static func registeredHelperKey(_ agentID: String) -> String {
+      "AgentKeyBoxRegisteredHelper.\(agentID)"
+    }
+
+    /// Copies the app into Applications, then quits and opens the copy. The original is moved to
+    /// the Trash unless macOS was running it from a temporary translocated copy, whose original
+    /// location is not known.
+    func moveToApplications() {
+      guard pendingRequest == nil, pendingCredentialRequest == nil else {
+        statusMessage = L("Finish the pending approval first.")
+        return
+      }
+      let source = Bundle.main.bundleURL
+      let directory = InstallLocation.applicationsDirectory()
+      let destination = directory.appendingPathComponent(source.lastPathComponent)
+      do {
+        try InstallLocation.copyApp(from: source, to: destination)
+      } catch {
+        statusMessage = L(
+          "Could not move AgentKeyBox to %@: %@", directory.path, error.localizedDescription)
+        return
+      }
+      if !InstallLocation.isTranslocated(source) {
+        try? FileManager.default.trashItem(at: source, resultingItemURL: nil)
+      }
+      // A small shell waits for this process to exit, then opens the new copy.
+      let relaunch = Process()
+      relaunch.executableURL = URL(fileURLWithPath: "/bin/sh")
+      relaunch.arguments = [
+        "-c",
+        "while /bin/kill -0 \(ProcessInfo.processInfo.processIdentifier) 2>/dev/null; do /bin/sleep 0.2; done; /usr/bin/open \"$1\"",
+        "sh", destination.path,
+      ]
+      do {
+        try relaunch.run()
+      } catch {
+        statusMessage = L("AgentKeyBox is now in %@. Open it from there.", directory.path)
+        return
+      }
+      NSApp.terminate(nil)
+    }
+
     func refreshAgentStatuses() {
       Task {
         let claude = await ClaudeCodeAdapter().integrationStatus()
@@ -942,7 +1014,7 @@
 
     private func connect<A: AgentAdapter>(adapter: A, update: @escaping @MainActor (String) -> Void)
     {
-      guard let helper = MCPExecutableLocator.locate() else {
+      guard let helper = HelperInstaller.installBundledHelper() else {
         update("MCP helper not found")
         statusMessage = AgentIntegrationError.helperNotFound.localizedDescription
         return
@@ -951,6 +1023,7 @@
       Task {
         do {
           try await adapter.installIntegration(mcpExecutablePath: helper)
+          UserDefaults.standard.set(helper, forKey: Self.registeredHelperKey(adapter.id))
           update("Connected")
           self.statusMessage = L(
             "Connected AgentKeyBox to %@. Start a new agent session to load the MCP tools.",

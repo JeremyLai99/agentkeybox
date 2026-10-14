@@ -109,6 +109,10 @@ enum Translations {
       "AgentKeyBox 健康檢查",
     "AgentKeyBox finds the keys in it, keeps them in your Keychain, and connects Claude Code. Your coding agent then asks before it uses one.":
       "AgentKeyBox 會找出裡面的金鑰、存進你的鑰匙圈，並連接 Claude Code。之後程式代理每次要用金鑰，都會先問你。",
+    "AgentKeyBox is now in %@. Open it from there.":
+      "AgentKeyBox 已經在 %@ 裡了，請從那裡打開。",
+    "AgentKeyBox isn't in your Applications folder yet.":
+      "AgentKeyBox 還沒放進「應用程式」資料夾。",
     "AgentKeyBox runs this command on your Mac and returns redacted output. The agent never sees the key, but the command itself could send it elsewhere.":
       "AgentKeyBox 會在你的 Mac 上執行這個指令，並回傳遮蔽過金鑰的輸出。代理看不到金鑰，但指令本身仍有可能把它送到別處。",
     "AgentKeyBox sends this one request itself and returns the redacted response. The agent never sees the key, and redirects are not followed.":
@@ -201,6 +205,8 @@ enum Translations {
       "無法匯入 .env：%@",
     "Could not import credential file: %@":
       "無法匯入金鑰檔：%@",
+    "Could not move AgentKeyBox to %@: %@":
+      "無法把 AgentKeyBox 移到 %1$@：%2$@",
     "Could not save keys: %@":
       "無法儲存金鑰：%@",
     "Could not save secret: %@":
@@ -313,6 +319,8 @@ enum Translations {
       "來自 macOS 的選單（例如「編輯」和「視窗」）會在下次打開 AgentKeyBox 時切換。",
     "Metadata could not be persisted: %@":
       "無法儲存資料：%@",
+    "Move to Applications":
+      "移到「應用程式」",
     "Name":
       "名稱",
     "Native AgentKeyBox UI/broker requires macOS.":
@@ -329,6 +337,8 @@ enum Translations {
       "沒有待處理的請求",
     "No requests yet":
       "還沒有任何請求",
+    "Not Now":
+      "以後再說",
     "Not asking again in %@ agent sessions":
       "有 %@ 個代理工作階段不再詢問",
     "Not asking again in 1 agent session":

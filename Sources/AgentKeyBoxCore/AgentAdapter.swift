@@ -110,9 +110,11 @@ public struct CodexAdapter: AgentAdapter {
 }
 
 public enum MCPExecutableLocator {
+  /// - Parameter includingInstalled: also accept the copy `HelperInstaller` keeps for agents.
   public static func locate(
     bundleURL: URL? = Bundle.main.bundleURL,
-    executableURL: URL? = Bundle.main.executableURL
+    executableURL: URL? = Bundle.main.executableURL,
+    includingInstalled: Bool = true
   ) -> String? {
     var candidates: [URL] = []
     if let bundleURL {
@@ -127,6 +129,7 @@ public enum MCPExecutableLocator {
         ".local/bin/agentkeybox-mcp"))
     candidates.append(URL(fileURLWithPath: "/opt/homebrew/bin/agentkeybox-mcp"))
     candidates.append(URL(fileURLWithPath: "/usr/local/bin/agentkeybox-mcp"))
+    if includingInstalled { candidates.append(HelperInstaller.installedHelperURL) }
 
     return candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0.path) })?.path
   }

@@ -48,15 +48,11 @@
             )
           }
       } detail: {
-        if model.projects.isEmpty {
-          EmptyStateView(isDropTargeted: isDropTargeted, chooseFolder: chooseProjectFolder)
-        } else if let selection = model.selection {
-          ProjectDetailView(
-            item: selection,
-            addKey: { addingKey = true },
-            edit: { editing = EditRequest(credentialID: $0, showAdvanced: $1) })
-        } else {
-          Text(L("Choose a project")).foregroundStyle(.secondary)
+        VStack(spacing: 0) {
+          if model.offersMoveToApplications {
+            MoveToApplicationsBanner()
+          }
+          detail.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
       }
       .sheet(isPresented: $addingKey) {
@@ -112,6 +108,19 @@
       .task {
         model.refreshAgentStatuses()
         model.selectFirstProjectIfNeeded()
+      }
+    }
+
+    @ViewBuilder private var detail: some View {
+      if model.projects.isEmpty {
+        EmptyStateView(isDropTargeted: isDropTargeted, chooseFolder: chooseProjectFolder)
+      } else if let selection = model.selection {
+        ProjectDetailView(
+          item: selection,
+          addKey: { addingKey = true },
+          edit: { editing = EditRequest(credentialID: $0, showAdvanced: $1) })
+      } else {
+        Text(L("Choose a project")).foregroundStyle(.secondary)
       }
     }
 
@@ -187,6 +196,28 @@
       panel.message = L("Choose your project folder. AgentKeyBox will find the keys in it.")
       guard panel.runModal() == .OK, let url = panel.url else { return }
       model.beginSetup(folder: url)
+    }
+  }
+
+  /// Shown while AgentKeyBox runs from outside Applications, e.g. straight from Downloads.
+  struct MoveToApplicationsBanner: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+      HStack(spacing: 10) {
+        Image(systemName: "arrow.down.app.fill")
+          .font(.title3)
+          .foregroundStyle(Color.agentKeyBlue)
+        Text(L("AgentKeyBox isn't in your Applications folder yet."))
+        Spacer()
+        Button(L("Not Now")) { model.offersMoveToApplications = false }
+        Button(L("Move to Applications")) { model.moveToApplications() }
+          .buttonStyle(.borderedProminent)
+      }
+      .padding(.horizontal, 16)
+      .padding(.vertical, 10)
+      .background(Color.agentKeyBlue.opacity(0.08))
+      .overlay(alignment: .bottom) { Divider() }
     }
   }
 

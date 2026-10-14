@@ -30,7 +30,8 @@ struct AgentKeyBoxCLI {
         exit(2)
       }
       let target = args[1]
-      let helper = argumentValue("--helper", in: args) ?? MCPExecutableLocator.locate()
+      // Agents get the helper's fixed copy, so the connection survives moving the app.
+      let helper = argumentValue("--helper", in: args) ?? HelperInstaller.installBundledHelper()
       guard let helper else {
         writeError(
           L("agentkeybox-mcp was not found. Build/install AgentKeyBox first or pass --helper.")
