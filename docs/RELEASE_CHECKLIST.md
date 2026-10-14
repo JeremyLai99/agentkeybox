@@ -53,7 +53,7 @@ Status for **0.4.0**, with the evidence for each checked item. Unchecked items a
 
 - [x] version updated in `VERSION` and `Sources/AgentKeyBoxCore/AgentKeyBoxVersion.swift` (a test checks they match)
 - [x] CHANGELOG updated
-- [ ] dedicated security contact configured (planned: GitHub private vulnerability reporting)
+- [x] dedicated security contact configured — GitHub private vulnerability reporting is enabled; SECURITY.md points to it
 - [x] binaries signed with Developer ID — `Developer ID Application: HUANG-CHENG LAI (8UY9UJ99HY)`
 - [x] Developer ID provisioning profile embedded; app reports the data protection keychain mode
 - [x] `AGENTKEYBOX_NOTARY_PROFILE=... ./Scripts/notarize-release-macos.sh` passes — Accepted, stapled, `spctl`: Notarized Developer ID

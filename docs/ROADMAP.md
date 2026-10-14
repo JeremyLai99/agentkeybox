@@ -21,7 +21,7 @@
 - [ ] real Claude Code end-to-end approval run (approvals verified through the MCP helper; not yet from a Claude Code session)
 - [ ] real Codex end-to-end approval run
 - [x] signing/notarization with a real Apple Developer identity
-- [ ] dedicated security contact
+- [x] dedicated security contact (GitHub private vulnerability reporting)
 - [x] install from a download: notarized universal app (Apple silicon and Intel), Move to Applications, agent connections that survive moving or updating the app
 - [x] English and Traditional Chinese interface
 

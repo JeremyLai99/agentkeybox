@@ -6,7 +6,7 @@ AgentKeyBox is experimental security-adjacent software. It has **not** undergone
 
 Please do not open a public GitHub issue for a vulnerability that could expose credentials.
 
-Until a dedicated security inbox is established, contact the repository owner privately through the GitHub account that publishes this repository and include:
+Report it privately through GitHub instead: open the repository's **Security** tab and click **Report a vulnerability** (or go to <https://github.com/JeremyLai99/agentkeybox/security/advisories/new>). Only the maintainers see the report. Please include:
 
 - affected version / commit
 - reproduction steps
@@ -14,7 +14,7 @@ Until a dedicated security inbox is established, contact the repository owner pr
 - impact
 - any proof-of-concept that does not expose third-party secrets
 
-A dedicated security contact should be added before the first public binary release.
+We will reply in the report, work on a fix with you there, and publish an advisory once a fixed release is available.
 
 ## Current security boundaries
 
