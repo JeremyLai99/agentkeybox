@@ -115,7 +115,7 @@ private final class MCPServer: @unchecked Sendable {
           "capabilities": .object(["tools": .object([:])]),
           "serverInfo": .object([
             "name": .string("AgentKeyBox"),
-            "version": .string("0.3.0"),
+            "version": .string(AgentKeyBoxVersion.current),
           ]),
           "instructions": .string(
             "Use AgentKeyBox when a task needs a developer credential. Call list_credentials first. To call a provider's HTTPS API, prefer http_request with {{secret}} in a header. To run a local tool that reads the credential from an environment variable, use run_with_secret. If the credential is missing, call request_credential so the user can enter it in AgentKeyBox. Never ask the user to paste raw secrets into chat."

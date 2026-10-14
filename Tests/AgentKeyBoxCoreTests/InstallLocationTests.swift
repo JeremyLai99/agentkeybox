@@ -105,3 +105,15 @@ final class InstallLocationTests: XCTestCase {
     }
   #endif
 }
+
+final class VersionTests: XCTestCase {
+  func testVersionFileMatchesTheCode() throws {
+    let file = URL(fileURLWithPath: #filePath)
+      .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+      .appendingPathComponent("VERSION")
+    let version = try String(contentsOf: file, encoding: .utf8)
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    XCTAssertEqual(version, AgentKeyBoxVersion.current)
+    XCTAssertNotNil(version.range(of: #"^\d+\.\d+\.\d+$"#, options: .regularExpression))
+  }
+}

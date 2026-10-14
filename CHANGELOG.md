@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 — alpha
+
+First release meant for people to download: a notarized, universal app with a project-centric window, plain-language approvals, provider bundles, English and Traditional Chinese, and connections that survive moving or updating the app.
 
 ### Added
 

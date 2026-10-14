@@ -39,7 +39,7 @@
 
 ## Release hygiene
 
-- [ ] version updated in MCP and Info.plist
+- [ ] version updated in `VERSION` and `Sources/AgentKeyBoxCore/AgentKeyBoxVersion.swift` (a test checks they match)
 - [ ] CHANGELOG updated
 - [ ] dedicated security contact configured
 - [ ] binaries signed with Developer ID

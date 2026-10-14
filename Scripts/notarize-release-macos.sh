@@ -10,9 +10,10 @@ fi
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+VERSION="$(tr -d '[:space:]' < VERSION)"
 APP="dist/AgentKeyBox.app"
-ZIP="dist/AgentKeyBox-0.3.0-macOS.zip"
-SUBMIT_ZIP="dist/AgentKeyBox-0.3.0-notarization.zip"
+ZIP="dist/AgentKeyBox-$VERSION-macOS.zip"
+SUBMIT_ZIP="dist/AgentKeyBox-$VERSION-notarization.zip"
 
 if [[ ! -d "$APP" ]]; then
   echo "Missing $APP. Build a Developer ID signed app first with Scripts/build-release-macos.sh." >&2

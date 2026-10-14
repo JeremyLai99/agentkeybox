@@ -8,6 +8,8 @@ fi
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+# The release version lives in VERSION; AgentKeyBoxVersion.swift must match (a test checks).
+VERSION="$(tr -d '[:space:]' < VERSION)"
 rm -rf dist
 mkdir -p dist
 
@@ -52,7 +54,7 @@ mkdir -p "$APP/Contents/Resources/Brand"
 cp -R assets/brand/credential-types assets/brand/menu-bar assets/brand/ui "$APP/Contents/Resources/Brand/"
 find "$APP/Contents/Resources/Brand" -name '*.svg' -delete
 
-cat > "$APP/Contents/Info.plist" <<'PLIST'
+cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -67,8 +69,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
   <key>CFBundleName</key><string>AgentKeyBox</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.3.0</string>
-  <key>CFBundleVersion</key><string>3</string>
+  <key>CFBundleShortVersionString</key><string>$VERSION</string>
+  <key>CFBundleVersion</key><string>$VERSION</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>NSHumanReadableCopyright</key><string>AgentKeyBox contributors</string>
 </dict>
@@ -117,7 +119,7 @@ fi
 
 rm -rf "$BIN_DIR"
 
-ZIP="dist/AgentKeyBox-0.3.0-macOS.zip"
+ZIP="dist/AgentKeyBox-$VERSION-macOS.zip"
 ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
 (
   cd dist
