@@ -12,7 +12,7 @@ AgentKeyBox is an experimental macOS utility for vibe coders, indie developers, 
 
 ## Install
 
-**You need:** macOS 14 (Sonoma) or later on an Apple Silicon Mac (M1 or later), and Claude Code or Codex. Touch ID is optional; without it, macOS asks for your login password instead.
+**You need:** macOS 14 (Sonoma) or later on any Mac (Apple silicon or Intel), and Claude Code or Codex. Touch ID is optional; without it, macOS asks for your login password instead.
 
 1. Download `AgentKeyBox-<version>-macOS.zip` from the [latest release](https://github.com/JeremyLai99/agentkeybox/releases/latest).
 2. Double-click the zip, then open **AgentKeyBox**. macOS asks whether to open an app downloaded from the internet; choose **Open**. The app is signed with a Developer ID and notarized by Apple.

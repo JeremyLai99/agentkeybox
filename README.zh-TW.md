@@ -12,7 +12,7 @@
 
 ## 安裝
 
-**需要：** macOS 14（Sonoma）以上、Apple Silicon 晶片的 Mac（M1 以後），以及 Claude Code 或 Codex。Touch ID 不是必要的，沒有的話 macOS 會改問你的登入密碼。
+**需要：** macOS 14（Sonoma）以上的 Mac（Apple 晶片或 Intel 晶片都可以），以及 Claude Code 或 Codex。Touch ID 不是必要的，沒有的話 macOS 會改問你的登入密碼。
 
 1. 到[最新版本頁面](https://github.com/JeremyLai99/agentkeybox/releases/latest)下載 `AgentKeyBox-<版本>-macOS.zip`。
 2. 雙擊 zip 檔解壓縮，再打開 **AgentKeyBox**。macOS 會問「要打開從網際網路下載的 App 嗎？」，請選「**打開**」。這個 App 已經用 Developer ID 簽章，並通過 Apple 公證。

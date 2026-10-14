@@ -11,8 +11,24 @@ cd "$ROOT"
 rm -rf dist
 mkdir -p dist
 
-swift build -c release
-BIN_DIR="$(swift build -c release --show-bin-path)"
+# Universal binaries, so the app runs on Apple silicon and Intel Macs. Each architecture is
+# built separately and merged with lipo: `swift build --arch arm64 --arch x86_64` switches to
+# the Xcode build system, which rejects `@main` in a file named main.swift.
+# AGENTKEYBOX_ARCHS="arm64" builds a single architecture for quicker local packaging.
+read -r -a ARCHS <<<"${AGENTKEYBOX_ARCHS:-arm64 x86_64}"
+BIN_DIR="dist/.universal"
+mkdir -p "$BIN_DIR"
+ARCH_BIN_DIRS=()
+for arch in "${ARCHS[@]}"; do
+  swift build -c release --triple "$arch-apple-macosx14.0"
+  ARCH_BIN_DIRS+=("$(swift build -c release --triple "$arch-apple-macosx14.0" --show-bin-path)")
+done
+for product in AgentKeyBox agentkeybox-mcp akb; do
+  inputs=()
+  for dir in "${ARCH_BIN_DIRS[@]}"; do inputs+=("$dir/$product"); done
+  lipo -create -output "$BIN_DIR/$product" "${inputs[@]}"
+done
+
 APP="dist/AgentKeyBox.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Helpers" "$APP/Contents/Resources" "dist/bin"
 
@@ -98,6 +114,8 @@ ENT
 else
   codesign --force --deep --sign - "$APP"
 fi
+
+rm -rf "$BIN_DIR"
 
 ZIP="dist/AgentKeyBox-0.3.0-macOS.zip"
 ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
