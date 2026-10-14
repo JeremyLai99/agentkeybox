@@ -28,7 +28,7 @@ Status for **0.4.0**, with the evidence for each checked item. Unchecked items a
 - [x] universal binary: the x86_64 app runs under Rosetta and its broker and helper answer
 - [ ] universal binary on a real Intel Mac
 - [x] interface in Traditional Chinese on a Traditional Chinese Mac; English when forced
-- [ ] switching Settings › Language updates the open windows
+- [x] switching Settings › Language updates the open windows — checked by the user on a real Mac
 
 ## Claude Code
 
