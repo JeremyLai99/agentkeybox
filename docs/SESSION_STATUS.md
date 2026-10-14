@@ -18,7 +18,7 @@ This file distinguishes what is implemented and testable in the repository from 
 - `list_credentials` MCP tool exposing metadata only
 - `run_with_secret` MCP tool
 - native Allow Once / Deny approval state
-- optional local biometric confirmation when macOS supports it
+- Touch ID (or login password) confirmation for every approval
 - protected temporary-file delivery for file credentials
 - environment-variable delivery for UTF-8 credentials
 - output capture limits and common secret redaction
@@ -61,19 +61,21 @@ The final verification command is:
 make check
 ```
 
-## Requires a real Mac
+## Verified on a real Mac
 
-These items rely on macOS-only frameworks or locally installed agent applications and therefore cannot be truthfully validated in this execution environment:
+As of 0.4.0 (see [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md) for the evidence):
 
-- SwiftUI application target type-check/runtime on macOS
-- real Keychain read/write behavior
-- Touch ID prompt behavior
-- Network.framework broker runtime behavior
-- `.app` code signing/notarization with a real Developer ID
+- the SwiftUI app, Keychain storage behind Touch ID, and the Unix-socket broker
+- approval prompts, denial, and "don't ask again during this session"
+- Developer ID signing, notarization, and installing from a quarantined download
+- the universal build's x86_64 slice under Rosetta
+
+## Still open
+
 - Claude Code end-to-end MCP registration/request flow
-- Codex end-to-end MCP registration/request flow
-- confirmation of Codex MCP working-directory/project-path behavior
-- final native approval-sheet UX and focus behavior
+- Codex end-to-end MCP registration/request flow, including its working-directory/project-path behavior
+- approval timeout and the high-risk warning in the running app
+- a real Intel Mac
 
 Follow `docs/MACOS_TEST.md` for the remaining gate.
 

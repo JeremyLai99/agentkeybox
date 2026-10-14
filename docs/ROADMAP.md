@@ -17,41 +17,41 @@
 - [x] `akb doctor`
 - [x] development installer and release packaging scripts
 - [x] CI, protocol smoke tests, static secret checks
-- [ ] real macOS compile/runtime verification
-- [ ] real Claude Code end-to-end approval run
+- [x] real macOS compile/runtime verification
+- [ ] real Claude Code end-to-end approval run (approvals verified through the MCP helper; not yet from a Claude Code session)
 - [ ] real Codex end-to-end approval run
-- [ ] signing/notarization with a real Apple Developer identity
+- [x] signing/notarization with a real Apple Developer identity
 - [ ] dedicated security contact
+- [x] install from a download: notarized universal app (Apple silicon and Intel), Move to Applications, agent connections that survive moving or updating the app
+- [x] English and Traditional Chinese interface
 
 ## P1 — usability validation
 
 - [ ] Cursor adapter
 - [ ] Antigravity / Gemini CLI adapter
-- [ ] persistent but narrowly scoped session approvals
-- [ ] credential edit flow
+- [x] narrowly scoped session approvals ("don't ask again during this session"; same agent session, key, and listed host or exact command; 8-hour limit)
+- [x] credential edit flow
 - [ ] search/filter
-- [ ] menu-bar experience
+- [x] menu-bar experience
 - [x] richer App Store Connect credential bundle metadata
 - [x] safer provider-specific HTTP operations
 
 
 ## UI / UX productization
 
-The current UI is sufficient for technical validation but is not the intended public-facing experience.
+The product direction is described in [`UI_DIRECTION.md`](UI_DIRECTION.md). Status for 0.4.0:
 
-Before broad public alpha, move toward the product direction described in [`UI_DIRECTION.md`](UI_DIRECTION.md):
-
-- [ ] project-centric main navigation
-- [ ] drag-and-drop `.env`, `.p8`, `.pem`, and JSON import
-- [ ] guided first-run onboarding
-- [ ] Claude Code / Codex connection inside onboarding and Settings
+- [x] project-centric main navigation
+- [x] drag-and-drop `.env`, `.p8`, `.pem`, and JSON import (a whole project folder, or single files)
+- [x] guided first-run onboarding (drop a project folder; one Set Up confirmation)
+- [x] Claude Code / Codex connection inside onboarding and Settings
 - [x] remove simulation/debug controls from production builds
 - [x] simplified approval prompt with expandable command details
-- [ ] first-class file credential cards
+- [x] first-class file credential cards
 - [x] provider-aware credential bundles
-- [ ] human-readable error and empty states
+- [ ] human-readable error and empty states (empty states done; some errors still show system text)
 
-The goal is not simply to make the current prototype prettier. The goal is to make secrets infrastructure disappear behind a workflow that a vibe coder can understand immediately.
+Next: watch a new vibe coder install and set up the app without help, and fix where they get stuck. The goal is not simply to make the interface prettier. The goal is to make secrets infrastructure disappear behind a workflow that a vibe coder can understand immediately.
 
 ## P2 — only after usage validates the workflow
 

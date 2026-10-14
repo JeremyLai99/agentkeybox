@@ -1,27 +1,39 @@
 # Alpha Release Checklist
 
+Status for **0.4.0**, with the evidence for each checked item. Unchecked items are still open.
+
 ## Automated
 
-- [ ] `make check`
-- [ ] GitHub macOS CI passes
-- [ ] packaged `.app` artifact launches
+- [x] `make check` — 75 tests, MCP and CLI smoke tests, static checks (2026-10-14)
+- [x] GitHub macOS CI passes — including the universal `AgentKeyBox-0.4.0-macOS.zip` package
+- [x] packaged `.app` artifact launches — notarized build opened from a quarantined copy in Downloads
 
 ## macOS runtime
 
-- [ ] Keychain save/read/delete works
-- [ ] Touch ID / password confirmation appears for every approval
-- [ ] broker binds and responds locally
-- [ ] stale/replayed broker request is rejected
-- [ ] `.env` import works
-- [ ] `.p8` temp-file delivery cleans up after execution
-- [ ] denial returns a clean error to the agent
+- [x] Keychain save/read/delete works — project setup saves, approvals read, Remove Project deletes without Keychain errors
+- [x] Touch ID / password confirmation appears for every approval — one `evaluatePolicy` per approval in the system log; requests covered by an opted-in session approval skip it by design
+- [x] broker binds and responds locally — `akb doctor` reports the broker, on Apple silicon and under Rosetta
+- [x] stale/replayed broker request is rejected — `testBrokerReplayGuardRejectsReplayAndExpiredRequests` (unit test, not yet through the app)
+- [x] `.env` import works — one-step project setup on a real Mac
+- [x] `.p8` temp-file delivery cleans up after execution — `testApprovedCommandRunnerTemporaryFileDeliveryCleansUp` (unit test, not yet through the app)
+- [x] denial returns a clean error to the agent — `Credential access was denied.`
 - [ ] approval timeout returns a clean error
-- [ ] high-risk command warning renders correctly
+- [ ] high-risk command warning renders correctly in the app (covered by `testApprovalForRiskyCommandLeadsWithWarning`)
+
+## Install and update
+
+- [x] a downloaded copy runs translocated, offers Move to Applications, and reopens from `/Applications` without quarantine
+- [x] the MCP helper is installed at `~/Library/Application Support/AgentKeyBox/bin/agentkeybox-mcp` and matches the app's copy
+- [ ] a connected agent that points at an old helper path is re-registered at launch (needs a connected Claude Code)
+- [x] universal binary: the x86_64 app runs under Rosetta and its broker and helper answer
+- [ ] universal binary on a real Intel Mac
+- [x] interface in Traditional Chinese on a Traditional Chinese Mac; English when forced
+- [ ] switching Settings › Language updates the open windows
 
 ## Claude Code
 
 - [ ] `akb connect claude` succeeds
-- [ ] `claude mcp get agentkeybox` shows the expected command
+- [ ] `claude mcp get agentkeybox` shows the fixed helper path
 - [ ] `list_credentials` sees only expected project/global metadata
 - [ ] `run_with_secret` triggers native approval
 - [ ] Deny blocks execution
@@ -30,7 +42,7 @@
 ## Codex
 
 - [ ] `akb connect codex` succeeds
-- [ ] `codex mcp get agentkeybox --json` shows the expected command
+- [ ] `codex mcp get agentkeybox --json` shows the fixed helper path
 - [ ] current project path resolves correctly
 - [ ] `list_credentials` sees only expected project/global metadata
 - [ ] `run_with_secret` triggers native approval
@@ -39,11 +51,11 @@
 
 ## Release hygiene
 
-- [ ] version updated in `VERSION` and `Sources/AgentKeyBoxCore/AgentKeyBoxVersion.swift` (a test checks they match)
-- [ ] CHANGELOG updated
-- [ ] dedicated security contact configured
-- [ ] binaries signed with Developer ID
-- [ ] Developer ID provisioning profile embedded; app reports the data protection keychain mode
-- [ ] `AGENTKEYBOX_NOTARY_PROFILE=... ./Scripts/notarize-release-macos.sh` passes
-- [ ] SHA-256 checksum published
-- [ ] README security disclaimer still matches implementation
+- [x] version updated in `VERSION` and `Sources/AgentKeyBoxCore/AgentKeyBoxVersion.swift` (a test checks they match)
+- [x] CHANGELOG updated
+- [ ] dedicated security contact configured (planned: GitHub private vulnerability reporting)
+- [x] binaries signed with Developer ID — `Developer ID Application: HUANG-CHENG LAI (8UY9UJ99HY)`
+- [x] Developer ID provisioning profile embedded; app reports the data protection keychain mode
+- [x] `AGENTKEYBOX_NOTARY_PROFILE=... ./Scripts/notarize-release-macos.sh` passes — Accepted, stapled, `spctl`: Notarized Developer ID
+- [ ] SHA-256 checksum published with the release
+- [x] README security disclaimer still matches implementation
