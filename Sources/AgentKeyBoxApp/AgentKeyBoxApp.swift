@@ -669,6 +669,7 @@
       secrets selectedSecrets: Set<String>,
       keyFiles selectedFiles: Set<String>,
       ignoreEnvFiles: Bool,
+      guardAgents: Bool = true,
       connect agentIDs: Set<String>
     ) {
       pendingSetup = nil
@@ -713,6 +714,19 @@
             L("%@ added to .gitignore", scan.envFilesNotIgnored.joined(separator: ", ")))
         } catch {
           summary.append(L("could not update .gitignore (%@)", error.localizedDescription))
+        }
+      }
+
+      // The files stay as the user's backup, so agents are told and (Claude Code) blocked from
+      // reading them.
+      if guardAgents, !scan.secrets.isEmpty || !scan.keyFiles.isEmpty {
+        do {
+          try AgentGuard.protect(
+            projectRoot: scan.root,
+            keyFileNames: scan.keyFiles.map { $0.url.lastPathComponent })
+          summary.append(L("coding agents told not to read your key files"))
+        } catch {
+          summary.append(L("could not add the agent rules (%@)", error.localizedDescription))
         }
       }
 
@@ -1880,6 +1894,7 @@
     @State private var secrets: Set<String>
     @State private var keyFiles: Set<String>
     @State private var ignoreEnvFiles = true
+    @State private var guardAgents = true
     @State private var connect: Set<String>
 
     init(plan: SetupPlan) {
@@ -1944,6 +1959,11 @@
                   plan.scan.envFilesNotIgnored.joined(separator: ", ")),
               isOn: $ignoreEnvFiles)
           }
+          if !foundNothing {
+            Toggle(
+              L("Keep coding agents from reading these files (adds rules to AGENTS.md, CLAUDE.md, and Claude Code settings)"),
+              isOn: $guardAgents)
+          }
           ForEach(plan.agents) { agent in
             if agent.status == .configured {
               Label(L("%@ is connected", agent.name), systemImage: "checkmark.circle.fill")
@@ -1958,7 +1978,7 @@
         Button {
           model.performSetup(
             plan, secrets: secrets, keyFiles: keyFiles, ignoreEnvFiles: ignoreEnvFiles,
-            connect: connect)
+            guardAgents: guardAgents, connect: connect)
         } label: {
           Text(foundNothing ? L("Add Project") : L("Set Up")).frame(maxWidth: .infinity)
         }

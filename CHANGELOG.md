@@ -31,6 +31,7 @@ First release meant for people to download: a notarized, universal app with a pr
 
 ### Security
 
+- Setup keeps coding agents away from the `.env` and key files it leaves on disk as the user's backup (on by default): Claude Code `Read` deny rules in `.claude/settings.local.json` (at the git root, where Claude Code loads them; templates such as `.env.example` stay readable) and a marked section in `AGENTS.md` and `CLAUDE.md` telling agents to use AgentKeyBox and never read or ask for keys. Existing settings and text are kept; a broken settings file is left untouched. The README now says the Keychain copy is device-only, so keep a backup.
 - The broker now checks who is calling. A coding agent with a shell could read the broker token and send requests itself, including a fake `akb run` that returns raw secrets after a convincing prompt. Team-signed builds read the caller's audit token and accept only AgentKeyBox's own signed helper and `akb`; only `akb` may make `akb run` requests. The broker moved from Network.framework to BSD sockets to get the caller's identity, and compares tokens in constant time.
 - Commands under `akb run` that print the environment (`printenv`, `env`) are flagged high risk, since their output reaches the caller unredacted.
 - More commands that can run other code are flagged: `arch`, `timeout`, `nice`, `xcrun`, `watch`, `script`, and similar launchers; `find -exec`; `awk` and other interpreters; `git` (hooks).

@@ -27,6 +27,8 @@
 
 不需要一直開著 AgentKeyBox：它會在你登入時自動開啟；就算關掉了，Claude Code、Codex 和 `akb` 需要金鑰時也會自動在選單列打開它。這兩項預設都是開啟，可以在「**設定 › 啟動**」關掉。
 
+**請保留金鑰的備份。** AgentKeyBox 的那份金鑰只存在這台 Mac 的鑰匙圈裡：不會同步到 iCloud，換電腦時「遷移輔助程式」也不會帶過去。所以設定時不會刪掉你的 `.env` 和金鑰檔。為了不讓程式代理去讀這些檔案，設定時（預設開啟）會在專案的 `AGENTS.md`、`CLAUDE.md` 加入說明，並在 `.claude/settings.local.json` 加入 Claude Code 的禁止讀取規則。Claude Code 會對它的讀檔工具和常見的 shell 指令強制執行這些規則；對其他代理來說，則是寫給它們看的說明。
+
 想確認下載的檔案沒被竄改，可以執行 `shasum -a 256 AgentKeyBox-<版本>-macOS.zip`，和版本頁面上的 `.sha256` 檔比對。
 
 ### 更新

@@ -23,6 +23,8 @@ enum Translations {
       "找不到 %@，可能還沒安裝。",
     "%@ is not installed.":
       "%@ 尚未安裝。",
+    "%@ is not valid JSON, so it was left unchanged.":
+      "%@ 不是有效的 JSON，所以沒有修改它。",
     "%@ is ready.":
       "%@ 已設定完成。",
     "%@ is ready: %@.":
@@ -295,6 +297,8 @@ enum Translations {
       "它的 %@ 把金鑰會從鑰匙圈刪除，代理也不能再使用。專案資料夾裡的檔案不會變動。",
     "Its key is deleted from your Keychain, and agents can no longer use it. Files in the project folder are not changed.":
       "它的金鑰會從鑰匙圈刪除，代理也不能再使用。專案資料夾裡的檔案不會變動。",
+    "Keep coding agents from reading these files (adds rules to AGENTS.md, CLAUDE.md, and Claude Code settings)":
+      "不讓程式代理讀取這些檔案（會在 AGENTS.md、CLAUDE.md 和 Claude Code 設定裡加入規則）",
     "Key":
       "金鑰",
     "Key ID":
@@ -527,10 +531,14 @@ enum Translations {
       "找不到 agentkeybox-mcp。請先建置或安裝 AgentKeyBox，或用 --helper 指定路徑。",
     "an unknown website":
       "不明網站",
+    "coding agents told not to read your key files":
+      "已要求程式代理不要讀取你的金鑰檔",
     "command not found: %@":
       "找不到指令：%@",
     "connecting %@":
       "正在連接 %@",
+    "could not add the agent rules (%@)":
+      "無法加入代理規則（%@）",
     "could not run %@: %@":
       "無法執行 %1$@：%2$@",
     "could not update .gitignore (%@)":
