@@ -5,12 +5,14 @@ import XCTest
 
 final class AgentGuardTests: XCTestCase {
   private var root: URL!
+  private var ledger: GuardRuleLedger!
 
   override func setUpWithError() throws {
     Localization.setOverride(.english)
     root = FileManager.default.temporaryDirectory.appendingPathComponent(
       "akb-guard-\(UUID().uuidString.prefix(8))")
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    ledger = GuardRuleLedger(fileURL: root.appendingPathComponent("ledger.json"))
   }
 
   override func tearDownWithError() throws {
@@ -39,8 +41,8 @@ final class AgentGuardTests: XCTestCase {
       .write(to: directory.appendingPathComponent("settings.local.json"), atomically: true, encoding: .utf8)
 
     let rules = AgentGuard.claudeDenyRules(keyFileNames: ["server.pem"])
-    try AgentGuard.addClaudeDenyRules(rules, root: root)
-    try AgentGuard.addClaudeDenyRules(rules, root: root)
+    try AgentGuard.addClaudeDenyRules(rules, root: root, ledger: ledger)
+    try AgentGuard.addClaudeDenyRules(rules, root: root, ledger: ledger)
 
     let merged = try settings(at: root)
     XCTAssertEqual(merged["model"] as? String, "opus", "other settings are kept")
@@ -62,7 +64,7 @@ final class AgentGuardTests: XCTestCase {
     try #"{"permissions":{"deny":["Read(.env.example)","Read(./.env.sample)"]}}"#
       .write(to: directory.appendingPathComponent("settings.local.json"), atomically: true, encoding: .utf8)
 
-    try AgentGuard.addClaudeDenyRules(AgentGuard.claudeDenyRules(keyFileNames: []), root: root)
+    try AgentGuard.addClaudeDenyRules(AgentGuard.claudeDenyRules(keyFileNames: []), root: root, ledger: ledger)
 
     let permissions = try XCTUnwrap(try settings(at: root)["permissions"] as? [String: Any])
     let deny = try XCTUnwrap(permissions["deny"] as? [String])
@@ -79,10 +81,11 @@ final class AgentGuardTests: XCTestCase {
       let directory = root.appendingPathComponent(".claude")
       try? FileManager.default.removeItem(at: directory)
       try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+      ledger = GuardRuleLedger(fileURL: root.appendingPathComponent("ledger-\(UUID()).json"))
       try #"{"permissions":{"deny":["\#(userRule)"]}}"#
         .write(to: directory.appendingPathComponent("settings.local.json"), atomically: true, encoding: .utf8)
 
-      try AgentGuard.addClaudeDenyRules(AgentGuard.claudeDenyRules(keyFileNames: []), root: root)
+      try AgentGuard.addClaudeDenyRules(AgentGuard.claudeDenyRules(keyFileNames: []), root: root, ledger: ledger)
 
       let permissions = try XCTUnwrap(try settings(at: root)["permissions"] as? [String: Any])
       let deny = try XCTUnwrap(permissions["deny"] as? [String])
@@ -102,8 +105,8 @@ final class AgentGuardTests: XCTestCase {
 
   func testRunningAgainKeepsOurNegationsAndDropsOnesALaterUserRuleConflictsWith() throws {
     let rules = AgentGuard.claudeDenyRules(keyFileNames: [])
-    try AgentGuard.addClaudeDenyRules(rules, root: root)
-    try AgentGuard.addClaudeDenyRules(rules, root: root)
+    try AgentGuard.addClaudeDenyRules(rules, root: root, ledger: ledger)
+    try AgentGuard.addClaudeDenyRules(rules, root: root, ledger: ledger)
     var deny = try XCTUnwrap(
       (try settings(at: root)["permissions"] as? [String: Any])?["deny"] as? [String])
     XCTAssertEqual(Set(deny), Set(rules), "our own Read(.env.*) does not cancel our negations")
@@ -112,7 +115,7 @@ final class AgentGuardTests: XCTestCase {
     deny.insert("Read(apps/web/.env.example)", at: 0)
     let file = root.appendingPathComponent(".claude/settings.local.json")
     try JSONSerialization.data(withJSONObject: ["permissions": ["deny": deny]]).write(to: file)
-    try AgentGuard.addClaudeDenyRules(rules, root: root)
+    try AgentGuard.addClaudeDenyRules(rules, root: root, ledger: ledger)
     let after = try XCTUnwrap(
       (try settings(at: root)["permissions"] as? [String: Any])?["deny"] as? [String])
     XCTAssertFalse(after.contains("Read(!.env.example)"))
@@ -120,12 +123,33 @@ final class AgentGuardTests: XCTestCase {
     XCTAssertTrue(after.contains("Read(!.env.sample)"))
   }
 
+  func testAUserNegationDoesNotMakeTheUsersRulesOurs() throws {
+    // The user's own setup: deny every .env file except the example.
+    let directory = root.appendingPathComponent(".claude")
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    try #"{"permissions":{"deny":["Read(.env.*)","Read(!.env.example)"]}}"#
+      .write(to: directory.appendingPathComponent("settings.local.json"), atomically: true, encoding: .utf8)
+
+    try AgentGuard.addClaudeDenyRules(
+      AgentGuard.claudeDenyRules(keyFileNames: []), root: root, ledger: ledger)
+
+    let deny = try XCTUnwrap(
+      (try settings(at: root)["permissions"] as? [String: Any])?["deny"] as? [String])
+    for template in ["sample", "template", "dist", "defaults"] {
+      XCTAssertFalse(deny.contains("Read(!.env.\(template))"), "would loosen the user's Read(.env.*)")
+    }
+    XCTAssertTrue(deny.contains("Read(.env.*)"))
+    XCTAssertTrue(deny.contains("Read(!.env.example)"), "the user's own exception stays")
+    XCTAssertTrue(deny.contains("Read(.env)"))
+    XCTAssertEqual(ledger.rules(for: root), ["Read(.env)"], "only what AgentKeyBox added is ours")
+  }
+
   func testBrokenSettingsFileIsLeftAlone() throws {
     let directory = root.appendingPathComponent(".claude")
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     let file = directory.appendingPathComponent("settings.local.json")
     try "{ not json".write(to: file, atomically: true, encoding: .utf8)
-    XCTAssertThrowsError(try AgentGuard.addClaudeDenyRules(["Read(.env)"], root: root))
+    XCTAssertThrowsError(try AgentGuard.addClaudeDenyRules(["Read(.env)"], root: root, ledger: ledger))
     XCTAssertEqual(try String(contentsOf: file, encoding: .utf8), "{ not json")
   }
 
@@ -146,7 +170,8 @@ final class AgentGuardTests: XCTestCase {
     let project = root.appendingPathComponent("apps/web")
     try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
 
-    try AgentGuard.protect(projectRoot: project, keyFileNames: ["AuthKey_ABC123DEF4.p8"])
+    try AgentGuard.protect(
+      projectRoot: project, keyFileNames: ["AuthKey_ABC123DEF4.p8"], ledger: ledger)
 
     let deny = try XCTUnwrap(
       (try settings(at: root)["permissions"] as? [String: Any])?["deny"] as? [String])

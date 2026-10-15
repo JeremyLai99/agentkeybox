@@ -54,7 +54,7 @@ First release meant for people to download: a notarized, universal app with a pr
 - The access history label for `akb run` is translated.
 - Importing a backup that is still open in Finder says so ("Eject the AgentKeyBox Backup disk, then try again") instead of reporting a wrong password.
 - A failed import no longer removes a project that was already here with the same ID as one in the backup.
-- The agent guard no longer lifts a deny rule the user already had: a template (such as `.env.example`) that any of the user's rules could cover at any depth, like `Read(config/.env.example)`, `Read(.env.*)` or `Read(secrets/**)`, stays denied, and a negation from an earlier setup is removed when a later user rule conflicts with it.
+- The agent guard no longer lifts a deny rule the user already had: a template (such as `.env.example`) that any of the user's rules could cover at any depth, like `Read(config/.env.example)`, `Read(.env.*)` or `Read(secrets/**)`, stays denied, and a negation from an earlier setup is removed when a later user rule conflicts with it. AgentKeyBox records which rules it wrote (in its own folder, `guard-rules.json`), so rules the user wrote, even ones identical to AgentKeyBox's, are never treated as its own.
 - Approved-command output is captured through a bounded pipe and redacted before truncation (no unbounded temp file, no leaked secret prefix at the size limit).
 - Secrets cannot be injected into reserved variables (PATH, HOME, DYLD_*, LD_*, NODE_OPTIONS, …); variable names must be ASCII.
 - The risk warning recognizes versioned interpreters, bun/deno, launchers such as env/xargs, package runners that execute project scripts, and executables inside the project.

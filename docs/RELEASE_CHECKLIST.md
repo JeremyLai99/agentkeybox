@@ -4,7 +4,7 @@ Status for **0.4.0**, with the evidence for each checked item. Unchecked items a
 
 ## Automated
 
-- [x] `make check` — 120 tests, MCP and CLI smoke tests, static checks (2026-10-15)
+- [x] `make check` — 121 tests, MCP and CLI smoke tests, static checks (2026-10-15)
 - [x] strict build: `-strict-concurrency=complete`, warnings as errors (2026-10-15)
 - [x] GitHub macOS CI passes — including the universal `AgentKeyBox-0.4.0-macOS.zip` package
 - [x] packaged `.app` artifact launches — notarized build opened from a quarantined copy in Downloads
