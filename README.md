@@ -4,11 +4,19 @@
 
 **AgentKeyBox is a local-first credential wallet for AI coding agents.**
 
-Store developer secrets once, organize them by project, and let Claude Code or Codex request access only when needed.
+Store API keys in your macOS Keychain, organize them by project, and approve access requests from Claude Code or Codex through MCP.
 
 > **AI asks. You approve.**
 
 AgentKeyBox is an experimental macOS utility for vibe coders, indie developers, and AI-first builders who do not want API keys scattered across `.env` files, notes, downloads, shell history, or chat windows.
+
+<p>
+  <a href="https://github.com/user-attachments/assets/9486ce5d-6f2d-4965-8226-f6cb88d1a5ad">
+    <img src="assets/promo/overview-en.png" alt="Play the 24-second AgentKeyBox overview: AI asks. You approve." width="560">
+  </a>
+</p>
+
+[▶ Meet AgentKeyBox in 24 seconds](https://github.com/user-attachments/assets/9486ce5d-6f2d-4965-8226-f6cb88d1a5ad) — Project setup, key approval, and encrypted backups.
 
 ## Install
 

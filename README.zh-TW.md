@@ -4,11 +4,19 @@
 
 **AgentKeyBox 是給 AI 程式代理用的本機金鑰保管箱。**
 
-把 API 金鑰交給 AgentKeyBox 保管一次，依專案整理好。Claude Code 或 Codex 需要用金鑰時，會先問你，你按「允許」才會用到。
+把 API 金鑰存在本機 macOS 鑰匙圈，依專案整理好。Claude Code 或 Codex 透過 MCP 請求使用金鑰時，會先問你，你按「允許」才會用到。
 
 > **AI 開口問，你來決定。**
 
 適合 vibe coder、獨立開發者，以及不想讓 API 金鑰散落在 `.env` 檔、筆記、下載資料夾、終端機紀錄或聊天視窗裡的人。
+
+<p>
+  <a href="https://github.com/user-attachments/assets/67c40066-8b6a-45d9-a958-31690b7f169e">
+    <img src="assets/promo/overview-zh-TW.png" alt="播放 24 秒 AgentKeyBox 介紹：AI 開口問，你來決定。" width="560">
+  </a>
+</p>
+
+[▶ 24 秒認識 AgentKeyBox](https://github.com/user-attachments/assets/67c40066-8b6a-45d9-a958-31690b7f169e) — 專案設定、金鑰使用核准與加密備份。
 
 ## 安裝
 
