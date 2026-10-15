@@ -70,10 +70,12 @@ As of 0.4.0 (see [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md) for the evidence
 - Developer ID signing, notarization, and installing from a quarantined download
 - the universal build's x86_64 slice under Rosetta
 - real Claude Code and Codex sessions: registration, listing, approvals, denial, and redacted output; Codex's project path comes from its working directory
+- the agent guard: Claude Code and Codex, started in the project, decline to read `.env` and key files
+- encrypted backups: export, opening the `.dmg` in Finder, Remove Keys from Files, and import after removing the project
+- approval timeout: an unanswered prompt ends after 2 minutes with `Approval timed out.` and is recorded in the access history
 
 ## Still open
 
-- approval timeout in the running app
 - a real Intel Mac
 
 Follow `docs/MACOS_TEST.md` for the remaining gate.

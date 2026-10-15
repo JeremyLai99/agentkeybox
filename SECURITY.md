@@ -36,11 +36,11 @@ The current prototype includes:
 
 ## Backups
 
-Backups are AES-256 encrypted macOS disk images (`.dmg`, made with `hdiutil`) that contain every project, key's metadata, and key value. The image is created encrypted and then filled while mounted under an owner-only folder, hidden from Finder and excluded from Spotlight, so the keys are never written to disk unencrypted; the password reaches `hdiutil` on standard input, never as an argument. Exporting requires Touch ID or the login password. A backup is only as strong as its password: the app requires at least 12 characters.
+Backups are AES-256 encrypted macOS disk images (`.dmg`, made with `hdiutil`) that contain every project, key's metadata, and key value. The image is created encrypted and filled while mounted under an owner-only folder, hidden from Finder and excluded from Spotlight; the finished backup is a compressed read-only copy made from the encrypted device, so the keys are never written to disk unencrypted; the password reaches `hdiutil` on standard input, never as an argument. Exporting requires Touch ID or the login password. A backup is only as strong as its password: the app requires at least 12 characters.
 
 Anyone with the password can open a backup without AgentKeyBox (double-click, enter the password), by design: users are never locked in. Files copied out of the opened image are plaintext; the README inside says so.
 
-"Remove Keys from Files" is available only after a backup that covers the project, empties only values identical to the stored keys, and moves key files to the Trash rather than deleting them.
+A backup records the keys as they were when it read them, and an export stops if a key changes while its values are read. "Remove Keys from Files" is available only after a backup that covers every key of the project as it is now, empties only values identical to the stored keys (leaving a name alone if any assignment of it differs), and moves key files to the Trash rather than deleting them.
 
 ## Explicit non-goals
 

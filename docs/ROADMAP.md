@@ -24,6 +24,9 @@
 - [x] dedicated security contact (GitHub private vulnerability reporting)
 - [x] install from a download: notarized universal app (Apple silicon and Intel), Move to Applications, agent connections that survive moving or updating the app
 - [x] English and Traditional Chinese interface
+- [x] broker accepts only AgentKeyBox's own signed helper and `akb`
+- [x] encrypted backups that open without AgentKeyBox, and Remove Keys from Files
+- [x] agent guard: Claude Code deny rules and `AGENTS.md`/`CLAUDE.md` instructions, never loosening the user's rules
 
 ## P1 — usability validation
 
