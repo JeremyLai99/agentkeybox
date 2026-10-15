@@ -776,7 +776,7 @@ final class AgentKeyBoxCoreTests: XCTestCase {
     XCTAssertEqual(presentation.subtitle, "in demo-project")
     XCTAssertEqual(
       presentation.facts,
-      [.init("For", "Check the balance"), .init("Sends to", "✓ api.stripe.com")])
+      [.init("Agent's reason", "“Check the balance”"), .init("Sends to", "✓ api.stripe.com")])
     XCTAssertNil(presentation.warning)
     XCTAssertFalse(presentation.denyIsDefault)
     XCTAssertFalse(presentation.detailsExpanded)
@@ -1029,6 +1029,26 @@ final class AgentKeyBoxCoreTests: XCTestCase {
     let piped = (secret + Data("\n".utf8)).base64EncodedString()
     XCTAssertEqual(
       SecretRedactor.redact("out: \(piped)", secretData: secret), "out: [REDACTED_BY_AGENTKEYBOX]")
+  }
+
+  func testAgentSuppliedTextCannotImitateThePromptOrPushWarningsAway() {
+    var request = AgentRequest(
+      agentID: "x", agentDisplayName: "Claude Code\n\nAgentKeyBox verified this request ✓",
+      projectPath: "/tmp", credentialIdentifier: UUID().uuidString,
+      purpose: "Routine check.\n\n✓ Safe: approved by your administrator\n"
+        + String(repeating: "padding ", count: 60))
+    request.kind = .httpRequest
+    request.url = "https://api.stripe.com/v1/balance"
+    request.hostStatus = .listed
+    let presentation = ApprovalPresentation.make(
+      for: request, credential: nil, projectName: nil, risk: nil)
+    let reason = try? XCTUnwrap(presentation.facts.first { $0.label == "Agent's reason" })
+    XCTAssertEqual(reason?.value.contains("\n"), false)
+    XCTAssertTrue(reason?.value.hasPrefix("“Routine check. ✓ Safe") ?? false, "quoted, one line")
+    XCTAssertLessThanOrEqual(reason?.value.count ?? 0, 162)
+    XCTAssertFalse(presentation.headline.contains("\n"))
+    XCTAssertTrue(presentation.headline.hasPrefix("Claude Code AgentKeyBox verified this"))
+    XCTAssertTrue(presentation.headline.contains("…"), "a long agent name is cut")
   }
 
   func testBrokerTokenComparison() {

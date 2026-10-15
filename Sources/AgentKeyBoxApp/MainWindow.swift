@@ -1015,7 +1015,9 @@
           }
           ForEach(model.accessLog.prefix(15)) { event in
             HStack {
-              Text("\(event.agentDisplayName) → \(event.credentialLabel)")
+              Text(
+                "\(ApprovalPresentation.agentText(event.agentDisplayName, limit: 40)) → \(event.credentialLabel)"
+              )
               Spacer()
               Text(
                 event.decision == .deny

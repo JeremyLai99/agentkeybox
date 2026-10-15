@@ -44,7 +44,7 @@ public struct ApprovalPresentation: Equatable, Sendable {
     var presentation = base(
       for: request, credential: credential, projectName: projectName, risk: risk)
     if presentation.warning == nil, ApprovalEngine.canGrantSession(for: request) {
-      let agent = request.agentDisplayName
+      let agent = agentText(request.agentDisplayName, limit: 40)
       if request.kind == .httpRequest,
         let host = request.url.flatMap({ URLComponents(string: $0)?.host })
       {
@@ -64,15 +64,17 @@ public struct ApprovalPresentation: Equatable, Sendable {
     projectName: String?,
     risk: CommandRiskAssessment?
   ) -> ApprovalPresentation {
-    let agent = request.agentDisplayName
+    let agent = agentText(request.agentDisplayName, limit: 40)
     let keyName = credential.map { $0.service.isEmpty ? $0.label : $0.service }
     let useHeadline =
       keyName.map { L("%@ wants to use your %@ key", agent, $0) }
       ?? L("%@ wants to use a key", agent)
     let subtitle = projectName.map { L("in %@", $0) }
     var facts: [Fact] = []
-    if let purpose = request.purpose, !purpose.isEmpty {
-      facts.append(Fact(L("For"), purpose))
+    // The agent writes its own reason; label it as such, quote it, and keep it to one short
+    // line so it cannot imitate the prompt's own text or push a warning out of view.
+    if let purpose = request.purpose.map({ agentText($0, limit: 160) }), !purpose.isEmpty {
+      facts.append(Fact(L("Agent's reason"), L("“%@”", purpose)))
     }
 
     switch request.kind {
@@ -133,6 +135,18 @@ public struct ApprovalPresentation: Equatable, Sendable {
         detailsExpanded: warning != nil, denyIsDefault: risk?.level == .high,
         rememberableHost: nil, sessionApprovalLabel: nil)
     }
+  }
+
+  /// Text supplied by the agent (its name, its reason) on one line: control characters and line
+  /// breaks become spaces, runs of spaces collapse, and long text is cut with "…".
+  public static func agentText(_ text: String, limit: Int) -> String {
+    let flattened = String(
+      text.unicodeScalars.map {
+        CharacterSet.controlCharacters.contains($0) || CharacterSet.newlines.contains($0)
+          ? " " : Character($0)
+      })
+    let collapsed = flattened.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    return collapsed.count > limit ? String(collapsed.prefix(limit - 1)) + "…" : collapsed
   }
 
   /// `npm run dev` from `/opt/homebrew/bin/npm` + `["run", "dev"]`, shortened for a headline.

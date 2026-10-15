@@ -101,6 +101,8 @@ enum Translations {
       "進階",
     "Agent integration command failed with exit code %@.":
       "連接代理的指令失敗，結束代碼 %@。",
+    "Agent's reason":
+      "代理說明的用途",
     "AgentKeyBox MCP is configured.":
       "AgentKeyBox MCP 已設定。",
     "AgentKeyBox broker responded; %@ credential(s) visible here.":
@@ -307,8 +309,6 @@ enum Translations {
       "修正%@…",
     "Folder":
       "資料夾",
-    "For":
-      "用途",
     "Get your %@ key":
       "取得你的 %@ 金鑰",
     "Global keys":
@@ -645,5 +645,7 @@ enum Translations {
       "更新既有項目 · %@ 個字元",
     "yesterday":
       "昨天",
+    "“%@”":
+      "「%@」",
   ]
 }

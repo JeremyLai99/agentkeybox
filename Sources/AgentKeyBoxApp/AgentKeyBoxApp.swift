@@ -164,7 +164,7 @@
         Text(L("Recent"))
         ForEach(model.accessLog.prefix(5)) { event in
           Text(
-            "\(event.agentDisplayName) → \(event.credentialLabel) · \(event.decision == .deny ? L("Denied") : L("Allowed"))"
+            "\(ApprovalPresentation.agentText(event.agentDisplayName, limit: 40)) → \(event.credentialLabel) · \(event.decision == .deny ? L("Denied") : L("Allowed"))"
           )
         }
       }
@@ -1078,9 +1078,12 @@
             grant = try await authenticator.authenticate(
               reason: request.kind == .environment
                 ? L(
-                  "Allow %@ to use %@ secret(s) for akb run?", request.agentDisplayName,
+                  "Allow %@ to use %@ secret(s) for akb run?",
+                  ApprovalPresentation.agentText(request.agentDisplayName, limit: 40),
                   "\(request.environmentVariables.count)")
-                : L("Allow %@ to use %@?", request.agentDisplayName, historyLabel)
+                : L(
+                  "Allow %@ to use %@?",
+                  ApprovalPresentation.agentText(request.agentDisplayName, limit: 40), historyLabel)
             )
           } catch {
             guard self.pendingRequest?.id == requestID else { return }
@@ -1866,9 +1869,9 @@
     }
 
     var pendingPromptTitle: String? {
-      if let request = pendingRequest { return L("%@ wants access", request.agentDisplayName) }
+      if let request = pendingRequest { return L("%@ wants access", ApprovalPresentation.agentText(request.agentDisplayName, limit: 40)) }
       if let prompt = pendingCredentialRequest {
-        return L("%@ needs a credential", prompt.agentDisplayName)
+        return L("%@ needs a credential", ApprovalPresentation.agentText(prompt.agentDisplayName, limit: 40))
       }
       return nil
     }
@@ -1885,11 +1888,11 @@
         promptPanel.show(
           ApprovalView(request: request, presentation: approvalPresentation(for: request))
             .environmentObject(self).tint(.agentKeyBlue),
-          title: L("%@ wants access", request.agentDisplayName))
+          title: L("%@ wants access", ApprovalPresentation.agentText(request.agentDisplayName, limit: 40)))
       } else if let prompt = pendingCredentialRequest {
         promptPanel.show(
           CredentialRequestView(prompt: prompt).environmentObject(self).tint(.agentKeyBlue),
-          title: L("%@ needs a credential", prompt.agentDisplayName))
+          title: L("%@ needs a credential", ApprovalPresentation.agentText(prompt.agentDisplayName, limit: 40)))
       } else {
         promptPanel.close()
       }
@@ -2293,7 +2296,7 @@
       VStack(alignment: .leading, spacing: 16) {
         HStack(spacing: 12) {
           ApprovalGlyph()
-          Text(L("%@ needs a credential", prompt.agentDisplayName))
+          Text(L("%@ needs a credential", ApprovalPresentation.agentText(prompt.agentDisplayName, limit: 40)))
             .font(.title2.bold())
         }
 
@@ -2323,7 +2326,7 @@
         Text(
           L(
             "The key is saved in your Keychain and never sent to %@. The agent only learns that the credential now exists, and every use still needs your approval.",
-            prompt.agentDisplayName)
+            ApprovalPresentation.agentText(prompt.agentDisplayName, limit: 40))
         )
         .font(.caption)
         .foregroundStyle(.secondary)
