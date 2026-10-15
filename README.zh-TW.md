@@ -120,3 +120,5 @@ Gemini CLI、VS Code 裡的 GitHub Copilot、Cursor、Windsurf、Cline，以及 
 ## 授權
 
 Apache License 2.0，詳見 [LICENSE](LICENSE)。
+
+<!-- The overview video is hosted as a GitHub attachment. -->
