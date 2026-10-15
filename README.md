@@ -24,7 +24,7 @@ The interface follows your macOS language (English or Traditional Chinese). Chan
 
 You don't need to keep AgentKeyBox open: it opens when you log in, and if it is closed, Claude Code, Codex, and `akb` open it in the menu bar when they need a key. Both are on by default and can be turned off in **Settings › Startup**.
 
-**Keep a backup of your keys.** AgentKeyBox's copy lives in this Mac's Keychain only: it is not synced to iCloud and Migration Assistant does not move it to a new Mac. Setup therefore leaves your `.env` and key files in place. To keep coding agents from reading them anyway, setup adds rules to the project's `AGENTS.md` and `CLAUDE.md` and Claude Code `Read` deny rules to `.claude/settings.local.json` (on by default). Claude Code enforces those rules for its file tools and common shell commands; for other agents they are instructions.
+**Keep a backup of your keys.** AgentKeyBox's copy lives in this Mac's Keychain only: it is not synced to iCloud and Migration Assistant does not move it to a new Mac. Setup therefore leaves your `.env` and key files in place. To keep coding agents from reading them anyway, setup adds rules to the project's `AGENTS.md` and `CLAUDE.md` and Claude Code `Read` deny rules to `.claude/settings.local.json` (on by default). Claude Code enforces those rules for its file tools and common shell commands; for other agents they are instructions. Instructions only work when the agent starts in the project folder, and an agent may still follow a direct request to read the file. To remove the plaintext, export an encrypted backup (Settings › Backup) and choose Remove Keys from Files… in the project's menu.
 
 ### Back up, and remove keys from your files
 

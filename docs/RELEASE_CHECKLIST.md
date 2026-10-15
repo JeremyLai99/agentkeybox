@@ -4,7 +4,8 @@ Status for **0.4.0**, with the evidence for each checked item. Unchecked items a
 
 ## Automated
 
-- [x] `make check` — 75 tests, MCP and CLI smoke tests, static checks (2026-10-14)
+- [x] `make check` — 111 tests, MCP and CLI smoke tests, static checks (2026-10-15)
+- [x] strict build: `-strict-concurrency=complete`, warnings as errors (2026-10-15)
 - [x] GitHub macOS CI passes — including the universal `AgentKeyBox-0.4.0-macOS.zip` package
 - [x] packaged `.app` artifact launches — notarized build opened from a quarantined copy in Downloads
 
@@ -17,7 +18,7 @@ Status for **0.4.0**, with the evidence for each checked item. Unchecked items a
 - [x] `.env` import works — one-step project setup on a real Mac
 - [x] `.p8` temp-file delivery cleans up after execution — `testApprovedCommandRunnerTemporaryFileDeliveryCleansUp` (unit test, not yet through the app)
 - [x] denial returns a clean error to the agent — `Credential access was denied.`
-- [ ] approval timeout returns a clean error
+- [x] approval timeout returns a clean error — `akb run` left unanswered for 2 minutes printed `Approval timed out.`, exited 1, and the access log recorded `timedOut` (2026-10-15); Claude Code received the same message
 - [x] high-risk command warning renders correctly in the app — orange warning with Deny as default for `/usr/bin/python3` from Claude Code, confirmed by the user
 
 ## Install and update
@@ -59,6 +60,25 @@ Verified 2026-10-15 with Codex 0.160 (the CLI bundled with the ChatGPT app) in t
 - [x] Allow executes and returns redacted output — `[REDACTED_BY_AGENTKEYBOX]`
 
 Note: `codex exec` cannot be used for this test, because Codex requires approving MCP tool calls and exec mode cannot ask. Codex 0.149 could not use the account's default model; use a current Codex.
+
+## Agent guard
+
+Verified 2026-10-15 in the test project, set up with the guard option on:
+
+- [x] setup writes `.claude/settings.local.json` Read deny rules and the marked section in `AGENTS.md` and `CLAUDE.md`
+- [x] Claude Code, asked for the `.env` value or the `.p8` contents without mentioning AgentKeyBox, declines and uses AgentKeyBox instead
+- [x] Codex, started in the project folder, declines both and cites `AGENTS.md`
+
+Note: for Codex the guard is advice in `AGENTS.md`, not enforcement. Started in another folder, Codex did not load it and read both files once the user named the path. Removing keys from files (below) is what actually protects them.
+
+## Encrypted backup
+
+Verified 2026-10-15 on a real Mac:
+
+- [x] export writes an owner-only (600) encrypted `.dmg`; the key text does not appear in the file
+- [x] double-clicking it and entering the password opens a Finder window with a folder per project, its `.env`, `env.txt`, and key files
+- [x] Remove Keys from Files empties the `.env` value (with a comment pointing to `akb run`) and moves the `.p8` to the Trash
+- [x] after Remove Project, Import restores the project and its keys with the same IDs, without duplicating other projects; the restored key worked (Stripe 401 for the fake key)
 
 ## Release hygiene
 

@@ -32,17 +32,26 @@ First release meant for people to download: a notarized, universal app with a pr
 ### Security
 
 - Text an agent supplies can no longer pass for AgentKeyBox's own: its stated purpose is labeled "Agent's reason" and quoted, and both the purpose and the agent's name are flattened to one line (control characters and line breaks removed) and shortened, in the prompt, the Touch ID reason, window titles, the menu bar, and history.
-- Encrypted backups: Settings › Backup exports every project and key to a password-protected `.dmg` (AES-256 encrypted disk image; at least 12-character password; Touch ID before export) and imports it on another Mac, keeping keys that already exist. The backup opens without AgentKeyBox: double-click it, enter the password, and each project has a folder with its `.env` and key files. The image is filled while mounted privately, so the keys are never written unencrypted. Format: `docs/BACKUP_FORMAT.md`.
+- Encrypted backups: Settings › Backup exports every project and key to a password-protected `.dmg` (AES-256 encrypted disk image; at least 12-character password; Touch ID before export) and imports it on another Mac, keeping keys that already exist. The backup opens without AgentKeyBox: double-click it, enter the password, and Finder opens a disk with a folder per project holding its `.env` (plus a visible copy, `env.txt`) and key files. The image is filled while mounted privately and the finished backup is a compressed read-only copy made from the encrypted device, so the keys are never written unencrypted. Password fields have a show/hide button. Format: `docs/BACKUP_FORMAT.md`.
 - Remove Keys from Files: after a backup that covers a project, its `.env` keys are emptied (with a comment pointing to `akb run`) and its key files moved to the Trash, so no agent can read the plaintext. Only values identical to the stored keys are touched; differences and unwritable files are reported.
 - Setup keeps coding agents away from the `.env` and key files it leaves on disk as the user's backup (on by default): Claude Code `Read` deny rules in `.claude/settings.local.json` (at the git root, where Claude Code loads them; templates such as `.env.example` stay readable) and a marked section in `AGENTS.md` and `CLAUDE.md` telling agents to use AgentKeyBox and never read or ask for keys. Existing settings and text are kept; a broken settings file is left untouched. The README now says the Keychain copy is device-only, so keep a backup.
 - The broker now checks who is calling. A coding agent with a shell could read the broker token and send requests itself, including a fake `akb run` that returns raw secrets after a convincing prompt. Team-signed builds read the caller's audit token and accept only AgentKeyBox's own signed helper and `akb`; only `akb` may make `akb run` requests. The broker moved from Network.framework to BSD sockets to get the caller's identity, and compares tokens in constant time.
 - Commands under `akb run` that print the environment (`printenv`, `env`) are flagged high risk, since their output reaches the caller unredacted.
 - More commands that can run other code are flagged: `arch`, `timeout`, `nice`, `xcrun`, `watch`, `script`, and similar launchers; `find -exec`; `awk` and other interpreters; `git` (hooks).
 - Redaction also catches the Base64 of a key followed by a newline, as produced by `printenv KEY | base64`.
+- Output or a response cut off at AgentKeyBox's size limit can no longer leak the start of a key: redacting earlier copies shortened the text and pulled a cut-off copy at the end into view. Any trailing fragment that begins an encoded form of the key is removed.
+- `akb run` parses its options strictly: `--only` without names, an unknown option, or a repeated `--only` is an error instead of passing every key. `--only=A,B` works, and without `--` the value is no longer taken as the command.
+- Editing a key saves its project and settings before the new value, and puts them back if the value cannot be saved, so a failed save cannot leave a new key readable by the project it was moving away from.
+- Every decision check in the MCP helper and `akb` now asks whether access was allowed, so any decision that does not allow access fails closed.
 - `dist/bin` now holds the signed helper and `akb`, so they are accepted by a signed broker.
 
 ### Fixed
 
+- Approval prompts that nobody answers are recorded in the access history as "Timed out" (orange), instead of leaving no trace.
+- `.gitignore` checks follow Git: `*` no longer matches `/`, so `/*.env` is not mistaken for covering `apps/api/.env` and the setup warning is shown.
+- Global keys stay visible and editable after the last project is removed.
+- Codex shows as connected only when its AgentKeyBox entry is enabled and runs the AgentKeyBox helper; Claude Code only when its command is the helper.
+- The access history label for `akb run` is translated.
 - Approved-command output is captured through a bounded pipe and redacted before truncation (no unbounded temp file, no leaked secret prefix at the size limit).
 - Secrets cannot be injected into reserved variables (PATH, HOME, DYLD_*, LD_*, NODE_OPTIONS, …); variable names must be ASCII.
 - The risk warning recognizes versioned interpreters, bun/deno, launchers such as env/xargs, package runners that execute project scripts, and executables inside the project.
