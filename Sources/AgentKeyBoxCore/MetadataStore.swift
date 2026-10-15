@@ -79,3 +79,35 @@ public final class MetadataStore: @unchecked Sendable {
     try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
   }
 }
+
+/// Saving an edited key: metadata (label, project, hosts) first, then the new secret.
+///
+/// If the metadata cannot be saved, the old secret stays with its old project. If the secret
+/// cannot be saved, the metadata is put back. Saving the secret first could leave a new key
+/// readable by the project it was being moved away from.
+public enum CredentialEditCommit {
+  public enum Outcome: Equatable, Sendable {
+    case saved
+    case metadataFailed
+    case secretFailed(String)
+  }
+
+  public static func perform(
+    saveMetadata: () -> Bool,
+    saveSecret: (() throws -> Void)?,
+    restoreMetadata: () -> Void
+  ) -> Outcome {
+    guard saveMetadata() else {
+      restoreMetadata()
+      return .metadataFailed
+    }
+    guard let saveSecret else { return .saved }
+    do {
+      try saveSecret()
+      return .saved
+    } catch {
+      restoreMetadata()
+      return .secretFailed(error.localizedDescription)
+    }
+  }
+}

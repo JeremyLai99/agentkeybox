@@ -589,6 +589,32 @@ final class AgentKeyBoxCoreTests: XCTestCase {
     XCTAssertFalse(visible.contains("sk_test"))
   }
 
+  func testRepeatedSecretCutOffByTheCaptureLimitNeverLeaksItsPrefix() {
+    // Redacting the many full copies shortens the text, which used to pull the cut-off copy at
+    // the end of the capture into the visible part.
+    let secret = "sk_test_" + String(repeating: "Q", count: 92)
+    let secretData = Data(secret.utf8)
+    let maxBytes = 128 * 1024
+    let full = String(repeating: secret, count: 3_000)
+    for extra in [0, 1, 37, 99, 100, 250] {
+      let capture = Data(full.utf8.prefix(maxBytes + SecretRedactor.margin(for: secretData) + extra))
+      let (visible, truncated) = SecretRedactor.redactThenTruncate(
+        capture, secretData: secretData, maxBytes: maxBytes, captureWasCut: true)
+      XCTAssertTrue(truncated)
+      XCTAssertFalse(visible.contains("sk_test"), "leaked a secret prefix with extra=\(extra)")
+      XCTAssertFalse(visible.contains("QQQQ"), "leaked part of a secret with extra=\(extra)")
+    }
+  }
+
+  func testCaptureCutOffInsideAnEncodedSecretNeverLeaksIt() {
+    let secretData = Data("sk_live_0123456789abcdef".utf8)
+    let hex = secretData.map { String(format: "%02x", $0) }.joined()
+    let text = String(repeating: hex, count: 50) + String(hex.prefix(30))
+    let (visible, _) = SecretRedactor.redactThenTruncate(
+      Data(text.utf8), secretData: secretData, maxBytes: 10_000, captureWasCut: true)
+    XCTAssertFalse(visible.contains(String(hex.prefix(12))))
+  }
+
   func testCredentialMetadataDecodesSnapshotsWithoutNewFields() throws {
     let legacy = """
       {"id":"3BB35765-FD77-484F-99B2-E2181D934056","label":"DEMO_API_KEY","service":"Demo",
@@ -887,6 +913,11 @@ final class AgentKeyBoxCoreTests: XCTestCase {
     XCTAssertFalse(GitIgnore.matches("/.env", path: "apps/web/.env"))
     XCTAssertTrue(GitIgnore.matches("**/.env.local", path: "apps/web/.env.local"))
     XCTAssertFalse(GitIgnore.matches("node_modules/", path: "node_modules"))
+    // As in Git, `*` does not cross `/`: these leave nested `.env` files unprotected.
+    XCTAssertTrue(GitIgnore.matches("/*.env", path: "prod.env"))
+    XCTAssertFalse(GitIgnore.matches("/*.env", path: "apps/api/.env"))
+    XCTAssertFalse(GitIgnore.matches("apps/*.env", path: "apps/api/.env"))
+    XCTAssertTrue(GitIgnore.matches("apps/*/.env", path: "apps/api/.env"))
 
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(
       "akb-gi-\(UUID().uuidString.prefix(8))")
@@ -1371,4 +1402,148 @@ final class AgentKeyBoxCoreTests: XCTestCase {
     }
   #endif
 
+}
+
+final class CredentialEditCommitTests: XCTestCase {
+  struct Failure: Error {}
+
+  func testMetadataIsSavedBeforeTheNewSecret() {
+    var steps: [String] = []
+    let outcome = CredentialEditCommit.perform(
+      saveMetadata: { steps.append("metadata"); return true },
+      saveSecret: { steps.append("secret") },
+      restoreMetadata: { steps.append("restore") })
+    XCTAssertEqual(outcome, .saved)
+    XCTAssertEqual(steps, ["metadata", "secret"])
+  }
+
+  func testNewSecretIsNotSavedWhenMetadataFails() {
+    var steps: [String] = []
+    let outcome = CredentialEditCommit.perform(
+      saveMetadata: { steps.append("metadata"); return false },
+      saveSecret: { steps.append("secret") },
+      restoreMetadata: { steps.append("restore") })
+    XCTAssertEqual(outcome, .metadataFailed)
+    XCTAssertEqual(steps, ["metadata", "restore"], "the old key must stay with its old project")
+  }
+
+  func testMetadataIsRestoredWhenTheSecretFails() {
+    var steps: [String] = []
+    let outcome = CredentialEditCommit.perform(
+      saveMetadata: { steps.append("metadata"); return true },
+      saveSecret: { steps.append("secret"); throw Failure() },
+      restoreMetadata: { steps.append("restore") })
+    guard case .secretFailed = outcome else { return XCTFail("expected secretFailed") }
+    XCTAssertEqual(steps, ["metadata", "secret", "restore"])
+  }
+
+  func testEditWithoutANewSecretOnlySavesMetadata() {
+    var steps: [String] = []
+    let outcome = CredentialEditCommit.perform(
+      saveMetadata: { steps.append("metadata"); return true }, saveSecret: nil,
+      restoreMetadata: { steps.append("restore") })
+    XCTAssertEqual(outcome, .saved)
+    XCTAssertEqual(steps, ["metadata"])
+  }
+}
+
+final class RunArgumentsTests: XCTestCase {
+  func testParsesOnlyBeforeTheSeparator() throws {
+    XCTAssertEqual(
+      try RunArguments.parse(["--only", "A, B", "--", "npm", "--watch"]),
+      RunArguments(only: ["A", "B"], command: ["npm", "--watch"]))
+    XCTAssertEqual(
+      try RunArguments.parse(["--only=A,B", "npm", "start"]),
+      RunArguments(only: ["A", "B"], command: ["npm", "start"]))
+  }
+
+  func testWithoutSeparatorTheValueIsNotMistakenForTheCommand() throws {
+    XCTAssertEqual(
+      try RunArguments.parse(["--only", "STRIPE", "npm", "start"]),
+      RunArguments(only: ["STRIPE"], command: ["npm", "start"]))
+  }
+
+  func testNoOnlyMeansEveryKey() throws {
+    XCTAssertEqual(
+      try RunArguments.parse(["--", "npm", "start"]), RunArguments(only: nil, command: ["npm", "start"]))
+    XCTAssertEqual(
+      try RunArguments.parse(["npm", "start"]), RunArguments(only: nil, command: ["npm", "start"]))
+  }
+
+  func testMissingOnlyValueIsAnErrorNotEveryKey() {
+    for arguments in [
+      ["--only", "--", "/usr/bin/env"], ["--only"], ["--only="], ["--only", ",", "env"],
+      ["--only=", "--", "env"], ["--only", "-x", "env"],
+    ] {
+      XCTAssertThrowsError(try RunArguments.parse(arguments), "\(arguments)") {
+        XCTAssertEqual($0 as? RunArguments.ParseError, .missingOnlyValue)
+      }
+    }
+  }
+
+  func testUnknownAndRepeatedOptionsAreErrors() {
+    XCTAssertThrowsError(try RunArguments.parse(["--onyl", "A", "--", "env"])) {
+      XCTAssertEqual($0 as? RunArguments.ParseError, .unknownOption("--onyl"))
+    }
+    XCTAssertThrowsError(try RunArguments.parse(["--only", "A", "--only", "B", "env"])) {
+      XCTAssertEqual($0 as? RunArguments.ParseError, .repeatedOnly)
+    }
+    XCTAssertThrowsError(try RunArguments.parse(["--only", "A", "--"])) {
+      XCTAssertEqual($0 as? RunArguments.ParseError, .missingCommand)
+    }
+  }
+}
+
+final class AgentIntegrationStatusTests: XCTestCase {
+  let helper = "/Users/me/Library/Application Support/AgentKeyBox/bin/agentkeybox-mcp"
+
+  func codexJSON(enabled: Bool, command: String) -> String {
+    """
+    {"name":"agentkeybox","enabled":\(enabled),"disabled_reason":null,
+     "transport":{"type":"stdio","command":"\(command)","args":[]}}
+    """
+  }
+
+  func testCodexEnabledServerIsConfigured() {
+    XCTAssertEqual(
+      CodexAdapter.status(fromMCPGetJSON: codexJSON(enabled: true, command: helper)), .configured)
+    XCTAssertEqual(
+      CodexAdapter.status(
+        fromMCPGetJSON: "WARNING: proceeding\n" + codexJSON(enabled: true, command: helper)),
+      .configured)
+  }
+
+  func testCodexDisabledServerIsNotConfigured() {
+    XCTAssertEqual(
+      CodexAdapter.status(fromMCPGetJSON: codexJSON(enabled: false, command: helper)),
+      .notConfigured)
+  }
+
+  func testCodexEntryRunningAnotherCommandIsNotConfigured() {
+    XCTAssertEqual(
+      CodexAdapter.status(fromMCPGetJSON: codexJSON(enabled: true, command: "/tmp/agentkeybox-evil")),
+      .notConfigured)
+    XCTAssertEqual(
+      CodexAdapter.status(fromMCPGetJSON: "No MCP server named 'agentkeybox' found."),
+      .notConfigured)
+  }
+
+  func testClaudeStatusRequiresAgentKeyBoxHelperCommand() {
+    let configured = """
+      agentkeybox:
+        Scope: User config (available in all your projects)
+        Status: ✔ Connected
+        Type: stdio
+        Command: \(helper)
+        Args:
+      """
+    XCTAssertEqual(ClaudeCodeAdapter.status(fromMCPGet: configured), .configured)
+    XCTAssertEqual(
+      ClaudeCodeAdapter.status(
+        fromMCPGet: configured.replacingOccurrences(of: helper, with: "/usr/bin/agentkeybox")),
+      .notConfigured)
+    XCTAssertEqual(
+      ClaudeCodeAdapter.status(fromMCPGet: "No MCP server found with name: agentkeybox"),
+      .notConfigured)
+  }
 }

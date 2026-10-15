@@ -77,6 +77,10 @@ enum Translations {
       "%@：沒有金鑰內容，未包含",
     ", ":
       "、",
+    "--only can be given once; list the names separated by commas.":
+      "--only 只能出現一次；多個名稱請用逗號分隔。",
+    "--only needs the names of the keys to pass, such as --only STRIPE_SECRET_KEY.":
+      "--only 後面要接要傳入的金鑰名稱，例如 --only STRIPE_SECRET_KEY。",
     "1 key":
       "1 把金鑰",
     "Access approved.":
@@ -601,6 +605,8 @@ enum Translations {
       "未知的代理：%@。請使用 claude、codex 或 all。",
     "Unknown command: %@":
       "未知的指令：%@",
+    "Unknown option for akb run: %@":
+      "akb run 不認得這個選項：%@",
     "Usage:":
       "用法：",
     "Usage: akb connect <claude|codex|all> [--helper /path/to/agentkeybox-mcp]":

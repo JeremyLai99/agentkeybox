@@ -131,7 +131,9 @@
     }
 
     @ViewBuilder private var detail: some View {
-      if model.projects.isEmpty {
+      // Global keys stay reachable after the last project is removed: they can still be used,
+      // so they must stay visible and editable.
+      if model.projects.isEmpty, model.selection != .global {
         EmptyStateView(isDropTargeted: isDropTargeted, chooseFolder: chooseProjectFolder)
       } else if let selection = model.selection {
         ProjectDetailView(

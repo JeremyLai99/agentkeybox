@@ -57,7 +57,15 @@ public struct CommandExecutionResult: Codable, Hashable, Sendable {
 public enum SecretRedactor {
   public static func redact(_ text: String, secretData: Data) -> String {
     guard !secretData.isEmpty else { return text }
+    return
+      candidates(for: secretData)
+      .reduce(text) { partial, candidate in
+        partial.replacingOccurrences(of: candidate, with: "[REDACTED_BY_AGENTKEYBOX]")
+      }
+  }
 
+  /// Every encoded form of the secret that gets redacted, longest first.
+  static func candidates(for secretData: Data) -> [String] {
     var candidates: Set<String> = []
     if let raw = String(data: secretData, encoding: .utf8), !raw.isEmpty {
       candidates.insert(raw)
@@ -82,13 +90,7 @@ public enum SecretRedactor {
     candidates.insert(hex)
     candidates.insert(hex.uppercased())
 
-    return
-      candidates
-      .filter { !$0.isEmpty }
-      .sorted { $0.count > $1.count }
-      .reduce(text) { partial, candidate in
-        partial.replacingOccurrences(of: candidate, with: "[REDACTED_BY_AGENTKEYBOX]")
-      }
+    return candidates.filter { !$0.isEmpty }.sorted { $0.count > $1.count }
   }
 
   /// Extra bytes to capture beyond a visible limit so the longest encoded form of the secret
@@ -99,14 +101,44 @@ public enum SecretRedactor {
 
   /// Redacts the full captured text first, then cuts it to `maxBytes`. Truncating first would
   /// split a secret at the boundary and leak its prefix.
+  ///
+  /// When the capture itself was cut off (`captureWasCut`), it may end with the start of a secret
+  /// that redaction cannot recognize. Redaction shortens the text, so that fragment could slide
+  /// into the visible part; it is removed after redacting.
   public static func redactThenTruncate(
-    _ data: Data, secretData: Data, maxBytes: Int
+    _ data: Data, secretData: Data, maxBytes: Int, captureWasCut: Bool = false
   ) -> (text: String, truncated: Bool) {
-    let redacted = redact(String(decoding: data, as: UTF8.self), secretData: secretData)
+    var redacted = redact(String(decoding: data, as: UTF8.self), secretData: secretData)
+    if captureWasCut {
+      if !secretData.isEmpty {
+        redacted = removingTrailingFragment(of: candidates(for: secretData), from: redacted)
+      }
+      let visible = String(decoding: redacted.utf8.prefix(maxBytes), as: UTF8.self)
+      return (visible + "\n[OUTPUT_TRUNCATED_BY_AGENTKEYBOX]", true)
+    }
     guard redacted.utf8.count > maxBytes else { return (redacted, false) }
     // A multi-byte character split at the cut becomes U+FFFD, which is harmless here.
     let visible = String(decoding: redacted.utf8.prefix(maxBytes), as: UTF8.self)
     return (visible + "\n[OUTPUT_TRUNCATED_BY_AGENTKEYBOX]", true)
+  }
+
+  /// Drops the longest ending of `text` that is the beginning of any candidate: what is left of
+  /// a secret the capture cut off part way through.
+  static func removingTrailingFragment(of candidates: [String], from text: String) -> String {
+    let bytes = Array(text.utf8)
+    var cut = 0
+    for candidate in candidates {
+      let prefix = Array(candidate.utf8)
+      var length = min(prefix.count - 1, bytes.count)
+      while length > cut {
+        if bytes[(bytes.count - length)...].elementsEqual(prefix[..<length]) {
+          cut = length
+          break
+        }
+        length -= 1
+      }
+    }
+    return String(decoding: bytes.dropLast(cut), as: UTF8.self)
   }
 }
 
@@ -231,7 +263,8 @@ public enum ApprovedCommandRunner {
     _ = readerFinished.wait(timeout: .now() + 2)
     let captured = collector.snapshot()
     let (text, truncated) = SecretRedactor.redactThenTruncate(
-      captured.data, secretData: secretData, maxBytes: maxOutputBytes)
+      captured.data, secretData: secretData, maxBytes: maxOutputBytes,
+      captureWasCut: captured.discardedBytes)
 
     return CommandExecutionResult(
       exitCode: process.terminationStatus,

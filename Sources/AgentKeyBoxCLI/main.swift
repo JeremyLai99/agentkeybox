@@ -197,22 +197,16 @@ struct AgentKeyBoxCLI {
   /// process with the command, with the project's secrets in its environment. The command keeps
   /// the terminal, so dev servers, prompts, and Ctrl-C behave normally.
   private static func run(_ arguments: [String]) async {
-    var options = arguments
-    var command: [String] = []
-    if let separator = arguments.firstIndex(of: "--") {
-      options = Array(arguments[..<separator])
-      command = Array(arguments[(separator + 1)...])
-    } else {
-      command = arguments.filter { !$0.hasPrefix("--") }
-      options = arguments.filter { $0.hasPrefix("--") }
-    }
-    guard let program = command.first else {
-      writeError(L("Usage: akb run [--only VAR1,VAR2] -- <command> [args…]") + "\n")
+    let parsed: RunArguments
+    do {
+      parsed = try RunArguments.parse(arguments)
+    } catch {
+      writeError("akb: " + error.localizedDescription + "\n")
       exit(2)
     }
-
-    let only = argumentValue("--only", in: options)?
-      .split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+    let command = parsed.command
+    let program = command[0]
+    let only = parsed.only
     let resolved: String
     if program.contains("/") {
       resolved = URL(fileURLWithPath: program).standardizedFileURL.path

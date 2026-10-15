@@ -281,11 +281,14 @@ public enum GitIgnore {
     var pattern = rawPattern
     if pattern.hasSuffix("/") { return false }  // directory-only rules never match these files
     if pattern.hasPrefix("**/") { pattern.removeFirst(3) }
+    // FNM_PATHNAME: as in Git, `*` and `?` never match `/`, so `/*.env` covers only the
+    // top-level `.env` files. Patterns this cannot express (`a/**/b`) then match too little,
+    // which shows a warning rather than hiding one.
     if pattern.hasPrefix("/") {
-      return fnmatch(String(pattern.dropFirst()), path, 0) == 0
+      return fnmatch(String(pattern.dropFirst()), path, FNM_PATHNAME) == 0
     }
     if pattern.contains("/") {
-      return fnmatch(pattern, path, 0) == 0
+      return fnmatch(pattern, path, FNM_PATHNAME) == 0
     }
     let name = path.split(separator: "/").last.map(String.init) ?? path
     return fnmatch(pattern, name, 0) == 0

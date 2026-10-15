@@ -66,10 +66,21 @@ public struct ClaudeCodeAdapter: AgentAdapter {
     guard let claude = executablePath(named: "claude") else { return .notInstalled }
     do {
       let output = try runExecutable(claude, arguments: ["mcp", "get", "agentkeybox"])
-      return output.localizedCaseInsensitiveContains("agentkeybox") ? .configured : .notConfigured
+      return Self.status(fromMCPGet: output)
     } catch {
       return .notConfigured
     }
+  }
+
+  /// Reads `claude mcp get agentkeybox`: configured only when its command is AgentKeyBox's
+  /// helper, not merely when the name appears.
+  static func status(fromMCPGet output: String) -> AgentIntegrationStatus {
+    let command = output.split(whereSeparator: \.isNewline)
+      .map { $0.trimmingCharacters(in: .whitespaces) }
+      .first { $0.hasPrefix("Command:") }
+      .map { $0.dropFirst("Command:".count).trimmingCharacters(in: .whitespaces) }
+    guard let command, isAgentKeyBoxHelper(command) else { return .notConfigured }
+    return .configured
   }
 }
 
@@ -102,11 +113,35 @@ public struct CodexAdapter: AgentAdapter {
     guard let codex = executablePath(named: "codex") else { return .notInstalled }
     do {
       let output = try runExecutable(codex, arguments: ["mcp", "get", "agentkeybox", "--json"])
-      return output.localizedCaseInsensitiveContains("agentkeybox") ? .configured : .notConfigured
+      return Self.status(fromMCPGetJSON: output)
     } catch {
       return .notConfigured
     }
   }
+
+  /// Reads `codex mcp get agentkeybox --json`: configured only when the server is enabled and
+  /// runs AgentKeyBox's helper. A disabled entry still names `agentkeybox`, so the name alone
+  /// is not enough.
+  static func status(fromMCPGetJSON output: String) -> AgentIntegrationStatus {
+    struct Entry: Decodable {
+      struct Transport: Decodable { var command: String? }
+      var enabled: Bool?
+      var transport: Transport?
+    }
+    // Warnings Codex prints to stderr share the output, so read only the JSON object.
+    guard let start = output.firstIndex(of: "{"), let end = output.lastIndex(of: "}"),
+      start < end,
+      let entry = try? JSONDecoder().decode(Entry.self, from: Data(output[start...end].utf8)),
+      entry.enabled != false,
+      let command = entry.transport?.command, isAgentKeyBoxHelper(command)
+    else { return .notConfigured }
+    return .configured
+  }
+}
+
+/// Whether an agent's MCP command runs AgentKeyBox's helper.
+func isAgentKeyBoxHelper(_ command: String) -> Bool {
+  URL(fileURLWithPath: command).lastPathComponent == "agentkeybox-mcp"
 }
 
 public enum MCPExecutableLocator {

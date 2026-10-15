@@ -1797,14 +1797,6 @@
         return false
       }
       let original = credentials[index]
-      if let newSecret, !newSecret.isEmpty {
-        do {
-          try secretStore.save(secret: Data(newSecret.utf8), id: id)
-        } catch {
-          statusMessage = L("Could not save the new key: %@", error.localizedDescription)
-          return false
-        }
-      }
       credentials[index].label = label
       credentials[index].projectID = projectID
       credentials[index].environmentVariableName = variable.isEmpty ? nil : variable
@@ -1815,8 +1807,23 @@
         credentials[index].settings = trimmed.isEmpty ? nil : trimmed
       }
       credentials[index].updatedAt = Date()
-      guard persistMetadata() else {
-        credentials[index] = original
+      let secretStore = self.secretStore
+      let outcome = CredentialEditCommit.perform(
+        saveMetadata: { persistMetadata() },
+        saveSecret: newSecret.flatMap { $0.isEmpty ? nil : $0 }.map { secret in
+          { try secretStore.save(secret: Data(secret.utf8), id: id) }
+        },
+        restoreMetadata: {
+          credentials[index] = original
+          persistMetadata()
+        })
+      switch outcome {
+      case .saved:
+        break
+      case .metadataFailed:
+        return false
+      case .secretFailed(let reason):
+        statusMessage = L("Could not save the new key: %@", reason)
         return false
       }
       statusMessage = L("Saved %@.", label)

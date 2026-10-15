@@ -201,7 +201,8 @@ public enum HTTPRequestExecutor {
     let fetch = try await CappedFetch.run(
       urlRequest, maxBytes: maxResponseBytes + SecretRedactor.margin(for: secretData))
     let (body, truncated) = SecretRedactor.redactThenTruncate(
-      fetch.data, secretData: secretData, maxBytes: maxResponseBytes)
+      fetch.data, secretData: secretData, maxBytes: maxResponseBytes,
+      captureWasCut: fetch.truncated)
     return HTTPExecutionResult(
       statusCode: fetch.statusCode, contentType: fetch.contentType, body: body,
       bodyTruncated: truncated || fetch.truncated)
