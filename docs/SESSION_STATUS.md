@@ -69,12 +69,12 @@ As of 0.4.0 (see [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md) for the evidence
 - approval prompts, denial, and "don't ask again during this session"
 - Developer ID signing, notarization, and installing from a quarantined download
 - the universal build's x86_64 slice under Rosetta
+- a real Claude Code session: registration, listing, approvals, denial, and redacted output
 
 ## Still open
 
-- Claude Code end-to-end MCP registration/request flow
 - Codex end-to-end MCP registration/request flow, including its working-directory/project-path behavior
-- approval timeout and the high-risk warning in the running app
+- approval timeout in the running app
 - a real Intel Mac
 
 Follow `docs/MACOS_TEST.md` for the remaining gate.

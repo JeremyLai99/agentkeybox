@@ -18,13 +18,13 @@ Status for **0.4.0**, with the evidence for each checked item. Unchecked items a
 - [x] `.p8` temp-file delivery cleans up after execution — `testApprovedCommandRunnerTemporaryFileDeliveryCleansUp` (unit test, not yet through the app)
 - [x] denial returns a clean error to the agent — `Credential access was denied.`
 - [ ] approval timeout returns a clean error
-- [ ] high-risk command warning renders correctly in the app (covered by `testApprovalForRiskyCommandLeadsWithWarning`)
+- [x] high-risk command warning renders correctly in the app — orange warning with Deny as default for `/usr/bin/python3` from Claude Code, confirmed by the user
 
 ## Install and update
 
 - [x] a downloaded copy runs translocated, offers Move to Applications, and reopens from `/Applications` without quarantine
 - [x] the MCP helper is installed at `~/Library/Application Support/AgentKeyBox/bin/agentkeybox-mcp` and matches the app's copy
-- [ ] a connected agent that points at an old helper path is re-registered at launch (needs a connected Claude Code)
+- [x] a connected agent that points at an old helper path is re-registered at launch — Claude Code's `~/.claude.json` changed from a `dist/` path to the fixed path within seconds of launch, env vars kept
 - [x] universal binary: the x86_64 app runs under Rosetta and its broker and helper answer
 - [ ] universal binary on a real Intel Mac
 - [x] interface in Traditional Chinese on a Traditional Chinese Mac; English when forced
@@ -32,12 +32,18 @@ Status for **0.4.0**, with the evidence for each checked item. Unchecked items a
 
 ## Claude Code
 
-- [ ] `akb connect claude` succeeds
-- [ ] `claude mcp get agentkeybox` shows the fixed helper path
-- [ ] `list_credentials` sees only expected project/global metadata
-- [ ] `run_with_secret` triggers native approval
-- [ ] Deny blocks execution
-- [ ] Allow executes and returns redacted output
+Verified 2026-10-15 with Claude Code 2.1.273 in a test project with a fake Stripe key:
+
+- [x] `akb connect claude` succeeds — registers the fixed helper path
+- [x] `claude mcp get agentkeybox` shows the fixed helper path — `✔ Connected`
+- [x] `list_credentials` sees only expected project/global metadata
+- [x] `http_request` triggers native approval and returns the response (Stripe 401 for the fake key); asked to "check the balance", Claude Code picked `http_request` on its own
+- [x] `run_with_secret` triggers native approval
+- [x] Deny blocks execution — the agent gets `Credential access was denied.` and the command does not run
+- [x] Allow executes and returns redacted output — `printenv` returned `[REDACTED_BY_AGENTKEYBOX]`
+- [x] one Touch ID evaluation per approval (3 approvals, 3 evaluations in the system log)
+
+Note: in auto mode, Claude Code's own classifier refuses requests that would print a key or use it for an unrelated command, before they reach AgentKeyBox. Testing AgentKeyBox's warning needs auto mode off.
 
 ## Codex
 

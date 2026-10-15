@@ -316,7 +316,7 @@ See [`docs/SESSION_STATUS.md`](docs/SESSION_STATUS.md) for the exact boundary be
 
 ## Status
 
-**Experimental alpha.** Verified on a real Mac: Keychain storage behind Touch ID, the approval prompt, session approvals, Developer ID signing and notarization, and installing from a download. Still to verify end to end: a real Claude Code session and a real Codex session using the tools.
+**Experimental alpha.** Verified on a real Mac: Keychain storage behind Touch ID, the approval prompt, session approvals, Developer ID signing and notarization, and installing from a download. Also verified end to end with a real Claude Code session. Still to verify: a real Codex session.
 
 The product hypothesis is simple:
 

@@ -18,7 +18,7 @@
 - [x] development installer and release packaging scripts
 - [x] CI, protocol smoke tests, static secret checks
 - [x] real macOS compile/runtime verification
-- [ ] real Claude Code end-to-end approval run (approvals verified through the MCP helper; not yet from a Claude Code session)
+- [x] real Claude Code end-to-end approval run
 - [ ] real Codex end-to-end approval run
 - [x] signing/notarization with a real Apple Developer identity
 - [x] dedicated security contact (GitHub private vulnerability reporting)
