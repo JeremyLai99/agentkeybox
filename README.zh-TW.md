@@ -49,6 +49,36 @@
    defaults delete dev.agentkeybox.app
    ```
 
+## 接入其他 AI 代理
+
+AgentKeyBox 提供的是標準的 [MCP](https://modelcontextprotocol.io)（stdio）接口。Claude Code 和 Codex 可以一鍵連接；其他**在你 Mac 上執行**、而且支援本機（stdio）MCP 伺服器的代理，可以在它的 MCP 設定裡手動加入：
+
+- **指令：** `~/Library/Application Support/AgentKeyBox/bin/agentkeybox-mcp`（如果代理不認得 `~`，請寫出完整路徑）
+- **環境變數：**
+  - `AGENTKEYBOX_AGENT_ID`：簡短的代號，例如 `gemini-cli`
+  - `AGENTKEYBOX_AGENT_NAME`：核准視窗上顯示的名稱，例如 `Gemini CLI`。沒設定這兩個的話，視窗會顯示「Coding Agent」。
+  - `AGENTKEYBOX_PROJECT_PATH`：專案資料夾。如果代理不是從專案資料夾啟動 MCP，就用這個指定；不設定時，AgentKeyBox 會用連接程式啟動時所在的資料夾判斷，不在任何專案裡的話，代理只看得到「通用金鑰」。
+
+很多代理的設定長得像下面這樣，但確切的檔案位置和欄位名稱請以該代理的官方文件為準：
+
+```json
+{
+  "mcpServers": {
+    "agentkeybox": {
+      "command": "/Users/你的帳號/Library/Application Support/AgentKeyBox/bin/agentkeybox-mcp",
+      "env": {
+        "AGENTKEYBOX_AGENT_ID": "my-agent",
+        "AGENTKEYBOX_AGENT_NAME": "My Agent"
+      }
+    }
+  }
+}
+```
+
+Gemini CLI、VS Code 裡的 GitHub Copilot、Cursor、Windsurf、Cline，以及 Meta 的 Muse Code 都支援本機 MCP 伺服器，照這個方式應該可以接上，但 AgentKeyBox **還沒有實際測試過**。
+
+在雲端執行的代理，例如 OpenAI 的 Dots、Meta 的 Muse App、Codex 的雲端任務，沒辦法使用 AgentKeyBox。連接程式只會和同一台 Mac 上的 AgentKeyBox 溝通，你的金鑰永遠不會離開你的電腦。這是刻意的設計。
+
 ## 它怎麼保護你的金鑰
 
 - 金鑰存在 macOS 鑰匙圈裡，每次使用都要你核准，並通過 Touch ID 或登入密碼。

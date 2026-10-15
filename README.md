@@ -242,6 +242,36 @@ codex mcp get agentkeybox --json
 
 Codex starts the MCP helper in the session's working directory, which AgentKeyBox uses as the project path unless `AGENTKEYBOX_PROJECT_PATH` is supplied. Verified with Codex 0.160.
 
+## Connect other coding agents
+
+AgentKeyBox is a standard [MCP](https://modelcontextprotocol.io) server that runs over stdio. Claude Code and Codex are connected with one click; any other agent that runs **on your Mac** and supports local (stdio) MCP servers can be added by hand in that agent's MCP settings:
+
+- **Command:** `~/Library/Application Support/AgentKeyBox/bin/agentkeybox-mcp` (write out the full path if the agent does not expand `~`)
+- **Environment variables:**
+  - `AGENTKEYBOX_AGENT_ID` — a short ID, e.g. `gemini-cli`
+  - `AGENTKEYBOX_AGENT_NAME` — the name shown in approval prompts, e.g. `Gemini CLI`. Without these two, prompts say "Coding Agent".
+  - `AGENTKEYBOX_PROJECT_PATH` — the project folder, for agents that do not start MCP servers in the project folder. Otherwise AgentKeyBox uses the folder the helper starts in; outside your projects, the agent sees only Global keys.
+
+Many agents use a JSON shape like the one below; check your agent's documentation for the exact file and key names.
+
+```json
+{
+  "mcpServers": {
+    "agentkeybox": {
+      "command": "/Users/you/Library/Application Support/AgentKeyBox/bin/agentkeybox-mcp",
+      "env": {
+        "AGENTKEYBOX_AGENT_ID": "my-agent",
+        "AGENTKEYBOX_AGENT_NAME": "My Agent"
+      }
+    }
+  }
+}
+```
+
+Gemini CLI, GitHub Copilot in VS Code, Cursor, Windsurf, Cline, and Meta's Muse Code support local MCP servers and should work this way, but AgentKeyBox has **not been tested** with them yet.
+
+Agents that run in the cloud, such as OpenAI Dots, the Meta Muse app, or Codex cloud tasks, cannot use AgentKeyBox. The helper only talks to the AgentKeyBox app on the same Mac, so your keys never leave your computer. This is deliberate.
+
 ## Provider presets
 
 The current catalog includes:

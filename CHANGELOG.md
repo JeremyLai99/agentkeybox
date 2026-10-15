@@ -7,6 +7,7 @@ First release meant for people to download: a notarized, universal app with a pr
 ### Added
 
 - The release app is universal: it runs natively on Apple silicon and Intel Macs. `build-release-macos.sh` builds each architecture and merges them with `lipo` (`AGENTKEYBOX_ARCHS=arm64` builds one for quicker local packaging).
+- README section on connecting other local MCP agents by hand (untested: Gemini CLI, Copilot in VS Code, Cursor, Windsurf, Cline, Muse Code), and why cloud agents such as OpenAI Dots cannot connect.
 - README install, update, and uninstall guide for people downloading the app (macOS 14+), and a Traditional Chinese README (`README.zh-TW.md`) for users. Agent connection examples now use the helper's fixed path.
 - Coding agents stay connected wherever the app lives. Agents now run a copy of the MCP helper at a fixed path (`~/Library/Application Support/AgentKeyBox/bin/agentkeybox-mcp`), refreshed from the app on every launch; a connected agent that still points elsewhere is re-registered automatically. Previously the connection broke when the app was moved, or when it was opened straight from Downloads (macOS runs it from a temporary translocated copy).
 - When AgentKeyBox runs from outside Applications, a banner offers Move to Applications: it copies the app there (replacing an older copy, which goes to the Trash), clears the quarantine flag on the copy, and reopens it.
