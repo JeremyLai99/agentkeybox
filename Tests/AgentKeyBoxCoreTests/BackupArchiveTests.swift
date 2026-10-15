@@ -124,6 +124,12 @@ final class BackupArchiveTests: XCTestCase {
       XCTAssertNil(file.range(of: stripe), "the key must not appear in the file")
       XCTAssertNil(file.range(of: Data("STRIPE_SECRET_KEY".utf8)), "names are encrypted too")
       XCTAssertEqual(try BackupArchive.read(from: url, password: password), contents)
+      // Read-only and compressed, so Finder opens its window after a double-click.
+      let info = try BackupArchive.hdiutil(
+        ["imageinfo", "-plist", "-stdinpass", url.path], password: password)
+      let plist = try PropertyListSerialization.propertyList(from: info, format: nil)
+        as? [String: Any]
+      XCTAssertEqual(plist?["Format"] as? String, "UDZO")
 
       XCTAssertThrowsError(try BackupArchive.read(from: url, password: password + "!")) {
         XCTAssertEqual($0 as? BackupError, .wrongPasswordOrDamaged)

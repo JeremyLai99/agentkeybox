@@ -341,6 +341,8 @@ enum Translations {
       "Google 服務帳戶",
     "Headers":
       "標頭",
+    "Hide password":
+      "隱藏密碼",
     "If you forget this password, the backup cannot be opened.":
       "忘記這組密碼的話，備份就打不開了。",
     "Import":
@@ -539,6 +541,8 @@ enum Translations {
       "格式應該像 %@",
     "Show in Finder":
       "在 Finder 中顯示",
+    "Show password":
+      "顯示密碼",
     "Simulate Claude Request":
       "模擬 Claude 請求",
     "Starting local broker…":

@@ -25,7 +25,8 @@ Copies you take out of the disk image are not encrypted. Delete them when you no
 1. `hdiutil create -fs APFS -encryption AES-256 -stdinpass -volname "AgentKeyBox Backup" -type UDIF` creates an empty encrypted read-write image of at least 4 MB. The password goes to `hdiutil` on standard input, never as a command-line argument.
 2. `hdiutil attach -stdinpass -nobrowse -noautoopen` mounts it under a new owner-only (700) temporary folder, hidden from Finder.
 3. The files below are written into the mounted volume: folders 700, files 600. Keys are never written outside the encrypted image.
-4. The image is detached and moved to the location you chose (permissions 600). An existing file there is replaced only after the new image is complete.
+4. The image is detached and attached again as a device only (`hdiutil attach -nomount`), and `hdiutil create -srcdevice <device> -format UDZO -encryption AES-256 -stdinpass` makes the finished backup from it: compressed, read-only, and encrypted with the same password. Finder opens a read-only image's window by itself after you enter the password; a read-write image would mount without opening anything. The working image is deleted.
+5. The finished image is moved to the location you chose (permissions 600). An existing file there is replaced only after the new image is complete.
 
 Import (`BackupArchive.read`) refuses images that are not encrypted. It mounts the image read-only in the same private way, reads `.agentkeybox-backup.json`, and detaches it.
 

@@ -290,12 +290,46 @@ public enum BackupArchive {
         else { throw BackupError.diskImageFailed(entry.path) }
       }
     }
-    try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: image.path)
-    if fileManager.fileExists(atPath: url.path) {
-      _ = try fileManager.replaceItemAt(url, withItemAt: image)
-    } else {
-      try fileManager.moveItem(at: image, to: url)
+    // The finished backup is a compressed, read-only copy. Finder opens a read-only image's
+    // window by itself after the password, while a read-write image mounts silently (easy to
+    // miss with Stage Manager or a hidden desktop). It is made from the encrypted image's
+    // device, so the files never exist outside encryption.
+    let finished = work.appendingPathComponent("AgentKeyBox Backup.dmg")
+    try withAttachedDevice(image, password: password) { device -> Void in
+      _ = try hdiutil(
+        [
+          "create", "-quiet", "-srcdevice", device, "-format", "UDZO", "-encryption", "AES-256",
+          "-stdinpass", finished.path,
+        ], password: password)
     }
+    try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: finished.path)
+    if fileManager.fileExists(atPath: url.path) {
+      _ = try fileManager.replaceItemAt(url, withItemAt: finished)
+    } else {
+      try fileManager.moveItem(at: finished, to: url)
+    }
+  }
+
+  /// Attaches the image without mounting any volume, runs `body` with its whole-disk device
+  /// (such as `/dev/disk12`), and always detaches it.
+  static func withAttachedDevice<T>(
+    _ image: URL, password: String, _ body: (String) throws -> T
+  ) throws -> T {
+    let plist = try hdiutil(
+      ["attach", "-plist", "-stdinpass", "-nomount", "-noverify", image.path], password: password)
+    guard
+      let info = try? PropertyListSerialization.propertyList(from: plist, format: nil)
+        as? [String: Any],
+      let entities = info["system-entities"] as? [[String: Any]],
+      let device = entities.compactMap({ $0["dev-entry"] as? String })
+        .min(by: { $0.count < $1.count })
+    else { throw BackupError.diskImageFailed("hdiutil attach") }
+    defer {
+      if (try? hdiutil(["detach", "-quiet", device], password: nil)) == nil {
+        _ = try? hdiutil(["detach", "-quiet", "-force", device], password: nil)
+      }
+    }
+    return try body(device)
   }
 
   /// Opens a backup disk image with its password and reads its contents.

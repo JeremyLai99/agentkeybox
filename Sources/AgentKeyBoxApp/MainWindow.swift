@@ -805,6 +805,7 @@
     @Environment(\.dismiss) private var dismiss
     @State private var password = ""
     @State private var confirmation = ""
+    @State private var showsPassword = false
     @State private var working = false
 
     private var problem: String? {
@@ -829,8 +830,10 @@
         .font(.callout)
         .fixedSize(horizontal: false, vertical: true)
         Form {
-          SecureField(L("Password"), text: $password)
-          SecureField(L("Confirm password"), text: $confirmation)
+          RevealableSecureField(
+            title: L("Password"), text: $password, isRevealed: $showsPassword)
+          RevealableSecureField(
+            title: L("Confirm password"), text: $confirmation, isRevealed: $showsPassword)
         }
         .formStyle(.columns)
         Text(problem ?? L("If you forget this password, the backup cannot be opened."))
@@ -872,6 +875,7 @@
     @State private var password = ""
     @State private var contents: BackupContents?
     @State private var error: String?
+    @State private var showsPassword = false
     @State private var working = false
 
     var body: some View {
@@ -887,8 +891,9 @@
           )
           .fixedSize(horizontal: false, vertical: true)
         } else {
-          SecureField(L("Backup password"), text: $password)
-            .onSubmit(open)
+          RevealableSecureField(
+            title: L("Backup password"), text: $password, isRevealed: $showsPassword,
+            onSubmit: open)
         }
         if let error {
           Text(error).font(.caption).foregroundStyle(.orange)
@@ -926,6 +931,38 @@
           self.error = error.localizedDescription
         }
         working = false
+      }
+    }
+  }
+
+  /// A password field with an eye button that shows or hides what was typed.
+  struct RevealableSecureField: View {
+    let title: String
+    @Binding var text: String
+    @Binding var isRevealed: Bool
+    var onSubmit: () -> Void = {}
+
+    var body: some View {
+      LabeledContent(title) {
+        HStack(spacing: 6) {
+          Group {
+            if isRevealed {
+              TextField(title, text: $text).autocorrectionDisabled()
+            } else {
+              SecureField(title, text: $text)
+            }
+          }
+          .labelsHidden()
+          .onSubmit(onSubmit)
+          Button {
+            isRevealed.toggle()
+          } label: {
+            Image(systemName: isRevealed ? "eye.slash" : "eye")
+          }
+          .buttonStyle(.borderless)
+          .help(isRevealed ? L("Hide password") : L("Show password"))
+          .accessibilityLabel(isRevealed ? L("Hide password") : L("Show password"))
+        }
       }
     }
   }
