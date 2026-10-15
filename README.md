@@ -405,3 +405,6 @@ See [`docs/UI_DIRECTION.md`](docs/UI_DIRECTION.md) for the design direction.
 The current visual identity uses the **Key in a Box + Agent** concept: the box represents controlled local storage, the key represents developer credentials, and the agent represents AI coding agents that must request access.
 
 See [`docs/BRAND.md`](docs/BRAND.md) for the visual rationale, color tokens, icon geometry, UI translation rules, and future asset requirements. The selected raster reference lives at [`assets/brand/agentkeybox-app-icon.png`](assets/brand/agentkeybox-app-icon.png).
+
+
+<!-- The overview video is hosted as a GitHub attachment. -->
