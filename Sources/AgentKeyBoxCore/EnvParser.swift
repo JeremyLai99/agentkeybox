@@ -78,6 +78,26 @@ public enum EnvParser {
   /// Empties the given keys in a `.env` file's text, leaving a comment that says where the key
   /// is now, and every other line exactly as it was. All assignments of a key are emptied.
   /// Returns nil for text with Windows line endings, which is left alone.
+  /// Which of `stored`'s names can be emptied in `text`: every non-empty assignment of the name
+  /// holds exactly the stored value. A name assigned more than once with any other value is
+  /// `different` and must be left alone, since `removingValues` empties every assignment and
+  /// the other value may exist nowhere else.
+  public static func removableKeys(in text: String, stored: [String: Data])
+    -> (matching: Set<String>, different: Set<String>)
+  {
+    var matching = Set<String>()
+    var different = Set<String>()
+    for assignment in assignments(in: text) where !assignment.value.isEmpty {
+      guard let value = stored[assignment.key] else { continue }
+      if Data(assignment.value.utf8) == value {
+        matching.insert(assignment.key)
+      } else {
+        different.insert(assignment.key)
+      }
+    }
+    return (matching.subtracting(different), different)
+  }
+
   public static func removingValues(of keys: Set<String>, from text: String)
     -> (text: String, removed: [String])?
   {

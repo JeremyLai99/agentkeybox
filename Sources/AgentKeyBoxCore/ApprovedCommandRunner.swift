@@ -108,7 +108,10 @@ public enum SecretRedactor {
   public static func redactThenTruncate(
     _ data: Data, secretData: Data, maxBytes: Int, captureWasCut: Bool = false
   ) -> (text: String, truncated: Bool) {
-    var redacted = redact(String(decoding: data, as: UTF8.self), secretData: secretData)
+    // A cut inside a multi-byte character would decode to U+FFFD, and a secret fragment ending
+    // in U+FFFD no longer looks like the start of the secret; drop the partial character first.
+    let captured = captureWasCut ? droppingIncompleteUTF8Ending(data) : data
+    var redacted = redact(String(decoding: captured, as: UTF8.self), secretData: secretData)
     if captureWasCut {
       if !secretData.isEmpty {
         redacted = removingTrailingFragment(of: candidates(for: secretData), from: redacted)
@@ -120,6 +123,24 @@ public enum SecretRedactor {
     // A multi-byte character split at the cut becomes U+FFFD, which is harmless here.
     let visible = String(decoding: redacted.utf8.prefix(maxBytes), as: UTF8.self)
     return (visible + "\n[OUTPUT_TRUNCATED_BY_AGENTKEYBOX]", true)
+  }
+
+  /// `data` without a UTF-8 character that was cut off at its end.
+  static func droppingIncompleteUTF8Ending(_ data: Data) -> Data {
+    let bytes = [UInt8](data.suffix(4))
+    // Walk back over continuation bytes (10xxxxxx) to the start of the last character.
+    var back = 0
+    while back < bytes.count, bytes[bytes.count - 1 - back] & 0xC0 == 0x80 { back += 1 }
+    guard back < bytes.count else { return data }
+    let lead = bytes[bytes.count - 1 - back]
+    let length: Int
+    switch lead {
+    case 0xC0...0xDF: length = 2
+    case 0xE0...0xEF: length = 3
+    case 0xF0...0xF7: length = 4
+    default: return data  // ASCII or invalid: nothing to drop
+    }
+    return back + 1 < length ? data.dropLast(back + 1) : data
   }
 
   /// Drops the longest ending of `text` that is the beginning of any candidate: what is left of

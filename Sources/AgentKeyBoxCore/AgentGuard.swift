@@ -52,9 +52,17 @@ public enum AgentGuard {
     var deny = permissions["deny"] as? [String] ?? []
     // Negations only carve out of rules listed before them, so new rules go first.
     let missing = rules.filter { !deny.contains($0) }
-    guard !missing.isEmpty else { return }
     let positive = missing.filter { !$0.hasPrefix("Read(!") }
-    let negations = missing.filter { $0.hasPrefix("Read(!") }
+    // A negation would also lift a deny the user wrote (for example `Read(.env.example)`), so
+    // a template the user's own rules already cover stays denied.
+    let usersRules = deny.filter { !$0.hasPrefix("Read(!") && !rules.contains($0) }
+      .compactMap(readPattern)
+    let negations = missing.filter { $0.hasPrefix("Read(!") }.filter { negation in
+      guard let pattern = readPattern(negation) else { return false }
+      let file = String(pattern.dropFirst())
+      return !usersRules.contains { GitIgnore.matches($0, path: file) }
+    }
+    guard !positive.isEmpty || !negations.isEmpty else { return }
     deny = positive + deny + negations
     permissions["deny"] = deny
     settings["permissions"] = permissions
@@ -62,6 +70,14 @@ public enum AgentGuard {
     let data = try JSONSerialization.data(
       withJSONObject: settings, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
     try (data + Data("\n".utf8)).write(to: file, options: .atomic)
+  }
+
+  /// The path pattern inside `Read(...)`, without a leading `./`; nil for other rules.
+  static func readPattern(_ rule: String) -> String? {
+    guard rule.hasPrefix("Read("), rule.hasSuffix(")") else { return nil }
+    var pattern = String(rule.dropFirst("Read(".count).dropLast())
+    if pattern.hasPrefix("./") { pattern.removeFirst(2) }
+    return pattern.isEmpty ? nil : pattern
   }
 
   /// Adds or refreshes the marked section in a Markdown file, creating the file if needed.

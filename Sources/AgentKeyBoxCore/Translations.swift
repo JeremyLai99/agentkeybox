@@ -581,6 +581,8 @@ enum Translations {
       "目前還沒有可以備份的金鑰。",
     "This backup from %@ has %@ key(s) in %@ project(s). Keys you already have are kept.":
       "這份 %1$@ 的備份裡有 %3$@ 個專案、共 %2$@ 把金鑰。你已經有的金鑰會保留不動。",
+    "This backup is open in Finder. Eject the AgentKeyBox Backup disk, then try again.":
+      "這份備份已在 Finder 裡開著。請先退出「AgentKeyBox Backup」磁碟，再試一次。",
     "This backup was made by a newer AgentKeyBox. Update AgentKeyBox and try again.":
       "這份備份是由較新版的 AgentKeyBox 建立的，請更新 AgentKeyBox 後再試。",
     "This command needs a closer look.":

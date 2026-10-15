@@ -56,6 +56,24 @@ final class AgentGuardTests: XCTestCase {
       "negations must follow the rules they carve out of")
   }
 
+  func testTemplatesTheUserAlreadyDeniesStayDenied() throws {
+    let directory = root.appendingPathComponent(".claude")
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    try #"{"permissions":{"deny":["Read(.env.example)","Read(./.env.sample)"]}}"#
+      .write(to: directory.appendingPathComponent("settings.local.json"), atomically: true, encoding: .utf8)
+
+    try AgentGuard.addClaudeDenyRules(AgentGuard.claudeDenyRules(keyFileNames: []), root: root)
+
+    let permissions = try XCTUnwrap(try settings(at: root)["permissions"] as? [String: Any])
+    let deny = try XCTUnwrap(permissions["deny"] as? [String])
+    // A later `Read(!.env.example)` would lift the user's own rule.
+    XCTAssertFalse(deny.contains("Read(!.env.example)"))
+    XCTAssertFalse(deny.contains("Read(!.env.sample)"))
+    XCTAssertTrue(deny.contains("Read(.env.example)"))
+    XCTAssertTrue(deny.contains("Read(!.env.template)"), "other templates stay readable")
+    XCTAssertTrue(deny.contains("Read(.env)"))
+  }
+
   func testBrokenSettingsFileIsLeftAlone() throws {
     let directory = root.appendingPathComponent(".claude")
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

@@ -606,6 +606,29 @@ final class AgentKeyBoxCoreTests: XCTestCase {
     }
   }
 
+  func testCaptureCutInsideAMultiByteCharacterOfTheSecretNeverLeaksIt() {
+    // 100 bytes with a 3-byte character in the middle; the cut lands inside it.
+    let secret = String(repeating: "A", count: 48) + "密" + String(repeating: "B", count: 49)
+    let secretData = Data(secret.utf8)
+    XCTAssertEqual(secretData.count, 100)
+    let maxBytes = 128 * 1024
+    let full = Data(String(repeating: secret, count: 3_000).utf8)
+    for cutInside in [1, 2] {
+      // Find a capture length that ends `cutInside` bytes into a copy's "密".
+      var length = maxBytes + SecretRedactor.margin(for: secretData)
+      while (length % 100) != 48 + cutInside { length += 1 }
+      let (visible, truncated) = SecretRedactor.redactThenTruncate(
+        full.prefix(length), secretData: secretData, maxBytes: maxBytes, captureWasCut: true)
+      XCTAssertTrue(truncated)
+      XCTAssertFalse(visible.contains("AAAA"), "leaked part of a secret, cut \(cutInside) bytes in")
+    }
+    XCTAssertEqual(
+      SecretRedactor.droppingIncompleteUTF8Ending(Data("ab密".utf8).dropLast()), Data("ab".utf8))
+    XCTAssertEqual(
+      SecretRedactor.droppingIncompleteUTF8Ending(Data("ab密".utf8)), Data("ab密".utf8))
+    XCTAssertEqual(SecretRedactor.droppingIncompleteUTF8Ending(Data("abc".utf8)), Data("abc".utf8))
+  }
+
   func testCaptureCutOffInsideAnEncodedSecretNeverLeaksIt() {
     let secretData = Data("sk_live_0123456789abcdef".utf8)
     let hex = secretData.map { String(format: "%02x", $0) }.joined()

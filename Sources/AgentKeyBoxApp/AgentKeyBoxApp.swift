@@ -479,8 +479,13 @@
         return false
       }
       defer { grant?.invalidate() }
+      // What the backup holds is fixed here. Keys added or edited while it is being written
+      // have a later date, so they do not count as backed up.
+      let snapshotTime = Date()
+      let snapshotProjects = projects
+      let snapshotCredentials = credentials
       var secrets: [String: Data] = [:]
-      for credential in credentials {
+      for credential in snapshotCredentials {
         do {
           guard let value = try await readSecret(credential.id, grant: grant) else { continue }
           secrets[credential.id.uuidString] = value
@@ -490,7 +495,7 @@
         }
       }
       let contents = BackupContents(
-        projects: projects, credentials: credentials, secrets: secrets)
+        projects: snapshotProjects, credentials: snapshotCredentials, secrets: secrets)
       do {
         try await Task.detached(priority: .userInitiated) {
           try BackupArchive.write(contents, password: password, to: url)
@@ -499,9 +504,8 @@
         statusMessage = L("Could not write the backup: %@", error.localizedDescription)
         return false
       }
-      let now = Date()
-      UserDefaults.standard.set(now, forKey: "AgentKeyBoxLastBackup")
-      lastBackupDate = now
+      UserDefaults.standard.set(snapshotTime, forKey: "AgentKeyBoxLastBackup")
+      lastBackupDate = snapshotTime
       statusMessage = L("Backed up %@ key(s) to %@.", "\(secrets.count)", url.lastPathComponent)
       return true
     }
@@ -516,24 +520,12 @@
     /// Adds the backup's projects and keys. Keys already here (same ID) and projects for a folder
     /// that is already here are kept as they are; keys of such a project join the existing one.
     func importBackup(_ contents: BackupContents) {
-      var projectIDs: [UUID: UUID] = [:]
-      var addedProjects = 0
-      for project in contents.projects {
-        if let existing = projects.first(where: {
-          $0.id == project.id || normalize($0.rootPath) == normalize(project.rootPath)
-        }) {
-          projectIDs[project.id] = existing.id
-        } else {
-          projects.append(project)
-          projectIDs[project.id] = project.id
-          addedProjects += 1
-        }
-      }
+      let plan = BackupArchive.importPlan(
+        contents, existingProjects: projects, existingCredentialIDs: Set(credentials.map(\.id)))
+      projects.append(contentsOf: plan.newProjects)
       var added: [CredentialMetadata] = []
-      for var credential in contents.credentials
-      where !credentials.contains(where: { $0.id == credential.id }) {
+      for credential in plan.newCredentials {
         guard let secret = contents.secrets[credential.id.uuidString] else { continue }
-        credential.projectID = credential.projectID.flatMap { projectIDs[$0] ?? $0 }
         do {
           try secretStore.save(secret: secret, id: credential.id)
           added.append(credential)
@@ -542,13 +534,13 @@
         }
       }
       credentials.append(contentsOf: added)
+      let addedProjects = plan.newProjects.count
       guard persistMetadata() else {
+        // Undo only what this import added; projects that were already here stay.
         let addedIDs = Set(added.map(\.id))
+        let newProjectIDs = Set(plan.newProjects.map(\.id))
         credentials.removeAll { addedIDs.contains($0.id) }
-        projects.removeAll { project in
-          contents.projects.contains { $0.id == project.id } && projectIDs[project.id] == project.id
-            && !credentials.contains { $0.projectID == project.id }
-        }
+        projects.removeAll { newProjectIDs.contains($0.id) }
         for credential in added { try? secretStore.delete(id: credential.id) }
         return
       }
@@ -562,9 +554,8 @@
     /// A backup newer than every key of the project exists, so the project's files are no longer
     /// the only other copy of its keys.
     func backupCovers(_ project: Project) -> Bool {
-      guard let last = lastBackupDate else { return false }
-      let keys = credentials.filter { $0.projectID == project.id }
-      return !keys.isEmpty && keys.allSatisfy { max($0.createdAt, $0.updatedAt) <= last }
+      BackupArchive.covers(
+        credentials.filter { $0.projectID == project.id }, backupSnapshot: lastBackupDate)
     }
 
     /// Empties the project's keys in its `.env` files and moves its key files to the Trash, so
@@ -603,18 +594,16 @@
       var untouched: [String] = []
       for file in scan.envFileURLs {
         guard let text = try? String(contentsOf: file, encoding: .utf8) else { continue }
-        var matching = Set<String>()
-        for (name, value) in EnvParser.parse(text) where !value.isEmpty {
-          guard
-            let key = keys.first(where: { !$0.isFileCredential && $0.injectionVariableName == name }),
-            let storedValue = stored[key.id]
+        var storedByName: [String: Data] = [:]
+        for key in keys where !key.isFileCredential {
+          guard let name = key.injectionVariableName, storedByName[name] == nil,
+            let value = stored[key.id]
           else { continue }
-          if Data(value.utf8) == storedValue {
-            matching.insert(name)
-          } else {
-            different.append(name)
-          }
+          storedByName[name] = value
         }
+        let check = EnvParser.removableKeys(in: text, stored: storedByName)
+        let matching = check.matching
+        different.append(contentsOf: check.different)
         guard !matching.isEmpty else { continue }
         guard let result = EnvParser.removingValues(of: matching, from: text) else {
           untouched.append(file.lastPathComponent)

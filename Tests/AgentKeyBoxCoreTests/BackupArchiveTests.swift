@@ -85,6 +85,47 @@ final class BackupArchiveTests: XCTestCase {
     XCTAssertEqual(try BackupArchive.contents(fromDataFile: data), contents)
   }
 
+  func testCoverageCountsOnlyKeysAsTheyWereWhenTheBackupReadThem() {
+    let snapshot = Date(timeIntervalSince1970: 1_000)
+    let before = CredentialMetadata(
+      label: "A", service: "Custom", createdAt: snapshot - 60, updatedAt: snapshot - 1)
+    // Edited while the backup file was still being written: not in the backup.
+    let editedDuring = CredentialMetadata(
+      label: "B", service: "Custom", createdAt: snapshot - 60, updatedAt: snapshot + 0.5)
+    XCTAssertTrue(BackupArchive.covers([before], backupSnapshot: snapshot))
+    XCTAssertFalse(BackupArchive.covers([before, editedDuring], backupSnapshot: snapshot))
+    XCTAssertFalse(BackupArchive.covers([before], backupSnapshot: nil))
+    XCTAssertFalse(BackupArchive.covers([], backupSnapshot: snapshot))
+  }
+
+  func testImportPlanNeverCountsAProjectThatIsAlreadyHereAsNew() {
+    let contents = sample()
+    // An empty project already here with the same ID as one in the backup, and another with the
+    // same folder as a second one.
+    let sameID = contents.projects[0]
+    let sameFolder = Project(name: "ios here", rootPath: contents.projects[1].rootPath + "/")
+    let plan = BackupArchive.importPlan(
+      contents, existingProjects: [sameID, sameFolder], existingCredentialIDs: [])
+    let newIDs = Set(plan.newProjects.map(\.id))
+    XCTAssertFalse(newIDs.contains(sameID.id), "undoing a failed import must not remove it")
+    XCTAssertFalse(newIDs.contains(contents.projects[1].id))
+    XCTAssertEqual(plan.projectIDs[contents.projects[1].id], sameFolder.id)
+    XCTAssertEqual(newIDs, Set(contents.projects.dropFirst(2).map(\.id)))
+    // Keys of the reused project join the one here.
+    let iosKey = plan.newCredentials.first { $0.label.hasPrefix("App Store Connect") }
+    XCTAssertEqual(iosKey?.projectID, sameFolder.id)
+  }
+
+  func testImportPlanSkipsKeysAlreadyHereOrWithoutAValue() {
+    let contents = sample()
+    let here = contents.credentials[0].id
+    let plan = BackupArchive.importPlan(
+      contents, existingProjects: [], existingCredentialIDs: [here])
+    XCTAssertFalse(plan.newCredentials.contains { $0.id == here })
+    XCTAssertTrue(
+      plan.newCredentials.allSatisfy { contents.secrets[$0.id.uuidString] != nil })
+  }
+
   func testEnvLinesReadBackUnchanged() {
     for value in ["plain", "", "a b", "x=y#z", "quote\"back\\slash", "tab\tand\r\nlines", "日本"] {
       let line = BackupArchive.envLine("KEY", value)
@@ -140,6 +181,21 @@ final class BackupArchiveTests: XCTestCase {
       var newer = contents
       newer.appVersion = "next"
       try BackupArchive.write(newer, password: password, to: url)
+      XCTAssertEqual(try BackupArchive.read(from: url, password: password).appVersion, "next")
+
+      // Opened elsewhere (as Finder would after a double-click): a clear message, not
+      // "wrong password".
+      let mountPoint = folder.appendingPathComponent("open")
+      try FileManager.default.createDirectory(at: mountPoint, withIntermediateDirectories: true)
+      try BackupArchive.hdiutil(
+        ["attach", "-quiet", "-stdinpass", "-nobrowse", "-noautoopen", "-mountpoint",
+         mountPoint.path, url.path], password: password)
+      XCTAssertTrue(BackupArchive.isAttached(url))
+      XCTAssertThrowsError(try BackupArchive.read(from: url, password: password)) {
+        XCTAssertEqual($0 as? BackupError, .alreadyOpen)
+      }
+      try BackupArchive.hdiutil(["detach", "-quiet", mountPoint.path], password: nil)
+      XCTAssertFalse(BackupArchive.isAttached(url))
       XCTAssertEqual(try BackupArchive.read(from: url, password: password).appVersion, "next")
 
       let text = folder.appendingPathComponent("notes.dmg")

@@ -43,6 +43,25 @@ final class EnvRewriterTests: XCTestCase {
     XCTAssertEqual(result.removed, ["TOKEN"])
   }
 
+  func testANameWithAnotherValueAnywhereIsLeftAlone() {
+    let text = """
+      API_KEY=old
+      API_KEY=new
+      STRIPE_SECRET_KEY=sk_test_1
+      STRIPE_SECRET_KEY=sk_test_1
+      EMPTY=
+      """
+    let check = EnvParser.removableKeys(
+      in: text,
+      stored: [
+        "API_KEY": Data("new".utf8), "STRIPE_SECRET_KEY": Data("sk_test_1".utf8),
+        "EMPTY": Data("x".utf8), "MISSING": Data("y".utf8),
+      ])
+    // Emptying API_KEY would also erase "old", which may exist nowhere else.
+    XCTAssertEqual(check.matching, ["STRIPE_SECRET_KEY"])
+    XCTAssertEqual(check.different, ["API_KEY"])
+  }
+
   func testFilesWithOtherLineEndingsAreLeftAlone() {
     XCTAssertNil(EnvParser.removingValues(of: ["TOKEN"], from: "TOKEN=x\r\nA=1\r\n"))
     XCTAssertNil(EnvParser.removingValues(of: ["TOKEN"], from: "TOKEN=x\u{2028}A=1"))

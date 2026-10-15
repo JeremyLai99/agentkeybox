@@ -26,6 +26,7 @@ public enum BackupError: Error, LocalizedError, Equatable {
   case notABackup
   case unsupportedVersion
   case wrongPasswordOrDamaged
+  case alreadyOpen
   case diskImageFailed(String)
 
   public var errorDescription: String? {
@@ -38,6 +39,8 @@ public enum BackupError: Error, LocalizedError, Equatable {
       return L("This backup was made by a newer AgentKeyBox. Update AgentKeyBox and try again.")
     case .wrongPasswordOrDamaged:
       return L("Wrong password, or the backup file is damaged.")
+    case .alreadyOpen:
+      return L("This backup is open in Finder. Eject the AgentKeyBox Backup disk, then try again.")
     case .diskImageFailed(let detail):
       return L("macOS could not create or open the disk image: %@", detail)
     }
@@ -257,6 +260,56 @@ public enum BackupArchive {
     return candidate
   }
 
+  /// Whether a backup taken at `backupSnapshot` (when its keys were read, not when the file
+  /// was finished) holds every one of `keys` as it is now.
+  public static func covers(_ keys: [CredentialMetadata], backupSnapshot: Date?) -> Bool {
+    guard let backupSnapshot, !keys.isEmpty else { return false }
+    return keys.allSatisfy { max($0.createdAt, $0.updatedAt) <= backupSnapshot }
+  }
+
+  /// What importing `contents` adds next to what is already here. Projects already here (same
+  /// ID or same folder) are reused and never count as added, so undoing a failed import can
+  /// remove exactly `newProjects` without touching projects that existed before.
+  public struct ImportPlan: Equatable, Sendable {
+    public var newProjects: [Project]
+    /// Backup project ID → the project the keys join here.
+    public var projectIDs: [UUID: UUID]
+    /// Keys not already here, moved to their project here. Their values are in the backup.
+    public var newCredentials: [CredentialMetadata]
+  }
+
+  public static func importPlan(
+    _ contents: BackupContents, existingProjects: [Project],
+    existingCredentialIDs: Set<UUID>
+  ) -> ImportPlan {
+    var known = existingProjects
+    var newProjects: [Project] = []
+    var projectIDs: [UUID: UUID] = [:]
+    for project in contents.projects {
+      if let existing = known.first(where: {
+        $0.id == project.id
+          || ProjectScopeResolver.normalize($0.rootPath)
+            == ProjectScopeResolver.normalize(project.rootPath)
+      }) {
+        projectIDs[project.id] = existing.id
+      } else {
+        known.append(project)
+        newProjects.append(project)
+        projectIDs[project.id] = project.id
+      }
+    }
+    var newCredentials: [CredentialMetadata] = []
+    for var credential in contents.credentials
+    where !existingCredentialIDs.contains(credential.id)
+      && contents.secrets[credential.id.uuidString] != nil
+    {
+      credential.projectID = credential.projectID.flatMap { projectIDs[$0] ?? $0 }
+      newCredentials.append(credential)
+    }
+    return ImportPlan(
+      newProjects: newProjects, projectIDs: projectIDs, newCredentials: newCredentials)
+  }
+
   // MARK: - Disk image
 
   /// Writes the backup to `url` as an encrypted disk image, replacing any file there only once
@@ -345,6 +398,9 @@ public enum BackupArchive {
         as? [String: Any],
       info["encrypted"] as? Bool == true
     else { throw BackupError.notABackup }
+    // macOS will not attach the same image twice, which would otherwise look like a wrong
+    // password. Reading the disk Finder opened would skip the password, so ask to eject it.
+    if isAttached(url) { throw BackupError.alreadyOpen }
     do {
       return try withMountedImage(url, password: password, readOnly: true) { volume in
         let file = volume.appendingPathComponent(dataFileName)
@@ -354,6 +410,27 @@ public enum BackupArchive {
     } catch BackupError.diskImageFailed {
       throw BackupError.wrongPasswordOrDamaged
     }
+  }
+
+  /// Whether macOS has this image file attached right now (for example opened in Finder).
+  static func isAttached(_ url: URL) -> Bool {
+    guard let plist = try? hdiutil(["info", "-plist"], password: nil),
+      let info = try? PropertyListSerialization.propertyList(from: plist, format: nil)
+        as? [String: Any],
+      let images = info["images"] as? [[String: Any]]
+    else { return false }
+    return images.compactMap { $0["image-path"] as? String }.contains {
+      sameFile($0, url.path)
+    }
+  }
+
+  static func sameFile(_ a: String, _ b: String) -> Bool {
+    let fileManager = FileManager.default
+    guard let first = try? fileManager.attributesOfItem(atPath: a),
+      let second = try? fileManager.attributesOfItem(atPath: b)
+    else { return false }
+    return (first[.systemFileNumber] as? NSNumber) == (second[.systemFileNumber] as? NSNumber)
+      && (first[.systemNumber] as? NSNumber) == (second[.systemNumber] as? NSNumber)
   }
 
   /// Mounts the image under a fresh owner-only folder, hidden from Finder, runs `body`, and
