@@ -942,6 +942,33 @@ final class AgentKeyBoxCoreTests: XCTestCase {
     XCTAssertEqual(perms, 0o600)
   }
 
+  func testTimedOutApprovalsAreLoggedButNotUses() throws {
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "akb-log-\(UUID().uuidString).json")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let store = AccessLogStore(fileURL: url)
+    let key = UUID()
+    try store.append(
+      AccessEvent(
+        requestID: UUID(), agentDisplayName: "Claude Code", credentialLabel: "STRIPE",
+        projectPath: "/tmp", decision: .allowOnce, timestamp: Date(timeIntervalSince1970: 0),
+        credentialIDs: [key]))
+    try store.append(
+      AccessEvent(
+        requestID: UUID(), agentDisplayName: "Codex", credentialLabel: "STRIPE",
+        projectPath: "/tmp", decision: .timedOut, timestamp: Date(timeIntervalSince1970: 60),
+        credentialIDs: [key]))
+    let reloaded = AccessLogStore(fileURL: url).load()
+    XCTAssertEqual(reloaded.first?.decision, .timedOut)
+    XCTAssertEqual(reloaded.lastUse(of: key)?.agentDisplayName, "Claude Code")
+    XCTAssertTrue(String(decoding: try Data(contentsOf: url), as: UTF8.self).contains("\"timedOut\""))
+    XCTAssertFalse(ApprovalDecision.timedOut.isAllowed)
+    XCTAssertFalse(ApprovalDecision.deny.isAllowed)
+    XCTAssertTrue(ApprovalDecision.allowOnce.isAllowed)
+    XCTAssertTrue(ApprovalDecision.allowSession.isAllowed)
+    XCTAssertTrue(ApprovalDecision.allowProject.isAllowed)
+  }
+
   func testAccessEventsWithoutCredentialIDsStillDecode() throws {
     let old = #"[{"id":"3BB35765-FD77-484F-99B2-E2181D934056","requestID":"3BB35765-FD77-484F-99B2-E2181D934057","agentDisplayName":"Claude Code","credentialLabel":"X","projectPath":"/tmp","decision":"allowOnce","timestamp":"2026-10-05T00:00:00Z"}]"#
     let decoder = JSONDecoder()

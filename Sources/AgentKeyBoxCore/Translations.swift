@@ -591,6 +591,8 @@ enum Translations {
       "這次工作階段",
     "This tool runs scripts defined in the project (package.json, Makefile, …), which the agent can edit before asking.":
       "這個工具會執行專案裡定義的腳本（package.json、Makefile…），而代理在詢問你之前可以先修改這些腳本。",
+    "Timed out":
+      "逾時未回應",
     "To restore everything into AgentKeyBox, choose Settings › Backup › Import… and pick this .dmg file.":
       "要把全部還原到 AgentKeyBox，請選擇「設定 › 備份 › 匯入…」，再選這個 .dmg 檔。",
     "Touch ID next":

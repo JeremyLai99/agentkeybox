@@ -164,7 +164,7 @@
         Text(L("Recent"))
         ForEach(model.accessLog.prefix(5)) { event in
           Text(
-            "\(ApprovalPresentation.agentText(event.agentDisplayName, limit: 40)) → \(event.credentialLabel) · \(event.decision == .deny ? L("Denied") : L("Allowed"))"
+            "\(ApprovalPresentation.agentText(event.agentDisplayName, limit: 40)) → \(event.credentialLabel) · \(event.decision.historyText)"
           )
         }
       }
@@ -1061,10 +1061,7 @@
       decisionInProgress = true
       let brokerRequestAtDecision = pendingBrokerRequest
       let requestID = request.id
-      let historyLabel =
-        request.kind == .environment
-        ? "\(request.environmentVariables.count) secret(s) for akb run"
-        : (credential?.label ?? "credential")
+      let historyLabel = self.historyLabel(for: request)
 
       Task {
         // Every approval requires Touch ID or the login password. With the data protection
@@ -1113,15 +1110,9 @@
           recordedDecision = decision
         }
 
-        let usedIDs =
-          request.kind == .environment
-          ? self.environmentCredentials(
-            projectPath: request.projectPath, only: request.environmentVariables
-          ).values.map(\.id)
-          : credential.map { [$0.id] } ?? []
         let event = await approvalEngine.record(
           decision: recordedDecision, request: request, credentialLabel: historyLabel,
-          credentialIDs: usedIDs)
+          credentialIDs: self.historyCredentialIDs(for: request))
         self.recordAccess(event)
 
         if decision == .deny {
@@ -1535,6 +1526,15 @@
         pendingApprovalTimeoutTask = Task { [weak self] in
           try? await Task.sleep(for: .seconds(timeout))
           guard !Task.isCancelled, let self, self.currentPromptID == promptID else { return }
+          // An unanswered request still leaves a trace, so the user can see what an agent tried.
+          if let request = self.pendingRequest {
+            let event = await self.approvalEngine.record(
+              decision: .timedOut, request: request,
+              credentialLabel: self.historyLabel(for: request),
+              credentialIDs: self.historyCredentialIDs(for: request))
+            guard !Task.isCancelled, self.currentPromptID == promptID else { return }
+            self.recordAccess(event)
+          }
           self.finishPrompt(
             BrokerResponse(ok: false, error: "Approval timed out."),
             message: L("Approval timed out.")
@@ -1545,6 +1545,22 @@
 
     private var currentPromptID: UUID? {
       pendingRequest?.id ?? pendingCredentialRequest?.id
+    }
+
+    /// What the history shows for a request: the key's label, or how many `akb run` secrets.
+    private func historyLabel(for request: AgentRequest) -> String {
+      request.kind == .environment
+        ? "\(request.environmentVariables.count) secret(s) for akb run"
+        : (credentialSummary(for: request)?.label ?? "credential")
+    }
+
+    /// The credentials a request covers, recorded with its decision.
+    private func historyCredentialIDs(for request: AgentRequest) -> [UUID] {
+      request.kind == .environment
+        ? environmentCredentials(
+          projectPath: request.projectPath, only: request.environmentVariables
+        ).values.map(\.id)
+        : credentialSummary(for: request).map { [$0.id] } ?? []
     }
 
     // MARK: - Approved operations

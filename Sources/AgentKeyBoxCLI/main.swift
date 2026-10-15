@@ -241,7 +241,7 @@ struct AgentKeyBoxCLI {
       writeError("akb: \(error.localizedDescription)\n")
       exit(1)
     }
-    guard response.decision != .deny, let environment = response.environment else {
+    guard response.decision?.isAllowed != false, let environment = response.environment else {
       writeError("akb: " + L("access was denied.") + "\n")
       exit(1)
     }

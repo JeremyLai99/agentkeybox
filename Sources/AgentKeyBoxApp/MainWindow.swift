@@ -928,6 +928,26 @@
     }
   }
 
+  /// One line of the access history: who asked for which key, what happened, and when.
+  struct AccessEventRow: View {
+    let event: AccessEvent
+
+    var body: some View {
+      HStack {
+        Text(
+          "\(ApprovalPresentation.agentText(event.agentDisplayName, limit: 40)) → \(event.credentialLabel)"
+        )
+        Spacer()
+        Text(event.decision.historyText)
+          .foregroundStyle(event.decision.isAllowed ? Color.secondary : Color.orange)
+        Text(event.timestamp, style: .relative)
+          .foregroundStyle(.secondary)
+          .monospacedDigit()
+      }
+      .font(.callout)
+    }
+  }
+
   /// Settings (⌘,): agent connections, Keychain mode, and recent access.
   struct SettingsView: View {
     @EnvironmentObject private var model: AppModel
@@ -1019,21 +1039,7 @@
             Text(L("No requests yet")).foregroundStyle(.secondary)
           }
           ForEach(model.accessLog.prefix(15)) { event in
-            HStack {
-              Text(
-                "\(ApprovalPresentation.agentText(event.agentDisplayName, limit: 40)) → \(event.credentialLabel)"
-              )
-              Spacer()
-              Text(
-                event.decision == .deny
-                  ? L("Denied")
-                  : event.decision == .allowSession ? L("Allowed (session)") : L("Allowed"))
-                .foregroundStyle(event.decision == .deny ? .orange : .secondary)
-              Text(event.timestamp, style: .relative)
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
-            }
-            .font(.callout)
+            AccessEventRow(event: event)
           }
         }
         #if DEBUG

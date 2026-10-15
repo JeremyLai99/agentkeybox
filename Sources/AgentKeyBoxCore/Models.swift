@@ -156,6 +156,26 @@ public enum ApprovalDecision: String, Codable, Sendable {
   case allowSession
   case allowProject
   case deny
+  /// Nobody answered the prompt in time. Recorded in the history only; never sent to an agent.
+  case timedOut
+
+  /// Whether the agent got to use the credential.
+  public var isAllowed: Bool {
+    switch self {
+    case .allowOnce, .allowSession, .allowProject: return true
+    case .deny, .timedOut: return false
+    }
+  }
+
+  /// How the access history shows this decision.
+  public var historyText: String {
+    switch self {
+    case .allowOnce, .allowProject: return L("Allowed")
+    case .allowSession: return L("Allowed (session)")
+    case .deny: return L("Denied")
+    case .timedOut: return L("Timed out")
+    }
+  }
 }
 
 public struct AccessEvent: Identifiable, Codable, Hashable, Sendable {

@@ -65,6 +65,6 @@ public final class AccessLogStore: @unchecked Sendable {
 extension Array where Element == AccessEvent {
   /// The most recent time this key was actually used (allowed), if ever.
   public func lastUse(of credentialID: UUID) -> AccessEvent? {
-    first { $0.decision != .deny && ($0.credentialIDs ?? []).contains(credentialID) }
+    first { $0.decision.isAllowed && ($0.credentialIDs ?? []).contains(credentialID) }
   }
 }

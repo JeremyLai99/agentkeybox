@@ -245,7 +245,7 @@ private final class MCPServer: @unchecked Sendable {
           sessionID: sessionID
         ))
 
-      guard response.decision != .deny else {
+      guard response.decision?.isAllowed != false else {
         return toolError(id: requestID, message: "Credential access was denied.")
       }
       guard let execution = response.execution else {
@@ -296,7 +296,7 @@ private final class MCPServer: @unchecked Sendable {
           headers: headers,
           body: args["body"]?.stringValue
         ))
-      guard response.decision != .deny else {
+      guard response.decision?.isAllowed != false else {
         return toolError(id: requestID, message: "Credential access was denied.")
       }
       guard let http = response.http else {
