@@ -1,5 +1,6 @@
 #if os(macOS)
   import SwiftUI
+  import ServiceManagement
   import AppKit
   import UniformTypeIdentifiers
   import AgentKeyBoxCore
@@ -783,6 +784,30 @@
             .font(.caption)
             .foregroundStyle(.secondary)
         }
+        Section(L("Startup")) {
+          Toggle(
+            L("Open AgentKeyBox when you log in"),
+            isOn: Binding(
+              get: { model.opensAtLogin }, set: { model.setOpensAtLogin($0) }))
+          if model.loginItemNeedsApproval {
+            HStack {
+              Text(L("macOS needs your OK in System Settings › Login Items."))
+                .font(.caption)
+                .foregroundStyle(.orange)
+              Spacer()
+              Button(L("Open Login Items")) { SMAppService.openSystemSettingsLoginItems() }
+                .controlSize(.small)
+            }
+          }
+          Toggle(
+            L("Open AgentKeyBox automatically when a coding agent needs a key"),
+            isOn: $model.opensWhenNeeded)
+          Text(
+            L("When AgentKeyBox is closed, Claude Code, Codex, and akb open it in the menu bar instead of failing.")
+          )
+          .font(.caption)
+          .foregroundStyle(.secondary)
+        }
         Section(L("Coding agents")) {
           agentRow("Claude Code", status: model.claudeConnectionStatus) {
             model.connectClaudeCode()
@@ -836,7 +861,10 @@
       }
       .formStyle(.grouped)
       .frame(width: 520, height: 520)
-      .task { model.refreshAgentStatuses() }
+      .task {
+        model.refreshAgentStatuses()
+        model.refreshLoginItemStatus()
+      }
     }
 
     private func agentRow(_ name: String, status: String, connect: @escaping () -> Void)

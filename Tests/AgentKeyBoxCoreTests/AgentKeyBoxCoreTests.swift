@@ -1306,7 +1306,8 @@ final class AgentKeyBoxCoreTests: XCTestCase {
       FileManager.default.createFile(atPath: fixture.socket.path, contents: nil)
       for _ in 0..<2 {
         let client = LocalBrokerClient(
-          socketURL: fixture.socket, tokenStore: fixture.tokens, timeoutSeconds: 30)
+          socketURL: fixture.socket, tokenStore: fixture.tokens, timeoutSeconds: 30,
+          opensAppIfNeeded: false)
         let start = Date()
         do {
           _ = try await client.send(

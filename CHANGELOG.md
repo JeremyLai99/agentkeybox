@@ -6,6 +6,7 @@ First release meant for people to download: a notarized, universal app with a pr
 
 ### Added
 
+- AgentKeyBox no longer has to be open. When it is not running, the MCP helper and `akb run` open it in the background (menu bar only, no window) and retry, instead of failing with "AgentKeyBox is not running". It also opens at login: turned on the first time it runs from Applications, and both can be switched off in Settings › Startup. `akb doctor` never opens the app.
 - The release app is universal: it runs natively on Apple silicon and Intel Macs. `build-release-macos.sh` builds each architecture and merges them with `lipo` (`AGENTKEYBOX_ARCHS=arm64` builds one for quicker local packaging).
 - README section on connecting other local MCP agents by hand (untested: Gemini CLI, Copilot in VS Code, Cursor, Windsurf, Cline, Muse Code), and why cloud agents such as OpenAI Dots cannot connect.
 - README install, update, and uninstall guide for people downloading the app (macOS 14+), and a Traditional Chinese README (`README.zh-TW.md`) for users. Agent connection examples now use the helper's fixed path.

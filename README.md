@@ -22,6 +22,8 @@ AgentKeyBox is an experimental macOS utility for vibe coders, indie developers, 
 
 The interface follows your macOS language (English or Traditional Chinese). Change it in **Settings › Language**.
 
+You don't need to keep AgentKeyBox open: it opens when you log in, and if it is closed, Claude Code, Codex, and `akb` open it in the menu bar when they need a key. Both are on by default and can be turned off in **Settings › Startup**.
+
 To check the download, compare `shasum -a 256 AgentKeyBox-<version>-macOS.zip` with the `.sha256` file published next to it.
 
 ### Update

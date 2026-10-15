@@ -1,11 +1,13 @@
 #if os(macOS)
   import SwiftUI
+  import ServiceManagement
   import AppKit
   import UniformTypeIdentifiers
   import AgentKeyBoxCore
 
   @main
   struct AgentKeyBoxApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var model = AppModel()
 
     var body: some Scene {
@@ -36,6 +38,30 @@
       } label: {
         MenuBarLabel(pending: model.hasPendingPrompt)
       }
+    }
+  }
+
+  /// Opened for a coding agent or at login, AgentKeyBox starts quietly in the menu bar instead
+  /// of showing its main window; approval prompts still come forward on their own.
+  final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+      guard Self.launchedInBackground else { return }
+      // SwiftUI creates the main window right after launch; close it once it exists.
+      for delay in [0.0, 0.3, 1.0] {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+          for window in NSApp.windows where window.canBecomeMain && window.isVisible {
+            window.close()
+          }
+        }
+      }
+    }
+
+    static var launchedInBackground: Bool {
+      if CommandLine.arguments.contains(AppLauncher.backgroundArgument) { return true }
+      let event = NSAppleEventManager.shared().currentAppleEvent
+      return event?.eventID == AEEventID(kAEOpenApplication)
+        && event?.paramDescriptor(forKeyword: AEKeyword(keyAEPropData))?.enumCodeValue
+          == OSType(keyAELaunchedAsLogInItem)
     }
   }
 
@@ -289,6 +315,14 @@
     @Published var pendingEnvImport: EnvImportPreview?
     @Published var pendingSetup: SetupPlan?
     @Published var statusMessage: String?
+    /// Open at login (macOS login item for this app).
+    @Published var opensAtLogin = SMAppService.mainApp.status == .enabled
+    /// macOS asks the user to allow the login item in System Settings first.
+    @Published var loginItemNeedsApproval = SMAppService.mainApp.status == .requiresApproval
+    /// Coding agents open AgentKeyBox when it is not running.
+    @Published var opensWhenNeeded = AppPreferences.opensAppWhenNeeded {
+      didSet { AppPreferences.opensAppWhenNeeded = opensWhenNeeded }
+    }
     /// Shown as a banner while the app runs from outside Applications (e.g. from Downloads).
     @Published var offersMoveToApplications = InstallLocation.shouldOfferMove(Bundle.main.bundleURL)
     /// Interface language. Text switches immediately; macOS's own menus (Edit, Window) follow
@@ -359,6 +393,43 @@
         self.brokerStatus = L("Broker unavailable: %@", error.localizedDescription)
       }
       keepAgentsConnected()
+      openAtLoginByDefault()
+    }
+
+    // MARK: - Startup
+
+    /// Turns on Open at Login once, the first time AgentKeyBox runs from Applications, so
+    /// agents find it running after a restart. A copy in Downloads or a translocated copy is
+    /// never registered; after the user turns it off, it stays off.
+    private func openAtLoginByDefault() {
+      let key = "AgentKeyBoxLoginItemConfigured"
+      guard !UserDefaults.standard.bool(forKey: key),
+        InstallLocation.isInApplications(Bundle.main.bundleURL)
+      else { return }
+      UserDefaults.standard.set(true, forKey: key)
+      if SMAppService.mainApp.status != .enabled {
+        try? SMAppService.mainApp.register()
+      }
+      refreshLoginItemStatus()
+    }
+
+    func setOpensAtLogin(_ enabled: Bool) {
+      UserDefaults.standard.set(true, forKey: "AgentKeyBoxLoginItemConfigured")
+      do {
+        if enabled {
+          try SMAppService.mainApp.register()
+        } else {
+          try SMAppService.mainApp.unregister()
+        }
+      } catch {
+        statusMessage = L("Could not change Open at Login: %@", error.localizedDescription)
+      }
+      refreshLoginItemStatus()
+    }
+
+    func refreshLoginItemStatus() {
+      opensAtLogin = SMAppService.mainApp.status == .enabled
+      loginItemNeedsApproval = SMAppService.mainApp.status == .requiresApproval
     }
 
     deinit {

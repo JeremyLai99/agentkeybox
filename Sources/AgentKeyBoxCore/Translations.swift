@@ -199,6 +199,8 @@ enum Translations {
       "已把 AgentKeyBox 連接到 %@。開一個新的代理工作階段，就能載入 MCP 工具。",
     "Could not add the project folder.":
       "無法加入專案資料夾。",
+    "Could not change Open at Login: %@":
+      "無法變更「登入時自動開啟」：%@",
     "Could not determine integration status.":
       "無法判斷連接狀態。",
     "Could not import .env: %@":
@@ -351,8 +353,14 @@ enum Translations {
       "沒有匯入任何項目。",
     "Open AgentKeyBox":
       "打開 AgentKeyBox",
+    "Open AgentKeyBox automatically when a coding agent needs a key":
+      "程式代理需要金鑰時，自動打開 AgentKeyBox",
     "Open AgentKeyBox once to initialize local broker authentication.":
       "請先打開一次 AgentKeyBox，建立本機服務的驗證。",
+    "Open AgentKeyBox when you log in":
+      "登入時自動開啟 AgentKeyBox",
+    "Open Login Items":
+      "打開登入項目",
     "Open the %@ dashboard to get the key":
       "打開 %@ 後台取得金鑰",
     "Optional":
@@ -439,6 +447,8 @@ enum Translations {
       "模擬 Claude 請求",
     "Starting local broker…":
       "正在啟動本機服務…",
+    "Startup":
+      "啟動",
     "Supported credential files are .p8, .pem, and .json.":
       "支援的金鑰檔案有 .p8、.pem 和 .json。",
     "Temporary file path in %@":
@@ -497,6 +507,8 @@ enum Translations {
       "變數",
     "We found these in the folder. Likely secrets are already checked.":
       "在資料夾裡找到這些。看起來是金鑰的已經幫你勾好了。",
+    "When AgentKeyBox is closed, Claude Code, Codex, and akb open it in the menu bar instead of failing.":
+      "AgentKeyBox 沒開的時候，Claude Code、Codex 和 akb 會自動在選單列打開它，而不是直接失敗。",
     "Where do I find these?":
       "去哪裡找？",
     "Where do I find this?":
@@ -529,6 +541,8 @@ enum Translations {
       "已注入 %@",
     "just now":
       "剛剛",
+    "macOS needs your OK in System Settings › Login Items.":
+      "需要在「系統設定 › 登入項目」裡允許。",
     "project":
       "專案",
     "skipped %@ (not text)":

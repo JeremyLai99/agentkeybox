@@ -89,7 +89,7 @@ struct AgentKeyBoxCLI {
 
     #if os(macOS)
       do {
-        let response = try await LocalBrokerClient(timeoutSeconds: 2).send(
+        let response = try await LocalBrokerClient(timeoutSeconds: 2, opensAppIfNeeded: false).send(
           BrokerRequest(
             action: .listCredentials,
             agentID: "akb-doctor",

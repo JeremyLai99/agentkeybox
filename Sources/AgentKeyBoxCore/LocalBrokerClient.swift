@@ -20,18 +20,50 @@ import Foundation
     private let socketURL: URL
     private let tokenStore: BrokerTokenStore
     private let timeoutSeconds: TimeInterval
+    private let opensAppIfNeeded: Bool
 
     public init(
       socketURL: URL = BrokerEndpoint.defaultSocketURL,
       tokenStore: BrokerTokenStore = BrokerTokenStore(),
-      timeoutSeconds: TimeInterval = BrokerEndpoint.defaultClientTimeout
+      timeoutSeconds: TimeInterval = BrokerEndpoint.defaultClientTimeout,
+      opensAppIfNeeded: Bool = true
     ) {
       self.socketURL = socketURL
       self.tokenStore = tokenStore
       self.timeoutSeconds = timeoutSeconds
+      self.opensAppIfNeeded = opensAppIfNeeded
     }
 
-    public func send(_ originalRequest: BrokerRequest) async throws -> BrokerResponse {
+    /// Sends one request. When AgentKeyBox is not running, opens it in the background (unless
+    /// the user turned that off) and retries once it is ready, so the agent never has to ask the
+    /// user to open the app.
+    public func send(_ request: BrokerRequest) async throws -> BrokerResponse {
+      do {
+        return try await sendOnce(request)
+      } catch BrokerError.appNotRunning
+        where opensAppIfNeeded && AppPreferences.opensAppWhenNeeded
+      {
+        let opened = await Task.detached { AppLauncher.openInBackground() }.value
+        guard opened else { throw BrokerError.appNotRunning }
+        let deadline = Date().addingTimeInterval(Self.launchWaitSeconds)
+        while true {
+          try await Task.sleep(nanoseconds: 300_000_000)
+          var retry = request
+          retry.requestID = UUID()
+          retry.issuedAt = Date()
+          do {
+            return try await sendOnce(retry)
+          } catch BrokerError.appNotRunning where Date() < deadline {
+            continue
+          }
+        }
+      }
+    }
+
+    /// How long to wait for AgentKeyBox to start after opening it.
+    static let launchWaitSeconds: TimeInterval = 20
+
+    private func sendOnce(_ originalRequest: BrokerRequest) async throws -> BrokerResponse {
       var request = originalRequest
       do {
         request.authToken = try tokenStore.load()
@@ -140,7 +172,8 @@ import Foundation
     public init(
       socketURL: URL = BrokerEndpoint.defaultSocketURL,
       tokenStore: BrokerTokenStore = BrokerTokenStore(),
-      timeoutSeconds: TimeInterval = BrokerEndpoint.defaultClientTimeout
+      timeoutSeconds: TimeInterval = BrokerEndpoint.defaultClientTimeout,
+      opensAppIfNeeded: Bool = true
     ) {}
     public func send(_ request: BrokerRequest) async throws -> BrokerResponse {
       throw BrokerError.unsupportedPlatform
