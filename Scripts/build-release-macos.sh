@@ -37,9 +37,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Helpers" "$APP/Contents/Resources"
 cp "$BIN_DIR/AgentKeyBox" "$APP/Contents/MacOS/AgentKeyBox"
 cp "$BIN_DIR/agentkeybox-mcp" "$APP/Contents/Helpers/agentkeybox-mcp"
 cp "$BIN_DIR/akb" "$APP/Contents/Helpers/akb"
-cp "$BIN_DIR/agentkeybox-mcp" "dist/bin/agentkeybox-mcp"
-cp "$BIN_DIR/akb" "dist/bin/akb"
-chmod +x "$APP/Contents/MacOS/AgentKeyBox" "$APP/Contents/Helpers/agentkeybox-mcp" "$APP/Contents/Helpers/akb" dist/bin/*
+chmod +x "$APP/Contents/MacOS/AgentKeyBox" "$APP/Contents/Helpers/agentkeybox-mcp" "$APP/Contents/Helpers/akb"
 
 # App icon (regenerate with assets/brand/generate-app-iconset-macos.sh) and the brand images the
 # UI loads at runtime from Contents/Resources/Brand.
@@ -118,6 +116,8 @@ else
 fi
 
 rm -rf "$BIN_DIR"
+# Copied after signing: a team-signed broker only accepts its own signed helper and akb.
+cp "$APP/Contents/Helpers/agentkeybox-mcp" "$APP/Contents/Helpers/akb" dist/bin/
 
 ZIP="dist/AgentKeyBox-$VERSION-macOS.zip"
 ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"

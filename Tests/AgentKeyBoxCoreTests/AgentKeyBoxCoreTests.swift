@@ -977,6 +977,69 @@ final class AgentKeyBoxCoreTests: XCTestCase {
       "file keys are never sent by http_request")
   }
 
+  // MARK: - Broker callers
+
+  func testPeerPolicyOnlyAdmitsTheTeamsHelperAndAkb() {
+    let policy = BrokerPeerPolicy.signedBy(teamID: "ABCDE12345")
+    let helper = BrokerPeerPolicy.Peer(
+      teamID: "ABCDE12345", identifier: "agentkeybox-mcp", signatureValid: true)
+    let akb = BrokerPeerPolicy.Peer(teamID: "ABCDE12345", identifier: "akb", signatureValid: true)
+
+    XCTAssertNil(policy.rejection(of: helper, for: .executeWithSecret))
+    XCTAssertNil(policy.rejection(of: helper, for: .httpRequest))
+    XCTAssertNil(policy.rejection(of: akb, for: .listCredentials))
+    XCTAssertNil(policy.rejection(of: akb, for: .revealEnvironment))
+    XCTAssertNotNil(
+      policy.rejection(of: helper, for: .revealEnvironment),
+      "only akb run may receive raw secrets")
+    XCTAssertNotNil(policy.rejection(of: nil, for: .listCredentials))
+    XCTAssertNotNil(
+      policy.rejection(
+        of: .init(teamID: "OTHERTEAM1", identifier: "akb", signatureValid: true),
+        for: .listCredentials))
+    XCTAssertNotNil(
+      policy.rejection(
+        of: .init(teamID: "ABCDE12345", identifier: "akb", signatureValid: false),
+        for: .listCredentials),
+      "a modified binary fails the signature check")
+    XCTAssertNotNil(
+      policy.rejection(
+        of: .init(teamID: "ABCDE12345", identifier: "AgentKeyBox", signatureValid: true),
+        for: .listCredentials))
+    XCTAssertNil(BrokerPeerPolicy.unverified.rejection(of: nil, for: .revealEnvironment))
+  }
+
+  func testRiskAnalyzerFlagsLaunchersFindExecAndEnvironmentPrintersForAkbRun() {
+    func level(_ path: String, _ args: [String] = [], akbRun: Bool = false) -> CommandRiskLevel {
+      CommandRiskAnalyzer.assess(
+        executablePath: path, arguments: args, handsSecretsToCaller: akbRun
+      ).level
+    }
+    XCTAssertEqual(level("/usr/bin/arch", ["-x86_64", "/bin/sh"]), .high)
+    XCTAssertEqual(level("/usr/bin/awk", ["BEGIN { system(\"id\") }"]), .high)
+    XCTAssertEqual(level("/usr/bin/find", [".", "-exec", "cat", "{}", ";"]), .high)
+    XCTAssertEqual(level("/usr/bin/find", [".", "-name", "*.swift"]), .normal)
+    XCTAssertEqual(level("/usr/bin/git", ["push"]), .elevated, "git runs hooks the agent can edit")
+    XCTAssertEqual(level("/usr/bin/printenv"), .normal, "run_with_secret redacts its output")
+    XCTAssertEqual(level("/usr/bin/printenv", akbRun: true), .high, "akb run does not")
+  }
+
+  func testRedactorCatchesBase64OfTheKeyWithATrailingNewline() {
+    let secret = Data("sk_test_redaction_123".utf8)
+    let piped = (secret + Data("\n".utf8)).base64EncodedString()
+    XCTAssertEqual(
+      SecretRedactor.redact("out: \(piped)", secretData: secret), "out: [REDACTED_BY_AGENTKEYBOX]")
+  }
+
+  func testBrokerTokenComparison() {
+    #if os(macOS)
+      XCTAssertTrue(LocalBrokerServer.constantTimeEquals("abc", "abc"))
+      XCTAssertFalse(LocalBrokerServer.constantTimeEquals("abc", "abd"))
+      XCTAssertFalse(LocalBrokerServer.constantTimeEquals("abc", "abcd"))
+      XCTAssertFalse(LocalBrokerServer.constantTimeEquals("", "a"))
+    #endif
+  }
+
   // MARK: - Provider bundles
 
   func testProjectScanGroupsProviderSettingsWithTheirKey() throws {
@@ -1204,6 +1267,34 @@ final class AgentKeyBoxCoreTests: XCTestCase {
       } catch {
         XCTAssertEqual(
           error as? BrokerError, .requestFailed("Unauthorized local broker request."))
+      }
+    }
+
+    func testSignedBrokerRejectsCallersThatAreNotItsSignedHelpers() async throws {
+      let fixture = try makeBrokerFixture()
+      defer { try? FileManager.default.removeItem(at: fixture.root) }
+      // The test runner is not signed by this team, like a script an agent might write.
+      let server = LocalBrokerServer(
+        socketURL: fixture.socket,
+        expectedAuthToken: try fixture.tokens.load(),
+        peerPolicy: .signedBy(teamID: "ABCDE12345")
+      ) { _ in BrokerResponse(ok: true) }
+      try server.start()
+      defer { server.stop() }
+      try await waitForSocket(fixture.socket)
+
+      let client = LocalBrokerClient(
+        socketURL: fixture.socket, tokenStore: fixture.tokens, timeoutSeconds: 5)
+      do {
+        _ = try await client.send(
+          BrokerRequest(
+            action: .revealEnvironment, agentID: "terminal",
+            agentDisplayName: "Terminal (akb run)", projectPath: "/tmp"))
+        XCTFail("A caller with the right token but the wrong signature must be rejected")
+      } catch {
+        XCTAssertEqual(
+          error as? BrokerError,
+          .requestFailed("Requests must come from the AgentKeyBox helper or akb."))
       }
     }
 

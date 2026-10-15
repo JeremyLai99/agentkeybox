@@ -24,14 +24,14 @@ The current prototype includes:
 
 - Keychain-backed secret storage; team-signed builds use the data protection keychain with Touch ID / password (user presence) required for every read
 - owner-only local metadata/token files where supported
-- authenticated broker on an owner-only Unix-domain socket
+- authenticated broker on an owner-only Unix-domain socket; team-signed builds also check the code signature of every caller, so only AgentKeyBox's own signed helper and `akb` can connect, and only `akb` can ask for `akb run` secrets. A coding agent with a shell can read the broker token, but a script it writes cannot use it
 - request freshness and replay rejection
 - project-scoped credential visibility
 - approval timeout
 - command execution timeout with best-effort termination / direct-child kill escalation
 - output-size limits
 - common direct secret-representation redaction
-- optional Touch ID / login-password confirmation for every approval
+- Touch ID / login-password confirmation for every approval
 - protected temporary-file delivery for file credentials
 
 ## Explicit non-goals
@@ -47,6 +47,8 @@ The current alpha does not defend against:
 - physical access to an already-unlocked Mac
 
 `run_with_secret` is an approval-oriented workflow prototype, not a cryptographic sandbox.
+
+`akb run` hands secrets to a process in your terminal and does not redact its output. A coding agent with a shell can start `akb run` too; the approval prompt shows the exact command, flags commands that would print the keys back, and asks you to allow only commands you started yourself.
 
 ## Secrets in issues and logs
 

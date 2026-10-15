@@ -28,6 +28,14 @@ First release meant for people to download: a notarized, universal app with a pr
 - `request_credential` MCP tool: when a credential is missing, the user enters it in an AgentKeyBox prompt (with a link to the provider's dashboard) instead of pasting it into chat; the agent receives only the new credential ID.
 - Credentials record their environment variable name and allowed hosts; `list_credentials` returns both.
 
+### Security
+
+- The broker now checks who is calling. A coding agent with a shell could read the broker token and send requests itself, including a fake `akb run` that returns raw secrets after a convincing prompt. Team-signed builds read the caller's audit token and accept only AgentKeyBox's own signed helper and `akb`; only `akb` may make `akb run` requests. The broker moved from Network.framework to BSD sockets to get the caller's identity, and compares tokens in constant time.
+- Commands under `akb run` that print the environment (`printenv`, `env`) are flagged high risk, since their output reaches the caller unredacted.
+- More commands that can run other code are flagged: `arch`, `timeout`, `nice`, `xcrun`, `watch`, `script`, and similar launchers; `find -exec`; `awk` and other interpreters; `git` (hooks).
+- Redaction also catches the Base64 of a key followed by a newline, as produced by `printenv KEY | base64`.
+- `dist/bin` now holds the signed helper and `akb`, so they are accepted by a signed broker.
+
 ### Fixed
 
 - Approved-command output is captured through a bounded pipe and redacted before truncation (no unbounded temp file, no leaked secret prefix at the size limit).

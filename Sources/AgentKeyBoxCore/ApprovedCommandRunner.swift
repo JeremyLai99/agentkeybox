@@ -76,6 +76,8 @@ public enum SecretRedactor {
       }
     }
     candidates.insert(secretData.base64EncodedString())
+    // `printenv KEY | base64` encodes the trailing newline too, which changes the whole string.
+    candidates.insert((secretData + Data("\n".utf8)).base64EncodedString())
     let hex = secretData.map { String(format: "%02x", $0) }.joined()
     candidates.insert(hex)
     candidates.insert(hex.uppercased())

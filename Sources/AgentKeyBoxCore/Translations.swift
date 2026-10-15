@@ -463,6 +463,8 @@ enum Translations {
       "金鑰會交給你終端機裡的這個指令，以及它啟動的所有程式。只允許你自己啟動的指令。",
     "This command needs a closer look.":
       "這個指令需要仔細看一下。",
+    "This command prints the keys straight back to whoever started it.":
+      "這個指令會把金鑰直接印給啟動它的程式看。",
     "This executable can run arbitrary code, which could transmit the credential elsewhere.":
       "這個程式可以執行任意程式碼，有可能把金鑰傳到別的地方。",
     "This executable can send data over the network.":

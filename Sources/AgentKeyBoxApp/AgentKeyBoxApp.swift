@@ -1609,7 +1609,7 @@
       }
       return CommandRiskAnalyzer.assess(
         executablePath: executablePath, arguments: request.arguments,
-        projectPath: request.projectPath)
+        projectPath: request.projectPath, handsSecretsToCaller: request.kind == .environment)
     }
   }
 

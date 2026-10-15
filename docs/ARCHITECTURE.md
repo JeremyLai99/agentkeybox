@@ -189,6 +189,9 @@ Claude Code provides `CLAUDE_PROJECT_DIR` to local stdio MCP servers. Codex star
 
 ## 8. Local broker security
 
+Team-signed builds verify each caller: the broker reads the connecting process's audit token from the socket and checks that it is AgentKeyBox's own helper or `akb`, validly signed by the same team. Only `akb` may make `akb run` requests, which return raw secrets.
+
+
 The app creates a random per-install broker token at:
 
 ```text

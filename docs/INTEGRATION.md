@@ -122,7 +122,9 @@ On first launch, AgentKeyBox creates a random broker token at:
 
 The file is owner-readable/writable only (`0600`). The MCP helper reads this token before calling the broker over its owner-only Unix-domain socket (`broker.sock` in the same directory). It is **not** an API credential and never leaves the machine.
 
-This is a guardrail against unrelated local callers, not a defense against malware running as the same macOS user.
+The token alone is not enough for a team-signed AgentKeyBox: the broker reads the caller's audit token and accepts only processes signed by the same team as AgentKeyBox's helper (`agentkeybox-mcp`) or CLI (`akb`); `akb run` requests are accepted only from `akb`. A coding agent that reads the token cannot use it from its own scripts. Development builds without a team signature skip this check.
+
+This is a guardrail against other local callers, not a defense against malware running as the same macOS user.
 
 ## Prototype security boundary
 
