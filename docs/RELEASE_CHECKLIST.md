@@ -88,5 +88,5 @@ Verified 2026-10-15 on a real Mac:
 - [x] binaries signed with Developer ID — `Developer ID Application: HUANG-CHENG LAI (8UY9UJ99HY)`
 - [x] Developer ID provisioning profile embedded; app reports the data protection keychain mode
 - [x] `AGENTKEYBOX_NOTARY_PROFILE=... ./Scripts/notarize-release-macos.sh` passes — Accepted, stapled, `spctl`: Notarized Developer ID
-- [ ] SHA-256 checksum published with the release
+- [x] SHA-256 checksum published with the release — `AgentKeyBox-0.4.0-macOS.zip.sha256` on the v0.4.0 release (dc9683fd…4aa0); a downloaded copy matches
 - [x] README security disclaimer still matches implementation
