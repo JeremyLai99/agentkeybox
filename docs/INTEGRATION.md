@@ -60,7 +60,7 @@ Verify:
 codex mcp list
 ```
 
-Start a new Codex session after installation. The prototype uses the MCP process working directory as Codex's project path unless `AGENTKEYBOX_PROJECT_PATH` is explicitly supplied.
+Start a new Codex session after installation. Codex starts the MCP helper in the session's working directory, which AgentKeyBox uses as the project path unless `AGENTKEYBOX_PROJECT_PATH` is supplied (verified with Codex 0.160).
 
 ## MCP tools
 

@@ -240,7 +240,7 @@ Verify with:
 codex mcp get agentkeybox --json
 ```
 
-The current Codex prototype uses the MCP server process working directory as the project path unless `AGENTKEYBOX_PROJECT_PATH` is explicitly supplied. This assumption still needs real-Mac end-to-end verification.
+Codex starts the MCP helper in the session's working directory, which AgentKeyBox uses as the project path unless `AGENTKEYBOX_PROJECT_PATH` is supplied. Verified with Codex 0.160.
 
 ## Provider presets
 
@@ -316,7 +316,7 @@ See [`docs/SESSION_STATUS.md`](docs/SESSION_STATUS.md) for the exact boundary be
 
 ## Status
 
-**Experimental alpha.** Verified on a real Mac: Keychain storage behind Touch ID, the approval prompt, session approvals, Developer ID signing and notarization, and installing from a download. Also verified end to end with a real Claude Code session. Still to verify: a real Codex session.
+**Experimental alpha.** Verified on a real Mac: Keychain storage behind Touch ID, the approval prompt, session approvals, Developer ID signing and notarization, and installing from a download. Also verified end to end with real Claude Code and Codex sessions.
 
 The product hypothesis is simple:
 

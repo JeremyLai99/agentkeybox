@@ -47,13 +47,18 @@ Note: in auto mode, Claude Code's own classifier refuses requests that would pri
 
 ## Codex
 
-- [ ] `akb connect codex` succeeds
-- [ ] `codex mcp get agentkeybox --json` shows the fixed helper path
-- [ ] current project path resolves correctly
-- [ ] `list_credentials` sees only expected project/global metadata
-- [ ] `run_with_secret` triggers native approval
-- [ ] Deny blocks execution
-- [ ] Allow executes and returns redacted output
+Verified 2026-10-15 with Codex 0.160 (the CLI bundled with the ChatGPT app) in the same test project:
+
+- [x] Codex connection succeeds — set up from the project setup sheet's Connect Codex option (same adapter as `akb connect codex`)
+- [x] `codex mcp get agentkeybox --json` shows the fixed helper path
+- [x] current project path resolves correctly — the access log records `~/Desktop/akb-e2e-test`
+- [x] `list_credentials` sees only expected project/global metadata
+- [x] `http_request` triggers native approval and returns the response (Stripe 401)
+- [x] `run_with_secret` triggers native approval, with the orange warning for `/usr/bin/python3`
+- [x] Deny blocks execution — `Credential access was denied.`
+- [x] Allow executes and returns redacted output — `[REDACTED_BY_AGENTKEYBOX]`
+
+Note: `codex exec` cannot be used for this test, because Codex requires approving MCP tool calls and exec mode cannot ask. Codex 0.149 could not use the account's default model; use a current Codex.
 
 ## Release hygiene
 

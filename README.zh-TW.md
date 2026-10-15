@@ -60,7 +60,7 @@
 
 ## 目前狀態
 
-**實驗性 alpha 版。** 已在真實的 Mac 上驗證：Touch ID 保護的鑰匙圈、核准視窗、工作階段內不再詢問、Developer ID 簽章與公證，以及下載安裝流程。也已經用真正的 Claude Code 工作階段從頭到尾驗證過。還沒驗證的是 Codex。
+**實驗性 alpha 版。** 已在真實的 Mac 上驗證：Touch ID 保護的鑰匙圈、核准視窗、工作階段內不再詢問、Developer ID 簽章與公證，以及下載安裝流程。也已經用真正的 Claude Code 和 Codex 工作階段從頭到尾驗證過。
 
 開發者文件（從原始碼建置、`akb` 指令、MCP 工具說明）請看[英文 README](README.md)。
 

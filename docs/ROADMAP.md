@@ -19,7 +19,7 @@
 - [x] CI, protocol smoke tests, static secret checks
 - [x] real macOS compile/runtime verification
 - [x] real Claude Code end-to-end approval run
-- [ ] real Codex end-to-end approval run
+- [x] real Codex end-to-end approval run
 - [x] signing/notarization with a real Apple Developer identity
 - [x] dedicated security contact (GitHub private vulnerability reporting)
 - [x] install from a download: notarized universal app (Apple silicon and Intel), Move to Applications, agent connections that survive moving or updating the app

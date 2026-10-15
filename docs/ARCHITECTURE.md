@@ -185,7 +185,7 @@ This avoids simple prefix confusion such as:
 
 being treated as the same scope.
 
-Claude Code provides `CLAUDE_PROJECT_DIR` to local stdio MCP servers. The current Codex prototype falls back to the MCP process current working directory unless `AGENTKEYBOX_PROJECT_PATH` is supplied. Codex project-path behavior remains an explicit real-Mac verification item.
+Claude Code provides `CLAUDE_PROJECT_DIR` to local stdio MCP servers. Codex starts the MCP helper in the session's working directory, which AgentKeyBox uses as the project path unless `AGENTKEYBOX_PROJECT_PATH` is supplied; verified with Codex 0.160.
 
 ## 8. Local broker security
 
