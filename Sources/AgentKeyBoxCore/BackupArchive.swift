@@ -58,6 +58,8 @@ public enum BackupArchive {
   public static let volumeName = "AgentKeyBox Backup"
   static let dataFileName = ".agentkeybox-backup.json"
   static let readmeFileName = "README.txt"
+  /// A visible copy of each folder's `.env`, which Finder hides.
+  static let visibleEnvFileName = "env.txt"
   static let version = 1
 
   /// The hidden data file: the backup contents plus a format version.
@@ -105,7 +107,7 @@ public enum BackupArchive {
       L("Created: %@", contents.createdAt.formatted(date: .long, time: .shortened)),
       "",
       L("Each folder is one project. Its .env file holds the project's keys; key files (.p8, .pem, .json) are the original files."),
-      L("Files whose names start with a dot, such as .env, are hidden in Finder. Press Command-Shift-. to show them."),
+      L("Finder hides .env because its name starts with a dot, so each folder also has env.txt with the same contents. To use it in a project, copy env.txt into the project folder and rename it to .env."),
       L("To restore everything into AgentKeyBox, choose Settings › Backup › Import… and pick this .dmg file."),
       L("Copies you take out of this disk image are not encrypted. Delete them when you no longer need them."),
       "",
@@ -121,7 +123,7 @@ public enum BackupArchive {
       if let project { readme.append("  " + L("Folder on the original Mac: %@", project.rootPath)) }
 
       var envLines: [String] = []
-      var files: Set<String> = [".env"]
+      var files: Set<String> = [".env", visibleEnvFileName]
       let credentials = groups[projectID, default: []].sorted {
         $0.label.localizedStandardCompare($1.label) == .orderedAscending
       }
@@ -152,7 +154,10 @@ public enum BackupArchive {
         restored += 1
       }
       if !envLines.isEmpty {
-        entries.append(Entry(path: "\(folder)/.env", data: Data(envLines.joined().utf8)))
+        let env = Data(envLines.joined().utf8)
+        entries.append(Entry(path: "\(folder)/.env", data: env))
+        // The same contents under a name Finder shows, for people who don't know Command-Shift-.
+        entries.append(Entry(path: "\(folder)/\(visibleEnvFileName)", data: env))
       }
       readme.append("")
     }

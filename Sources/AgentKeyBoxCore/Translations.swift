@@ -43,6 +43,8 @@ enum Translations {
       "%@ 分鐘前",
     "%@ needs a credential":
       "%@ 需要一把金鑰",
+    "%@ secret(s) for akb run":
+      "akb run 用的 %@ 把金鑰",
     "%@ wants access":
       "%@ 想要存取",
     "%@ wants to run a command with a key":
@@ -323,8 +325,8 @@ enum Translations {
       "匯出…",
     "Files in the project folder are not changed.":
       "專案資料夾裡的檔案不會變動。",
-    "Files whose names start with a dot, such as .env, are hidden in Finder. Press Command-Shift-. to show them.":
-      "名稱以點開頭的檔案（例如 .env）在 Finder 裡預設是隱藏的。按 Command-Shift-. 就能顯示。",
+    "Finder hides .env because its name starts with a dot, so each folder also has env.txt with the same contents. To use it in a project, copy env.txt into the project folder and rename it to .env.":
+      "Finder 會隱藏 .env（名稱以點開頭），所以每個資料夾另外放了一份內容相同的 env.txt。要用在專案裡時，把 env.txt 複製到專案資料夾，再改名為 .env。",
     "Finish the pending approval first.":
       "請先處理目前待核准的請求。",
     "Fix %@…":
@@ -665,6 +667,8 @@ enum Translations {
       "無法執行 %1$@：%2$@",
     "could not update .gitignore (%@)":
       "無法更新 .gitignore（%@）",
+    "credential":
+      "金鑰",
     "in %@":
       "專案：%@",
     "injected %@":

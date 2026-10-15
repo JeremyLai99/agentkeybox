@@ -1550,8 +1550,8 @@
     /// What the history shows for a request: the key's label, or how many `akb run` secrets.
     private func historyLabel(for request: AgentRequest) -> String {
       request.kind == .environment
-        ? "\(request.environmentVariables.count) secret(s) for akb run"
-        : (credentialSummary(for: request)?.label ?? "credential")
+        ? L("%@ secret(s) for akb run", "\(request.environmentVariables.count)")
+        : (credentialSummary(for: request)?.label ?? L("credential"))
     }
 
     /// The credentials a request covers, recorded with its decision.

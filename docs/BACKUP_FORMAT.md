@@ -8,7 +8,7 @@ An AgentKeyBox backup is an ordinary **AES-256 encrypted macOS disk image** (`.d
 2. Enter the backup password. macOS opens a disk named **AgentKeyBox Backup**.
 3. Each project has a folder holding its `.env` and key files. `README.txt` lists every key and where it is.
 
-Files whose names start with a dot, such as `.env`, are hidden in Finder. Press **Command-Shift-.** to show them.
+Finder hides `.env` because its name starts with a dot, so each folder also has **`env.txt`** with the same contents. To use it in a project, copy `env.txt` into the project folder and rename it to `.env`. (Command-Shift-. shows hidden files in Finder.)
 
 From Terminal:
 
@@ -38,7 +38,8 @@ The password must be at least 12 characters. macOS derives the disk key from it,
 AgentKeyBox Backup/
 ├── README.txt                    what was backed up, and where each key is
 ├── my-app/
-│   └── .env                      STRIPE_SECRET_KEY=…  (plus non-secret settings)
+│   ├── .env                      STRIPE_SECRET_KEY=…  (plus non-secret settings)
+│   └── env.txt                   the same as .env, visible in Finder
 ├── ios-app/
 │   ├── .env                      ASC_KEY_ID=…, ASC_ISSUER_ID=…
 │   └── AuthKey_ABC123DEF4.p8     the original key file
@@ -50,7 +51,7 @@ AgentKeyBox Backup/
 ### Project folders
 
 - There is one folder per project that has keys, named after the project. `/`, `\`, `:`, control characters and leading dots are replaced or removed. Names that differ only by case get ` 2`, ` 3`, ….
-- **`.env`** holds each text key under its environment variable name (`environmentVariableName`, or the label when that is a valid variable name), followed by the key's non-secret settings such as `ASC_ISSUER_ID`. Values made only of `A–Z a–z 0–9 _ - . / : @ + , =` are written as they are. Any other value is double-quoted, with `\\`, `\"`, `\n`, `\r` and `\t` escaped.
+- **`.env`** (and its visible copy **`env.txt`**) holds each text key under its environment variable name (`environmentVariableName`, or the label when that is a valid variable name), followed by the key's non-secret settings such as `ASC_ISSUER_ID`. Values made only of `A–Z a–z 0–9 _ - . / : @ + , =` are written as they are. Any other value is double-quoted, with `\\`, `\"`, `\n`, `\r` and `\t` escaped.
 - **Key files** (`p8`, `pem`, `json` keys) are written as their original bytes. An App Store Connect key gets Apple's name `AuthKey_<KEY ID>.p8`; other files are named after the key's label with the right extension. A text-style key whose value is not UTF-8, or that has no valid variable name, is written as `<label>.txt`.
 
 ### `.agentkeybox-backup.json`

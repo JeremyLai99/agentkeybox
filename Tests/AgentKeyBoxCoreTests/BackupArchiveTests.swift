@@ -58,8 +58,8 @@ final class BackupArchiveTests: XCTestCase {
     XCTAssertEqual(
       entries.map(\.path),
       [
-        "_ios_app/AuthKey_ABC123DEF4.p8", "_ios_app/.env",
-        "my-app/.env",
+        "_ios_app/AuthKey_ABC123DEF4.p8", "_ios_app/.env", "_ios_app/env.txt",
+        "my-app/.env", "my-app/env.txt",
         "MY-APP 2/BLOB.txt",
         "No project/loose.pem",
         "README.txt", ".agentkeybox-backup.json", ".metadata_never_index",
@@ -67,6 +67,7 @@ final class BackupArchiveTests: XCTestCase {
 
     let env = EnvParser.parse(String(decoding: try XCTUnwrap(files["my-app/.env"]), as: UTF8.self))
     XCTAssertEqual(env, ["STRIPE_SECRET_KEY": String(decoding: stripe, as: UTF8.self), "NOTE": tricky])
+    XCTAssertEqual(files["my-app/env.txt"], files["my-app/.env"], "a copy Finder shows")
     XCTAssertEqual(files["_ios_app/AuthKey_ABC123DEF4.p8"], p8)
     XCTAssertEqual(
       EnvParser.parse(String(decoding: try XCTUnwrap(files["_ios_app/.env"]), as: UTF8.self)),
