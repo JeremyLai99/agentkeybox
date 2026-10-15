@@ -16,7 +16,12 @@ AgentKeyBox is an experimental macOS utility for vibe coders, indie developers, 
   </a>
 </p>
 
-[▶ Meet AgentKeyBox in 24 seconds](https://github.com/user-attachments/assets/9486ce5d-6f2d-4965-8226-f6cb88d1a5ad) — Project setup, key approval, and encrypted backups.
+<details>
+<summary>▶ Watch here (24 seconds): project setup, key approval, and encrypted backups</summary>
+
+https://github.com/user-attachments/assets/9486ce5d-6f2d-4965-8226-f6cb88d1a5ad
+
+</details>
 
 ## Install
 

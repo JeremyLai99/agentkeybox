@@ -16,7 +16,12 @@
   </a>
 </p>
 
-[▶ 24 秒認識 AgentKeyBox](https://github.com/user-attachments/assets/67c40066-8b6a-45d9-a958-31690b7f169e) — 專案設定、金鑰使用核准與加密備份。
+<details>
+<summary>▶ 在此頁面播放 24 秒介紹：專案設定、金鑰使用核准與加密備份</summary>
+
+https://github.com/user-attachments/assets/67c40066-8b6a-45d9-a958-31690b7f169e
+
+</details>
 
 ## 安裝
 
