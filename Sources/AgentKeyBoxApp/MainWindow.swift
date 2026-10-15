@@ -19,6 +19,7 @@
     @State private var editing: EditRequest?
     @State private var fileNeedingProject: URL?
     @State private var projectToRemove: Project?
+    @State private var projectToStrip: Project?
 
     var body: some View {
       NavigationSplitView {
@@ -46,6 +47,23 @@
                   : L(
                     "Its %@ keys are deleted from your Keychain, and agents can no longer use them. Files in the project folder are not changed.",
                     "\(count)")
+            )
+          }
+          .confirmationDialog(
+            L("Remove the keys from %@'s files?", projectToStrip?.name ?? L("project")),
+            isPresented: Binding(
+              get: { projectToStrip != nil },
+              set: { if !$0 { projectToStrip = nil } }),
+            titleVisibility: .visible,
+            presenting: projectToStrip
+          ) { project in
+            Button(L("Remove Keys from Files")) {
+              Task { await model.removeKeysFromFiles(in: project) }
+            }
+            Button(L("Cancel"), role: .cancel) {}
+          } message: { _ in
+            Text(
+              L("AgentKeyBox empties these keys in the project's .env files and moves its key files to the Trash, so coding agents cannot read them. Only values that match what AgentKeyBox stored are removed. Your app then gets its keys from AgentKeyBox: start it with akb run -- <your command>, for example akb run -- npm run dev.")
             )
           }
       } detail: {
@@ -141,6 +159,12 @@
             .contextMenu {
               Button(L("Show in Finder")) {
                 NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: project.rootPath)
+              }
+              if model.backupCovers(project) {
+                Button(L("Remove Keys from Files…")) { projectToStrip = project }
+              } else {
+                Button(L("Remove Keys from Files… (export a backup first)")) {}
+                  .disabled(true)
               }
               Divider()
               Button(L("Remove Project…"), role: .destructive) { projectToRemove = project }
@@ -768,9 +792,142 @@
     }
   }
 
+  struct IdentifiedURL: Identifiable {
+    var url: URL
+    var id: String { url.path }
+  }
+
+  /// Choose a password, then a place to save; Touch ID is asked last, when the keys are read.
+  struct ExportBackupView: View {
+    @EnvironmentObject private var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var password = ""
+    @State private var confirmation = ""
+    @State private var working = false
+
+    private var problem: String? {
+      if password.count < BackupArchive.minimumPasswordLength {
+        return L("At least %@ characters.", "\(BackupArchive.minimumPasswordLength)")
+      }
+      if password != confirmation { return L("The passwords don't match.") }
+      return nil
+    }
+
+    var body: some View {
+      VStack(alignment: .leading, spacing: 14) {
+        Text(L("Export an Encrypted Backup")).font(.title2.bold())
+        Text(
+          L("The backup holds all your projects and keys, encrypted with this password. Keep the file and the password somewhere safe, such as a password manager.")
+        )
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+        Form {
+          SecureField(L("Password"), text: $password)
+          SecureField(L("Confirm password"), text: $confirmation)
+        }
+        .formStyle(.columns)
+        Text(problem ?? L("If you forget this password, the backup cannot be opened."))
+          .font(.caption)
+          .foregroundStyle(problem == nil ? Color.orange : Color.secondary)
+        HStack {
+          Spacer()
+          Button(L("Cancel")) { dismiss() }
+            .keyboardShortcut(.cancelAction)
+          Button(L("Export…")) { export() }
+            .buttonStyle(.borderedProminent)
+            .keyboardShortcut(.defaultAction)
+            .disabled(problem != nil || working)
+        }
+      }
+      .padding(24)
+      .frame(width: 460)
+    }
+
+    private func export() {
+      let panel = NSSavePanel()
+      panel.allowedContentTypes = [UTType(filenameExtension: BackupArchive.fileExtension) ?? .data]
+      let day = Date().formatted(.iso8601.year().month().day())
+      panel.nameFieldStringValue = "AgentKeyBox Backup \(day).\(BackupArchive.fileExtension)"
+      guard panel.runModal() == .OK, let url = panel.url else { return }
+      working = true
+      Task {
+        if await model.exportBackup(password: password, to: url) { dismiss() }
+        working = false
+      }
+    }
+  }
+
+  /// Enter the backup's password, see what it holds, then import.
+  struct ImportBackupView: View {
+    @EnvironmentObject private var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    let url: URL
+    @State private var password = ""
+    @State private var contents: BackupContents?
+    @State private var error: String?
+    @State private var working = false
+
+    var body: some View {
+      VStack(alignment: .leading, spacing: 14) {
+        Text(L("Import a Backup")).font(.title2.bold())
+        Text(url.lastPathComponent).font(.callout.monospaced()).foregroundStyle(.secondary)
+        if let contents {
+          Text(
+            L(
+              "This backup from %@ has %@ key(s) in %@ project(s). Keys you already have are kept.",
+              contents.createdAt.formatted(date: .abbreviated, time: .shortened),
+              "\(contents.credentials.count)", "\(contents.projects.count)")
+          )
+          .fixedSize(horizontal: false, vertical: true)
+        } else {
+          SecureField(L("Backup password"), text: $password)
+            .onSubmit(open)
+        }
+        if let error {
+          Text(error).font(.caption).foregroundStyle(.orange)
+        }
+        HStack {
+          Spacer()
+          Button(L("Cancel")) { dismiss() }
+            .keyboardShortcut(.cancelAction)
+          if let contents {
+            Button(L("Import")) {
+              model.importBackup(contents)
+              dismiss()
+            }
+            .buttonStyle(.borderedProminent)
+            .keyboardShortcut(.defaultAction)
+          } else {
+            Button(L("Open")) { open() }
+              .buttonStyle(.borderedProminent)
+              .keyboardShortcut(.defaultAction)
+              .disabled(password.isEmpty || working)
+          }
+        }
+      }
+      .padding(24)
+      .frame(width: 460)
+    }
+
+    private func open() {
+      working = true
+      Task {
+        do {
+          contents = try await model.openBackup(at: url, password: password)
+          error = nil
+        } catch {
+          self.error = error.localizedDescription
+        }
+        working = false
+      }
+    }
+  }
+
   /// Settings (⌘,): agent connections, Keychain mode, and recent access.
   struct SettingsView: View {
     @EnvironmentObject private var model: AppModel
+    @State private var exportingBackup = false
+    @State private var importURL: URL?
 
     var body: some View {
       Form {
@@ -807,6 +964,26 @@
           )
           .font(.caption)
           .foregroundStyle(.secondary)
+        }
+        Section(L("Backup")) {
+          Text(
+            L("Your keys are stored on this Mac only. An encrypted backup lets you restore them on a new Mac or after a repair.")
+          )
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+          HStack {
+            if let date = model.lastBackupDate {
+              Text(L("Last backup: %@", date.formatted(date: .abbreviated, time: .shortened)))
+                .foregroundStyle(.secondary)
+            } else {
+              Text(L("No backup yet")).foregroundStyle(.orange)
+            }
+            Spacer()
+            Button(L("Import…")) { chooseBackupToImport() }
+            Button(L("Export Backup…")) { exportingBackup = true }
+              .disabled(model.credentials.isEmpty)
+          }
         }
         Section(L("Coding agents")) {
           agentRow("Claude Code", status: model.claudeConnectionStatus) {
@@ -861,10 +1038,28 @@
       }
       .formStyle(.grouped)
       .frame(width: 520, height: 520)
+      .sheet(isPresented: $exportingBackup) {
+        ExportBackupView().environmentObject(model)
+      }
+      .sheet(
+        item: Binding(
+          get: { importURL.map(IdentifiedURL.init) }, set: { importURL = $0?.url })
+      ) { item in
+        ImportBackupView(url: item.url).environmentObject(model)
+      }
       .task {
         model.refreshAgentStatuses()
         model.refreshLoginItemStatus()
       }
+    }
+
+    private func chooseBackupToImport() {
+      let panel = NSOpenPanel()
+      panel.allowedContentTypes = [UTType(filenameExtension: BackupArchive.fileExtension) ?? .data]
+      panel.allowsMultipleSelection = false
+      panel.message = L("Choose an AgentKeyBox backup (.akbbackup).")
+      guard panel.runModal() == .OK, let url = panel.url else { return }
+      importURL = url
     }
 
     private func agentRow(_ name: String, status: String, connect: @escaping () -> Void)

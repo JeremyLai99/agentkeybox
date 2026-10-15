@@ -456,6 +456,213 @@
       return project
     }
 
+    // MARK: - Encrypted backup
+
+    /// When the last encrypted backup was exported; shown in Settings and required before keys
+    /// can be removed from project files.
+    @Published var lastBackupDate: Date? =
+      UserDefaults.standard.object(forKey: "AgentKeyBoxLastBackup") as? Date
+
+    /// Touch ID, then encrypts every project, key, and key value with the password and writes
+    /// the file. Returns false (with a status message) on failure.
+    func exportBackup(password: String, to url: URL) async -> Bool {
+      guard !credentials.isEmpty else {
+        statusMessage = L("There are no keys to back up yet.")
+        return false
+      }
+      let grant: AuthenticationGrant?
+      do {
+        grant = try await authenticator.authenticate(
+          reason: L("Allow AgentKeyBox to export an encrypted backup of your keys?"))
+      } catch {
+        statusMessage = L("Local authentication cancelled or failed.")
+        return false
+      }
+      defer { grant?.invalidate() }
+      var secrets: [String: Data] = [:]
+      for credential in credentials {
+        do {
+          guard let value = try await readSecret(credential.id, grant: grant) else { continue }
+          secrets[credential.id.uuidString] = value
+        } catch {
+          statusMessage = L("Could not read %@ from Keychain.", credential.label)
+          return false
+        }
+      }
+      let contents = BackupContents(
+        projects: projects, credentials: credentials, secrets: secrets)
+      do {
+        let data = try await Task.detached(priority: .userInitiated) {
+          try BackupArchive.encrypt(contents, password: password)
+        }.value
+        try data.write(to: url, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+      } catch {
+        statusMessage = L("Could not write the backup: %@", error.localizedDescription)
+        return false
+      }
+      let now = Date()
+      UserDefaults.standard.set(now, forKey: "AgentKeyBoxLastBackup")
+      lastBackupDate = now
+      statusMessage = L("Backed up %@ key(s) to %@.", "\(secrets.count)", url.lastPathComponent)
+      return true
+    }
+
+    /// Decrypts a backup without importing it, for the confirmation step.
+    func openBackup(at url: URL, password: String) async throws -> BackupContents {
+      let data = try Data(contentsOf: url)
+      return try await Task.detached(priority: .userInitiated) {
+        try BackupArchive.decrypt(data, password: password)
+      }.value
+    }
+
+    /// Adds the backup's projects and keys. Keys already here (same ID) and projects for a folder
+    /// that is already here are kept as they are; keys of such a project join the existing one.
+    func importBackup(_ contents: BackupContents) {
+      var projectIDs: [UUID: UUID] = [:]
+      var addedProjects = 0
+      for project in contents.projects {
+        if let existing = projects.first(where: {
+          $0.id == project.id || normalize($0.rootPath) == normalize(project.rootPath)
+        }) {
+          projectIDs[project.id] = existing.id
+        } else {
+          projects.append(project)
+          projectIDs[project.id] = project.id
+          addedProjects += 1
+        }
+      }
+      var added: [CredentialMetadata] = []
+      for var credential in contents.credentials
+      where !credentials.contains(where: { $0.id == credential.id }) {
+        guard let secret = contents.secrets[credential.id.uuidString] else { continue }
+        credential.projectID = credential.projectID.flatMap { projectIDs[$0] ?? $0 }
+        do {
+          try secretStore.save(secret: secret, id: credential.id)
+          added.append(credential)
+        } catch {
+          statusMessage = L("Could not save %@: %@", credential.label, error.localizedDescription)
+        }
+      }
+      credentials.append(contentsOf: added)
+      guard persistMetadata() else {
+        let addedIDs = Set(added.map(\.id))
+        credentials.removeAll { addedIDs.contains($0.id) }
+        projects.removeAll { project in
+          contents.projects.contains { $0.id == project.id } && projectIDs[project.id] == project.id
+            && !credentials.contains { $0.projectID == project.id }
+        }
+        for credential in added { try? secretStore.delete(id: credential.id) }
+        return
+      }
+      selectFirstProjectIfNeeded()
+      statusMessage = L(
+        "Imported %@ key(s) and %@ project(s).", "\(added.count)", "\(addedProjects)")
+    }
+
+    // MARK: - Removing plaintext keys from project files
+
+    /// A backup newer than every key of the project exists, so the project's files are no longer
+    /// the only other copy of its keys.
+    func backupCovers(_ project: Project) -> Bool {
+      guard let last = lastBackupDate else { return false }
+      let keys = credentials.filter { $0.projectID == project.id }
+      return !keys.isEmpty && keys.allSatisfy { max($0.createdAt, $0.updatedAt) <= last }
+    }
+
+    /// Empties the project's keys in its `.env` files and moves its key files to the Trash, so
+    /// the plaintext is no longer on disk for an agent to read. Only values identical to what
+    /// AgentKeyBox stored are removed (checked after one Touch ID); anything different is left
+    /// and reported. Requires a backup that covers the project.
+    func removeKeysFromFiles(in project: Project) async {
+      guard backupCovers(project) else {
+        statusMessage = L("Export a backup first, so these files are not the only other copy of your keys.")
+        return
+      }
+      let keys = credentials.filter { $0.projectID == project.id }
+      let root = URL(fileURLWithPath: project.rootPath)
+      let scan = await Task.detached(priority: .userInitiated) { ProjectScanner.scan(root) }.value
+
+      let grant: AuthenticationGrant?
+      do {
+        grant = try await authenticator.authenticate(
+          reason: L("Allow AgentKeyBox to remove the keys from %@'s files?", project.name))
+      } catch {
+        statusMessage = L("Local authentication cancelled or failed.")
+        return
+      }
+      defer { grant?.invalidate() }
+      var stored: [UUID: Data] = [:]
+      for key in keys {
+        guard let value = try? await readSecret(key.id, grant: grant) else {
+          statusMessage = L("Could not read %@ from Keychain.", key.label)
+          return
+        }
+        stored[key.id] = value
+      }
+
+      var emptied = 0
+      var different: [String] = []
+      var untouched: [String] = []
+      for file in scan.envFileURLs {
+        guard let text = try? String(contentsOf: file, encoding: .utf8) else { continue }
+        var matching = Set<String>()
+        for (name, value) in EnvParser.parse(text) where !value.isEmpty {
+          guard
+            let key = keys.first(where: { !$0.isFileCredential && $0.injectionVariableName == name }),
+            let storedValue = stored[key.id]
+          else { continue }
+          if Data(value.utf8) == storedValue {
+            matching.insert(name)
+          } else {
+            different.append(name)
+          }
+        }
+        guard !matching.isEmpty else { continue }
+        guard let result = EnvParser.removingValues(of: matching, from: text) else {
+          untouched.append(file.lastPathComponent)
+          continue
+        }
+        do {
+          let permissions = try FileManager.default.attributesOfItem(atPath: file.path)[
+            .posixPermissions]
+          try result.text.write(to: file, atomically: true, encoding: .utf8)
+          if let permissions {
+            try FileManager.default.setAttributes(
+              [.posixPermissions: permissions], ofItemAtPath: file.path)
+          }
+          emptied += result.removed.count
+        } catch {
+          untouched.append(file.lastPathComponent)
+        }
+      }
+
+      var trashed = 0
+      for file in scan.keyFiles {
+        guard let data = try? Data(contentsOf: file.url),
+          keys.contains(where: { $0.isFileCredential && stored[$0.id] == data })
+        else { continue }
+        if (try? FileManager.default.trashItem(at: file.url, resultingItemURL: nil)) != nil {
+          trashed += 1
+        } else {
+          untouched.append(file.relativePath)
+        }
+      }
+
+      var message = L(
+        "Removed %@ key(s) from .env files and moved %@ key file(s) to the Trash. Start your app with: akb run -- <your command>.",
+        "\(emptied)", "\(trashed)")
+      if !different.isEmpty {
+        message += " " + L(
+          "Left %@ alone because it differs from the stored key.",
+          Set(different).sorted().joined(separator: ", "))
+      }
+      if !untouched.isEmpty {
+        message += " " + L("Could not change %@.", untouched.joined(separator: ", "))
+      }
+      statusMessage = message
+    }
+
     /// Removes a project and deletes its keys from the Keychain. Files in the project folder are
     /// not touched.
     func removeProject(_ project: Project) {

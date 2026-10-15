@@ -109,6 +109,8 @@ enum Translations {
       "AgentKeyBox 讀不到專案清單，已把它移到 %@。你的金鑰仍安全存放在鑰匙圈裡。",
     "AgentKeyBox doctor":
       "AgentKeyBox 健康檢查",
+    "AgentKeyBox empties these keys in the project's .env files and moves its key files to the Trash, so coding agents cannot read them. Only values that match what AgentKeyBox stored are removed. Your app then gets its keys from AgentKeyBox: start it with akb run -- <your command>, for example akb run -- npm run dev.":
+      "AgentKeyBox 會清空專案 .env 檔裡的這些金鑰，並把金鑰檔移到垃圾桶，讓程式代理讀不到。只有和 AgentKeyBox 存的內容完全相同的值才會被移除。之後你的 App 要從 AgentKeyBox 取得金鑰：請用 akb run -- <你的指令> 啟動，例如 akb run -- npm run dev。",
     "AgentKeyBox finds the keys in it, keeps them in your Keychain, and connects Claude Code. Your coding agent then asks before it uses one.":
       "AgentKeyBox 會找出裡面的金鑰、存進你的鑰匙圈，並連接 Claude Code。之後程式代理每次要用金鑰，都會先問你。",
     "AgentKeyBox is now in %@. Open it from there.":
@@ -127,6 +129,10 @@ enum Translations {
       "要允許 %1$@ 在 akb run 使用 %2$@ 把金鑰嗎？",
     "Allow %@ to use %@?":
       "要允許 %1$@ 使用 %2$@ 嗎？",
+    "Allow AgentKeyBox to export an encrypted backup of your keys?":
+      "要允許 AgentKeyBox 匯出金鑰的加密備份嗎？",
+    "Allow AgentKeyBox to remove the keys from %@'s files?":
+      "要允許 AgentKeyBox 移除 %@ 檔案裡的金鑰嗎？",
     "Allow Once":
       "允許一次",
     "Allowed":
@@ -147,6 +153,14 @@ enum Translations {
       "核准的請求執行失敗：%@",
     "Ask Every Time":
       "每次都詢問",
+    "At least %@ characters.":
+      "至少 %@ 個字元。",
+    "Backed up %@ key(s) to %@.":
+      "已把 %1$@ 把金鑰備份到 %2$@。",
+    "Backup":
+      "備份",
+    "Backup password":
+      "備份密碼",
     "Body":
       "內容",
     "Broker check only runs on macOS.":
@@ -169,6 +183,8 @@ enum Translations {
       "選擇資料夾…",
     "Choose a project":
       "選擇一個專案",
+    "Choose an AgentKeyBox backup (.akbbackup).":
+      "選擇 AgentKeyBox 備份檔（.akbbackup）。",
     "Choose which entries are secrets. Likely secrets are preselected; settings such as PORT or NODE_ENV and public keys are not.":
       "選擇哪些項目是金鑰。看起來是金鑰的已經預先勾選；PORT、NODE_ENV 這類設定和公開金鑰則不會勾。",
     "Choose your project folder. AgentKeyBox will find the keys in it.":
@@ -187,6 +203,8 @@ enum Translations {
       "設定 Codex 的 MCP 連接",
     "Configure both supported agents":
       "同時設定兩個支援的代理",
+    "Confirm password":
+      "再輸入一次密碼",
     "Connect":
       "連接",
     "Connect %@":
@@ -201,6 +219,8 @@ enum Translations {
       "已把 AgentKeyBox 連接到 %@。開一個新的代理工作階段，就能載入 MCP 工具。",
     "Could not add the project folder.":
       "無法加入專案資料夾。",
+    "Could not change %@.":
+      "無法修改 %@。",
     "Could not change Open at Login: %@":
       "無法變更「登入時自動開啟」：%@",
     "Could not determine integration status.":
@@ -211,12 +231,18 @@ enum Translations {
       "無法匯入金鑰檔：%@",
     "Could not move AgentKeyBox to %@: %@":
       "無法把 AgentKeyBox 移到 %1$@：%2$@",
+    "Could not read %@ from Keychain.":
+      "無法從鑰匙圈讀取 %@。",
+    "Could not save %@: %@":
+      "無法儲存 %1$@：%2$@",
     "Could not save keys: %@":
       "無法儲存金鑰：%@",
     "Could not save secret: %@":
       "無法儲存金鑰：%@",
     "Could not save the new key: %@":
       "無法儲存新金鑰：%@",
+    "Could not write the backup: %@":
+      "無法寫入備份：%@",
     "Credential deleted.":
       "已刪除金鑰。",
     "Credential metadata was removed, but Keychain cleanup failed: %@":
@@ -253,6 +279,8 @@ enum Translations {
       "把專案資料夾拖到這裡",
     "Edit…":
       "編輯…",
+    "Encrypted backups need macOS.":
+      "加密備份需要 macOS。",
     "Environment variable %@":
       "環境變數 %@",
     "Every approval requires Touch ID or your login password. Secrets are protected by Touch ID in the data protection keychain.":
@@ -263,6 +291,14 @@ enum Translations {
       "所有專案",
     "Everywhere":
       "全部通用",
+    "Export Backup…":
+      "匯出備份…",
+    "Export a backup first, so these files are not the only other copy of your keys.":
+      "請先匯出備份，這些檔案才不會是金鑰唯一的另一份副本。",
+    "Export an Encrypted Backup":
+      "匯出加密備份",
+    "Export…":
+      "匯出…",
     "Files in the project folder are not changed.":
       "專案資料夾裡的檔案不會變動。",
     "Finish the pending approval first.":
@@ -281,10 +317,20 @@ enum Translations {
       "Google 服務帳戶",
     "Headers":
       "標頭",
+    "If you forget this password, the backup cannot be opened.":
+      "忘記這組密碼的話，備份就打不開了。",
+    "Import":
+      "匯入",
     "Import %@":
       "匯入 %@",
+    "Import a Backup":
+      "匯入備份",
+    "Imported %@ key(s) and %@ project(s).":
+      "已匯入 %1$@ 把金鑰和 %2$@ 個專案。",
     "Imported %@ new and updated %@ existing secret(s) from %@.":
       "已從 %3$@ 匯入 %1$@ 把新金鑰，並更新 %2$@ 把既有金鑰。",
+    "Import…":
+      "匯入…",
     "Includes %@":
       "包含%@",
     "Injects as":
@@ -309,6 +355,10 @@ enum Translations {
       "金鑰會移進你的鑰匙圈，檔案則留在原處。",
     "Language":
       "語言",
+    "Last backup: %@":
+      "上次備份：%@",
+    "Left %@ alone because it differs from the stored key.":
+      "%@ 和 AgentKeyBox 存的金鑰不同，所以保留沒動。",
     "Limit to one website…":
       "限制只能送到一個網站…",
     "Local authentication cancelled or failed.":
@@ -333,6 +383,8 @@ enum Translations {
       "AgentKeyBox 的視窗和本機服務需要 macOS。",
     "Needs the %@":
       "還缺%@",
+    "No backup yet":
+      "還沒有備份",
     "No environment variables were found in that file.":
       "這個檔案裡沒有找到環境變數。",
     "No keys found in this folder. You can add them later.":
@@ -355,6 +407,8 @@ enum Translations {
       "尚未使用",
     "Nothing was imported.":
       "沒有匯入任何項目。",
+    "Open":
+      "打開",
     "Open AgentKeyBox":
       "打開 AgentKeyBox",
     "Open AgentKeyBox automatically when a coding agent needs a key":
@@ -371,6 +425,8 @@ enum Translations {
       "選填",
     "Other":
       "其他",
+    "Password":
+      "密碼",
     "Paste New Key…":
       "貼上新金鑰…",
     "Paste the %@ key here":
@@ -403,10 +459,20 @@ enum Translations {
       "移除 %@",
     "Remove %@ from AgentKeyBox?":
       "要從 AgentKeyBox 移除 %@ 嗎？",
+    "Remove Keys from Files":
+      "從檔案移除金鑰",
+    "Remove Keys from Files…":
+      "從檔案移除金鑰…",
+    "Remove Keys from Files… (export a backup first)":
+      "從檔案移除金鑰…（請先匯出備份）",
     "Remove Project":
       "移除專案",
     "Remove Project…":
       "移除專案…",
+    "Remove the keys from %@'s files?":
+      "要移除 %@ 檔案裡的金鑰嗎？",
+    "Removed %@ key(s) from .env files and moved %@ key file(s) to the Trash. Start your app with: akb run -- <your command>.":
+      "已從 .env 檔移除 %1$@ 把金鑰，並把 %2$@ 個金鑰檔移到垃圾桶。請用 akb run -- <你的指令> 啟動你的 App。",
     "Removed %@, but %@ key(s) could not be deleted from the Keychain.":
       "已移除 %1$@，但有 %2$@ 把金鑰無法從鑰匙圈刪除。",
     "Removed %@. Its files were not changed.":
@@ -463,6 +529,8 @@ enum Translations {
       "這個專案已經在 AgentKeyBox 裡了。",
     "The %@ doesn't look right":
       "%@ 的格式看起來不對",
+    "The backup holds all your projects and keys, encrypted with this password. Keep the file and the password somewhere safe, such as a password manager.":
+      "備份會包含你所有的專案和金鑰，並用這組密碼加密。請把檔案和密碼存在安全的地方，例如密碼管理器。",
     "The command includes a network URL.":
       "這個指令包含網址。",
     "The command includes an inline code or shell execution flag.":
@@ -475,6 +543,14 @@ enum Translations {
       "金鑰會存進你的鑰匙圈，不會傳給 %@。代理只會知道這把金鑰已經存在，而且每次使用仍需要你核准。",
     "The keys are handed to this command in your terminal and to anything it starts. Only allow commands you started yourself.":
       "金鑰會交給你終端機裡的這個指令，以及它啟動的所有程式。只允許你自己啟動的指令。",
+    "The passwords don't match.":
+      "兩次輸入的密碼不一樣。",
+    "There are no keys to back up yet.":
+      "目前還沒有可以備份的金鑰。",
+    "This backup from %@ has %@ key(s) in %@ project(s). Keys you already have are kept.":
+      "這份 %1$@ 的備份裡有 %3$@ 個專案、共 %2$@ 把金鑰。你已經有的金鑰會保留不動。",
+    "This backup was made by a newer AgentKeyBox. Update AgentKeyBox and try again.":
+      "這份備份是由較新版的 AgentKeyBox 建立的，請更新 AgentKeyBox 後再試。",
     "This command needs a closer look.":
       "這個指令需要仔細看一下。",
     "This command prints the keys straight back to whoever started it.":
@@ -485,6 +561,8 @@ enum Translations {
       "這個程式可以透過網路傳送資料。",
     "This executable launches another program named in its arguments.":
       "這個程式會啟動參數裡指定的另一個程式。",
+    "This file is not an AgentKeyBox backup.":
+      "這不是 AgentKeyBox 的備份檔。",
     "This key normally only goes to %@. Only allow this if you know why.":
       "這把金鑰平常只會送到 %@。除非你清楚原因，否則不要允許。",
     "This session":
@@ -503,6 +581,8 @@ enum Translations {
       "用法：akb connect <claude|codex|all> [--helper /path/to/agentkeybox-mcp]",
     "Usage: akb run [--only VAR1,VAR2] -- <command> [args…]":
       "用法：akb run [--only VAR1,VAR2] -- <指令> [參數…]",
+    "Use a password of at least %@ characters.":
+      "請使用至少 %@ 個字元的密碼。",
     "Use letters, digits, and _ only, and not PATH, HOME, or DYLD_*.":
       "只能用英文字母、數字和 _，而且不能是 PATH、HOME 或 DYLD_*。",
     "Used by %@ · %@":
@@ -519,6 +599,10 @@ enum Translations {
       "去哪裡找？",
     "Which project should this key belong to?":
       "這把金鑰要放在哪個專案？",
+    "Wrong password, or the backup file is damaged.":
+      "密碼錯誤，或備份檔已損壞。",
+    "Your keys are stored on this Mac only. An encrypted backup lets you restore them on a new Mac or after a repair.":
+      "你的金鑰只存在這台 Mac。有了加密備份，換新電腦或送修後都能把它們救回來。",
     "a command":
       "一個指令",
     "access was denied.":

@@ -26,6 +26,11 @@ You don't need to keep AgentKeyBox open: it opens when you log in, and if it is 
 
 **Keep a backup of your keys.** AgentKeyBox's copy lives in this Mac's Keychain only: it is not synced to iCloud and Migration Assistant does not move it to a new Mac. Setup therefore leaves your `.env` and key files in place. To keep coding agents from reading them anyway, setup adds rules to the project's `AGENTS.md` and `CLAUDE.md` and Claude Code `Read` deny rules to `.claude/settings.local.json` (on by default). Claude Code enforces those rules for its file tools and common shell commands; for other agents they are instructions.
 
+### Back up, and remove keys from your files
+
+- **Settings › Backup › Export Backup…** writes all your projects and keys to an encrypted `.akbbackup` file (AES-256-GCM, with a key derived from your password by PBKDF2-SHA256 at 600,000 iterations). Store the file and the password somewhere safe; **Import…** restores them on another Mac.
+- After a backup, right-click a project › **Remove Keys from Files…** empties those keys in its `.env` files and moves its key files to the Trash, so no coding agent can read them. Only values identical to what AgentKeyBox stored are removed. Your app then gets its keys from AgentKeyBox: start it with `akb run -- npm run dev` (or your own command).
+
 To check the download, compare `shasum -a 256 AgentKeyBox-<version>-macOS.zip` with the `.sha256` file published next to it.
 
 ### Update

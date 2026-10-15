@@ -34,6 +34,12 @@ The current prototype includes:
 - Touch ID / login-password confirmation for every approval
 - protected temporary-file delivery for file credentials
 
+## Backups
+
+Encrypted backups (`.akbbackup`) contain every project, key's metadata, and key value. They are sealed with AES-256-GCM using a key derived from the user's password with PBKDF2-HMAC-SHA256 (600,000 iterations, random 16-byte salt); the file's parameters are authenticated, so any change makes decryption fail. Exporting requires Touch ID or the login password. A backup is only as strong as its password: the app requires at least 12 characters.
+
+"Remove Keys from Files" is available only after a backup that covers the project, empties only values identical to the stored keys, and moves key files to the Trash rather than deleting them.
+
 ## Explicit non-goals
 
 The current alpha does not defend against:

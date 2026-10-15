@@ -39,6 +39,8 @@ public struct ProjectScan: Sendable {
   public var keyFiles: [KeyFile]
   /// `.env` files (relative paths) that the project's git ignore rules do not cover.
   public var envFilesNotIgnored: [String]
+  /// Every `.env` file found (not templates).
+  public var envFileURLs: [URL] = []
 
   public var projectName: String { root.lastPathComponent }
 }
@@ -98,7 +100,8 @@ public enum ProjectScanner {
       root: root,
       secrets: bundled.secrets,
       keyFiles: bundled.keyFiles,
-      envFilesNotIgnored: GitIgnore.unignored(envRelative, in: root))
+      envFilesNotIgnored: GitIgnore.unignored(envRelative, in: root),
+      envFileURLs: envFiles.sorted { $0.path < $1.path })
   }
 
   /// Gives each provider key the settings found next to it, and drops those settings from the
