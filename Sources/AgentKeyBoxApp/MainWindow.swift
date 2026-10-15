@@ -821,6 +821,11 @@
         )
         .foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
+        Text(
+          L("You can open it without AgentKeyBox: double-click the .dmg file and enter the password to see a folder per project with its .env and key files.")
+        )
+        .font(.callout)
+        .fixedSize(horizontal: false, vertical: true)
         Form {
           SecureField(L("Password"), text: $password)
           SecureField(L("Confirm password"), text: $confirmation)
@@ -845,7 +850,7 @@
 
     private func export() {
       let panel = NSSavePanel()
-      panel.allowedContentTypes = [UTType(filenameExtension: BackupArchive.fileExtension) ?? .data]
+      panel.allowedContentTypes = [.diskImage]
       let day = Date().formatted(.iso8601.year().month().day())
       panel.nameFieldStringValue = "AgentKeyBox Backup \(day).\(BackupArchive.fileExtension)"
       guard panel.runModal() == .OK, let url = panel.url else { return }
@@ -1057,9 +1062,9 @@
 
     private func chooseBackupToImport() {
       let panel = NSOpenPanel()
-      panel.allowedContentTypes = [UTType(filenameExtension: BackupArchive.fileExtension) ?? .data]
+      panel.allowedContentTypes = [.diskImage]
       panel.allowsMultipleSelection = false
-      panel.message = L("Choose an AgentKeyBox backup (.akbbackup).")
+      panel.message = L("Choose an AgentKeyBox backup (.dmg).")
       guard panel.runModal() == .OK, let url = panel.url else { return }
       importURL = url
     }

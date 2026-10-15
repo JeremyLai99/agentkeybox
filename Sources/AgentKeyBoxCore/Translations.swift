@@ -33,6 +33,8 @@ enum Translations {
       "%@ 不是這把金鑰平常會去的網站",
     "%@ key file(s) saved":
       "已儲存 %@ 個金鑰檔",
+    "%@ key(s) in total.":
+      "共 %@ 把金鑰。",
     "%@ key(s) saved":
       "已儲存 %@ 把金鑰",
     "%@ keys":
@@ -67,6 +69,12 @@ enum Translations {
       "%@ · 設定值",
     "%@, and %@":
       "%1$@ 和 %2$@",
+    "%@: file %@":
+      "%1$@：檔案 %2$@",
+    "%@: in .env as %@":
+      "%1$@：在 .env 中，名稱為 %2$@",
+    "%@: no key value, not included":
+      "%@：沒有金鑰內容，未包含",
     ", ":
       "、",
     "1 key":
@@ -105,6 +113,8 @@ enum Translations {
       "代理說明的用途",
     "AgentKeyBox MCP is configured.":
       "AgentKeyBox MCP 已設定。",
+    "AgentKeyBox backup":
+      "AgentKeyBox 備份",
     "AgentKeyBox broker responded; %@ credential(s) visible here.":
       "AgentKeyBox 本機服務有回應；這裡可以看到 %@ 把金鑰。",
     "AgentKeyBox could not read its project list and moved it to %@. Your secrets are still in the Keychain.":
@@ -141,6 +151,8 @@ enum Translations {
       "已允許",
     "Allowed (session)":
       "已允許（工作階段）",
+    "Allowed hosts: %@":
+      "允許的網站：%@",
     "Always allow %@ for this key":
       "以後這把金鑰都允許送到 %@",
     "Anon key":
@@ -185,8 +197,8 @@ enum Translations {
       "選擇資料夾…",
     "Choose a project":
       "選擇一個專案",
-    "Choose an AgentKeyBox backup (.akbbackup).":
-      "選擇 AgentKeyBox 備份檔（.akbbackup）。",
+    "Choose an AgentKeyBox backup (.dmg).":
+      "選擇 AgentKeyBox 備份檔（.dmg）。",
     "Choose which entries are secrets. Likely secrets are preselected; settings such as PORT or NODE_ENV and public keys are not.":
       "選擇哪些項目是金鑰。看起來是金鑰的已經預先勾選；PORT、NODE_ENV 這類設定和公開金鑰則不會勾。",
     "Choose your project folder. AgentKeyBox will find the keys in it.":
@@ -219,6 +231,8 @@ enum Translations {
       "已連接 %@",
     "Connected AgentKeyBox to %@. Start a new agent session to load the MCP tools.":
       "已把 AgentKeyBox 連接到 %@。開一個新的代理工作階段，就能載入 MCP 工具。",
+    "Copies you take out of this disk image are not encrypted. Delete them when you no longer need them.":
+      "從這個磁碟映像檔拷貝出來的檔案沒有加密，用完請刪除。",
     "Could not add the project folder.":
       "無法加入專案資料夾。",
     "Could not change %@.":
@@ -245,6 +259,8 @@ enum Translations {
       "無法儲存新金鑰：%@",
     "Could not write the backup: %@":
       "無法寫入備份：%@",
+    "Created: %@":
+      "建立時間：%@",
     "Credential deleted.":
       "已刪除金鑰。",
     "Credential metadata was removed, but Keychain cleanup failed: %@":
@@ -279,10 +295,10 @@ enum Translations {
       "可以把檔案或其他專案資料夾拖到這個視窗的任何地方。",
     "Drop your project folder here":
       "把專案資料夾拖到這裡",
+    "Each folder is one project. Its .env file holds the project's keys; key files (.p8, .pem, .json) are the original files.":
+      "每個資料夾是一個專案。.env 檔裡是這個專案的金鑰；金鑰檔（.p8、.pem、.json）就是原本的檔案。",
     "Edit…":
       "編輯…",
-    "Encrypted backups need macOS.":
-      "加密備份需要 macOS。",
     "Environment variable %@":
       "環境變數 %@",
     "Every approval requires Touch ID or your login password. Secrets are protected by Touch ID in the data protection keychain.":
@@ -303,12 +319,16 @@ enum Translations {
       "匯出…",
     "Files in the project folder are not changed.":
       "專案資料夾裡的檔案不會變動。",
+    "Files whose names start with a dot, such as .env, are hidden in Finder. Press Command-Shift-. to show them.":
+      "名稱以點開頭的檔案（例如 .env）在 Finder 裡預設是隱藏的。按 Command-Shift-. 就能顯示。",
     "Finish the pending approval first.":
       "請先處理目前待核准的請求。",
     "Fix %@…":
       "修正%@…",
     "Folder":
       "資料夾",
+    "Folder on the original Mac: %@":
+      "原本 Mac 上的資料夾：%@",
     "Get your %@ key":
       "取得你的 %@ 金鑰",
     "Global keys":
@@ -393,6 +413,8 @@ enum Translations {
       "還沒有金鑰",
     "No pending requests":
       "沒有待處理的請求",
+    "No project":
+      "未指定專案",
     "No requests yet":
       "還沒有任何請求",
     "Not Now":
@@ -569,6 +591,8 @@ enum Translations {
       "這次工作階段",
     "This tool runs scripts defined in the project (package.json, Makefile, …), which the agent can edit before asking.":
       "這個工具會執行專案裡定義的腳本（package.json、Makefile…），而代理在詢問你之前可以先修改這些腳本。",
+    "To restore everything into AgentKeyBox, choose Settings › Backup › Import… and pick this .dmg file.":
+      "要把全部還原到 AgentKeyBox，請選擇「設定 › 備份 › 匯入…」，再選這個 .dmg 檔。",
     "Touch ID next":
       "接著要按 Touch ID",
     "Unknown agent: %@. Use claude, codex, or all.":
@@ -601,6 +625,8 @@ enum Translations {
       "這把金鑰要放在哪個專案？",
     "Wrong password, or the backup file is damaged.":
       "密碼錯誤，或備份檔已損壞。",
+    "You can open it without AgentKeyBox: double-click the .dmg file and enter the password to see a folder per project with its .env and key files.":
+      "不用 AgentKeyBox 也能打開：點兩下 .dmg 檔並輸入密碼，就會看到每個專案一個資料夾，裡面有它的 .env 和金鑰檔。",
     "Your keys are stored on this Mac only. An encrypted backup lets you restore them on a new Mac or after a repair.":
       "你的金鑰只存在這台 Mac。有了加密備份，換新電腦或送修後都能把它們救回來。",
     "a command":
@@ -633,6 +659,8 @@ enum Translations {
       "已注入 %@",
     "just now":
       "剛剛",
+    "macOS could not create or open the disk image: %@":
+      "macOS 無法建立或打開磁碟映像檔：%@",
     "macOS needs your OK in System Settings › Login Items.":
       "需要在「系統設定 › 登入項目」裡允許。",
     "project":

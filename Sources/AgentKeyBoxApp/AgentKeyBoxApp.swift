@@ -463,8 +463,8 @@
     @Published var lastBackupDate: Date? =
       UserDefaults.standard.object(forKey: "AgentKeyBoxLastBackup") as? Date
 
-    /// Touch ID, then encrypts every project, key, and key value with the password and writes
-    /// the file. Returns false (with a status message) on failure.
+    /// Touch ID, then writes every project, key, and key value to an encrypted disk image that
+    /// opens with the password. Returns false (with a status message) on failure.
     func exportBackup(password: String, to url: URL) async -> Bool {
       guard !credentials.isEmpty else {
         statusMessage = L("There are no keys to back up yet.")
@@ -492,11 +492,9 @@
       let contents = BackupContents(
         projects: projects, credentials: credentials, secrets: secrets)
       do {
-        let data = try await Task.detached(priority: .userInitiated) {
-          try BackupArchive.encrypt(contents, password: password)
+        try await Task.detached(priority: .userInitiated) {
+          try BackupArchive.write(contents, password: password, to: url)
         }.value
-        try data.write(to: url, options: .atomic)
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
       } catch {
         statusMessage = L("Could not write the backup: %@", error.localizedDescription)
         return false
@@ -510,9 +508,8 @@
 
     /// Decrypts a backup without importing it, for the confirmation step.
     func openBackup(at url: URL, password: String) async throws -> BackupContents {
-      let data = try Data(contentsOf: url)
-      return try await Task.detached(priority: .userInitiated) {
-        try BackupArchive.decrypt(data, password: password)
+      try await Task.detached(priority: .userInitiated) {
+        try BackupArchive.read(from: url, password: password)
       }.value
     }
 

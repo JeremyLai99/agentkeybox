@@ -1,11 +1,5 @@
 import Foundation
 
-#if canImport(CryptoKit) && canImport(CommonCrypto)
-  import CommonCrypto
-  import CryptoKit
-  import Security
-#endif
-
 /// Everything needed to rebuild AgentKeyBox on another Mac: projects, key metadata, and the keys.
 public struct BackupContents: Codable, Equatable, Sendable {
   public var createdAt: Date
@@ -32,7 +26,7 @@ public enum BackupError: Error, LocalizedError, Equatable {
   case notABackup
   case unsupportedVersion
   case wrongPasswordOrDamaged
-  case cryptoUnavailable
+  case diskImageFailed(String)
 
   public var errorDescription: String? {
     switch self {
@@ -44,110 +38,338 @@ public enum BackupError: Error, LocalizedError, Equatable {
       return L("This backup was made by a newer AgentKeyBox. Update AgentKeyBox and try again.")
     case .wrongPasswordOrDamaged:
       return L("Wrong password, or the backup file is damaged.")
-    case .cryptoUnavailable:
-      return L("Encrypted backups need macOS.")
+    case .diskImageFailed(let detail):
+      return L("macOS could not create or open the disk image: %@", detail)
     }
   }
 }
 
-/// The `.akbbackup` file format: a small JSON envelope around an AES-256-GCM sealed box.
+/// A backup is an AES-256 encrypted macOS disk image (`.dmg`). Double-clicking it asks for the
+/// password and opens a folder per project with that project's `.env` and key files (`.p8`,
+/// `.pem`, `.json`) and a README, so the keys can be recovered without AgentKeyBox. A hidden
+/// `.agentkeybox-backup.json` beside them holds the same projects and keys for **Import…**.
 ///
-/// The key comes from the user's password through PBKDF2-HMAC-SHA256 with a random 16-byte
-/// salt. The envelope's parameters are bound to the ciphertext as additional authenticated data,
-/// so changing any of them, or any byte of the ciphertext, makes decryption fail instead of
-/// producing altered contents. Without the password the file reveals only that it is a backup.
+/// The plaintext is written only inside the encrypted image, which is mounted privately
+/// (`-nobrowse`, under an owner-only folder) while it is filled and unmounted afterwards. The
+/// format is described in docs/BACKUP_FORMAT.md.
 public enum BackupArchive {
-  public static let fileExtension = "akbbackup"
+  public static let fileExtension = "dmg"
   public static let minimumPasswordLength = 12
-  /// OWASP's 2023 recommendation for PBKDF2-HMAC-SHA256.
-  public static let defaultIterations = 600_000
-  static let format = "agentkeybox-backup"
+  public static let volumeName = "AgentKeyBox Backup"
+  static let dataFileName = ".agentkeybox-backup.json"
+  static let readmeFileName = "README.txt"
   static let version = 1
-  /// Bounds on a file's iteration count: low enough not to hang on a hostile file, high enough
-  /// that a file cannot ask for a trivially weak key.
-  static let iterationRange = 10_000...10_000_000
 
-  struct Envelope: Codable {
-    var format: String
+  /// The hidden data file: the backup contents plus a format version.
+  struct DataFile: Codable {
+    var format = "agentkeybox-backup"
     var version: Int
-    var kdf: String
-    var iterations: Int
-    var salt: Data
-    var cipher: String
-    var sealed: Data
-
-    var authenticatedData: Data {
-      Data("\(format)|\(version)|\(kdf)|\(iterations)|\(salt.base64EncodedString())|\(cipher)".utf8)
-    }
+    var contents: BackupContents
   }
 
-  public static func encrypt(
-    _ contents: BackupContents, password: String, iterations: Int = defaultIterations
-  ) throws -> Data {
+  /// One file the image holds, by its path inside the volume.
+  struct Entry: Equatable {
+    var path: String
+    var data: Data
+  }
+
+  // MARK: - Layout
+
+  /// Every file the backup volume holds, in order: per-project folders with `.env` and key
+  /// files, the README, the hidden data file, and a marker that keeps Spotlight from indexing
+  /// the open volume. Pure, so the layout is testable without making a disk image.
+  static func layout(_ contents: BackupContents) throws -> [Entry] {
+    let projectsByID = Dictionary(
+      contents.projects.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+    var groups: [UUID?: [CredentialMetadata]] = [:]
+    for credential in contents.credentials {
+      let projectID = credential.projectID.flatMap { projectsByID[$0] == nil ? nil : $0 }
+      groups[projectID, default: []].append(credential)
+    }
+    // Projects by name (ties in backup order), then keys without a project.
+    let order: [UUID?] =
+      contents.projects.enumerated()
+      .sorted {
+        let order = $0.element.name.localizedStandardCompare($1.element.name)
+        return order == .orderedSame ? $0.offset < $1.offset : order == .orderedAscending
+      }
+      .map { Optional($0.element.id) }
+      .filter { groups[$0] != nil }
+      .reduce(into: [UUID?]()) { if !$0.contains($1) { $0.append($1) } }
+      + (groups[nil] == nil ? [] : [nil])
+
+    var entries: [Entry] = []
+    var readme = [
+      L("AgentKeyBox backup"),
+      "",
+      L("Created: %@", contents.createdAt.formatted(date: .long, time: .shortened)),
+      "",
+      L("Each folder is one project. Its .env file holds the project's keys; key files (.p8, .pem, .json) are the original files."),
+      L("Files whose names start with a dot, such as .env, are hidden in Finder. Press Command-Shift-. to show them."),
+      L("To restore everything into AgentKeyBox, choose Settings › Backup › Import… and pick this .dmg file."),
+      L("Copies you take out of this disk image are not encrypted. Delete them when you no longer need them."),
+      "",
+    ]
+    var folders: Set<String> = [readmeFileName.lowercased(), dataFileName.lowercased()]
+    var restored = 0
+    for projectID in order {
+      let project = projectID.flatMap { projectsByID[$0] }
+      let folder = unique(
+        project.map { safeName($0.name, fallback: L("Project")) } ?? L("No project"),
+        in: &folders)
+      readme.append("\(folder)/")
+      if let project { readme.append("  " + L("Folder on the original Mac: %@", project.rootPath)) }
+
+      var envLines: [String] = []
+      var files: Set<String> = [".env"]
+      let credentials = groups[projectID, default: []].sorted {
+        $0.label.localizedStandardCompare($1.label) == .orderedAscending
+      }
+      for credential in credentials {
+        let name = "\(credential.label) (\(credential.service))"
+        guard let secret = contents.secrets[credential.id.uuidString] else {
+          readme.append("  - " + L("%@: no key value, not included", name))
+          continue
+        }
+        let variable = credential.injectionVariableName
+        if !credential.isFileCredential, let variable,
+          let text = String(data: secret, encoding: .utf8)
+        {
+          envLines.append(envLine(variable, text))
+          readme.append("  - " + L("%@: in .env as %@", name, variable))
+        } else {
+          let file = unique(fileName(for: credential), in: &files)
+          entries.append(Entry(path: "\(folder)/\(file)", data: secret))
+          readme.append("  - " + L("%@: file %@", name, file))
+        }
+        for (key, value) in (credential.settings ?? [:]).sorted(by: { $0.key < $1.key })
+        where ApprovedCommandRunner.isValidEnvironmentVariable(key) {
+          envLines.append(envLine(key, value))
+        }
+        if let hosts = credential.allowedHosts, !hosts.isEmpty {
+          readme.append("    " + L("Allowed hosts: %@", hosts.joined(separator: ", ")))
+        }
+        restored += 1
+      }
+      if !envLines.isEmpty {
+        entries.append(Entry(path: "\(folder)/.env", data: Data(envLines.joined().utf8)))
+      }
+      readme.append("")
+    }
+    readme.append(L("%@ key(s) in total.", "\(restored)"))
+
+    entries.append(Entry(path: readmeFileName, data: Data((readme.joined(separator: "\n") + "\n").utf8)))
+    // Default date and data encodings: lossless dates, keys as Base64.
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+    let data = try encoder.encode(DataFile(version: version, contents: contents))
+    entries.append(Entry(path: dataFileName, data: data))
+    entries.append(Entry(path: ".metadata_never_index", data: Data()))
+    return entries
+  }
+
+  /// The contents from a backup volume's hidden data file.
+  static func contents(fromDataFile data: Data) throws -> BackupContents {
+    struct Header: Decodable {
+      var format: String
+      var version: Int
+    }
+    guard let header = try? JSONDecoder().decode(Header.self, from: data),
+      header.format == "agentkeybox-backup"
+    else { throw BackupError.notABackup }
+    guard header.version == version else { throw BackupError.unsupportedVersion }
+    guard let file = try? JSONDecoder().decode(DataFile.self, from: data) else {
+      throw BackupError.wrongPasswordOrDamaged
+    }
+    return file.contents
+  }
+
+  /// A `KEY=value` line that `EnvParser` and common dotenv loaders read back unchanged.
+  static func envLine(_ key: String, _ value: String) -> String {
+    let plain = CharacterSet(
+      charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-./:@+,=")
+    if value.unicodeScalars.allSatisfy(plain.contains) { return "\(key)=\(value)\n" }
+    var escaped = ""
+    // By scalar: "\r\n" is one Character, which would slip past the cases below.
+    for scalar in value.unicodeScalars {
+      switch scalar {
+      case "\\": escaped += "\\\\"
+      case "\"": escaped += "\\\""
+      case "\n": escaped += "\\n"
+      case "\r": escaped += "\\r"
+      case "\t": escaped += "\\t"
+      default: escaped.unicodeScalars.append(scalar)
+      }
+    }
+    return "\(key)=\"\(escaped)\"\n"
+  }
+
+  /// The original Apple name for App Store Connect keys, so tools that expect
+  /// `AuthKey_<ID>.p8` find it; otherwise the label with the kind's extension.
+  static func fileName(for credential: CredentialMetadata) -> String {
+    let prefix = "App Store Connect key "
+    if credential.kind == .p8, credential.label.hasPrefix(prefix) {
+      let id = String(credential.label.dropFirst(prefix.count))
+      if ProjectScanner.appStoreConnectKeyID(fromFileName: "AuthKey_\(id).p8") != nil {
+        return "AuthKey_\(id).p8"
+      }
+    }
+    let ext: String
+    switch credential.kind {
+    case .p8: ext = ".p8"
+    case .pem: ext = ".pem"
+    case .json: ext = ".json"
+    default: ext = ".txt"
+    }
+    let base = safeName(credential.label, fallback: "key")
+    return base.lowercased().hasSuffix(ext) ? base : base + ext
+  }
+
+  /// One path component: no separators, no leading dot, no control characters.
+  static func safeName(_ text: String, fallback: String) -> String {
+    var name = String(
+      text.unicodeScalars.map { scalar -> Character in
+        "/\\:".unicodeScalars.contains(scalar) || CharacterSet.controlCharacters.contains(scalar)
+          ? "_" : Character(scalar)
+      })
+    name = name.trimmingCharacters(in: .whitespaces)
+    while name.hasPrefix(".") { name.removeFirst() }
+    name = String(name.prefix(100))
+    return name.isEmpty ? fallback : name
+  }
+
+  /// The name, or `name 2`, `name 3`…; names are compared case-insensitively, as on APFS.
+  static func unique(_ name: String, in taken: inout Set<String>) -> String {
+    var candidate = name
+    var number = 2
+    let ext = (name as NSString).pathExtension
+    let stem = ext.isEmpty ? name : (name as NSString).deletingPathExtension
+    while taken.contains(candidate.lowercased()) {
+      candidate = ext.isEmpty || stem.isEmpty ? "\(name) \(number)" : "\(stem) \(number).\(ext)"
+      number += 1
+    }
+    taken.insert(candidate.lowercased())
+    return candidate
+  }
+
+  // MARK: - Disk image
+
+  /// Writes the backup to `url` as an encrypted disk image, replacing any file there only once
+  /// the new image is complete.
+  public static func write(_ contents: BackupContents, password: String, to url: URL) throws {
     guard password.count >= minimumPasswordLength else { throw BackupError.passwordTooShort }
-    #if canImport(CryptoKit) && canImport(CommonCrypto)
-      var salt = Data(count: 16)
-      let status = salt.withUnsafeMutableBytes {
-        SecRandomCopyBytes(kSecRandomDefault, 16, $0.baseAddress!)
-      }
-      guard status == errSecSuccess else { throw BackupError.cryptoUnavailable }
-      var envelope = Envelope(
-        format: format, version: version, kdf: "PBKDF2-HMAC-SHA256", iterations: iterations,
-        salt: salt, cipher: "AES-256-GCM", sealed: Data())
-      // Default date encoding: lossless, unlike ISO 8601, which drops fractions of a second.
-      let plaintext = try JSONEncoder().encode(contents)
-      let key = try deriveKey(password: password, salt: salt, iterations: iterations)
-      let box = try AES.GCM.seal(plaintext, using: key, authenticating: envelope.authenticatedData)
-      guard let combined = box.combined else { throw BackupError.cryptoUnavailable }
-      envelope.sealed = combined
-      let output = JSONEncoder()
-      output.outputFormatting = [.prettyPrinted, .sortedKeys]
-      return try output.encode(envelope)
-    #else
-      throw BackupError.cryptoUnavailable
-    #endif
-  }
+    let entries = try layout(contents)
+    let fileManager = FileManager.default
+    // On the destination's volume, so the finished image can be swapped in place.
+    let work = try fileManager.url(
+      for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: url, create: true)
+    defer { try? fileManager.removeItem(at: work) }
+    try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: work.path)
+    let image = work.appendingPathComponent("backup.dmg")
 
-  public static func decrypt(_ data: Data, password: String) throws -> BackupContents {
-    guard let envelope = try? JSONDecoder().decode(Envelope.self, from: data),
-      envelope.format == format
-    else { throw BackupError.notABackup }
-    guard envelope.version == version else { throw BackupError.unsupportedVersion }
-    guard envelope.kdf == "PBKDF2-HMAC-SHA256", envelope.cipher == "AES-256-GCM",
-      iterationRange.contains(envelope.iterations), envelope.salt.count >= 16
-    else { throw BackupError.notABackup }
-    #if canImport(CryptoKit) && canImport(CommonCrypto)
-      let key = try deriveKey(
-        password: password, salt: envelope.salt, iterations: envelope.iterations)
-      let plaintext: Data
-      do {
-        let box = try AES.GCM.SealedBox(combined: envelope.sealed)
-        plaintext = try AES.GCM.open(box, using: key, authenticating: envelope.authenticatedData)
-      } catch {
-        throw BackupError.wrongPasswordOrDamaged
-      }
-      guard let contents = try? JSONDecoder().decode(BackupContents.self, from: plaintext) else {
-        throw BackupError.wrongPasswordOrDamaged
-      }
-      return contents
-    #else
-      throw BackupError.cryptoUnavailable
-    #endif
-  }
+    let payload = entries.reduce(0) { $0 + $1.data.count }
+    let megabytes = max(4, payload * 2 / 1_000_000 + 4)
+    try hdiutil(
+      [
+        "create", "-quiet", "-size", "\(megabytes)m", "-fs", "APFS", "-encryption", "AES-256",
+        "-stdinpass", "-volname", volumeName, "-type", "UDIF", image.path,
+      ], password: password)
 
-  #if canImport(CryptoKit) && canImport(CommonCrypto)
-    static func deriveKey(password: String, salt: Data, iterations: Int) throws -> SymmetricKey {
-      let passwordBytes = Array(password.utf8)
-      var derived = [UInt8](repeating: 0, count: 32)
-      let status = salt.withUnsafeBytes { saltBytes in
-        CCKeyDerivationPBKDF(
-          CCPBKDFAlgorithm(kCCPBKDF2), passwordBytes.map { Int8(bitPattern: $0) },
-          passwordBytes.count, saltBytes.bindMemory(to: UInt8.self).baseAddress, salt.count,
-          CCPseudoRandomAlgorithm(kCCPRFHmacAlgSHA256), UInt32(iterations), &derived, 32)
+    try withMountedImage(image, password: password, readOnly: false) { volume in
+      for entry in entries {
+        let file = volume.appendingPathComponent(entry.path)
+        let folder = file.deletingLastPathComponent()
+        if !fileManager.fileExists(atPath: folder.path) {
+          try fileManager.createDirectory(
+            at: folder, withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700])
+        }
+        guard
+          fileManager.createFile(
+            atPath: file.path, contents: entry.data, attributes: [.posixPermissions: 0o600])
+        else { throw BackupError.diskImageFailed(entry.path) }
       }
-      guard status == kCCSuccess else { throw BackupError.cryptoUnavailable }
-      defer { derived.withUnsafeMutableBytes { _ = memset_s($0.baseAddress, 32, 0, 32) } }
-      return SymmetricKey(data: derived)
     }
-  #endif
+    try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: image.path)
+    if fileManager.fileExists(atPath: url.path) {
+      _ = try fileManager.replaceItemAt(url, withItemAt: image)
+    } else {
+      try fileManager.moveItem(at: image, to: url)
+    }
+  }
+
+  /// Opens a backup disk image with its password and reads its contents.
+  public static func read(from url: URL, password: String) throws -> BackupContents {
+    // An unencrypted image is not something AgentKeyBox made; refuse before asking for it.
+    guard let plist = try? hdiutil(["isencrypted", "-plist", url.path], password: nil),
+      let info = try? PropertyListSerialization.propertyList(from: plist, format: nil)
+        as? [String: Any],
+      info["encrypted"] as? Bool == true
+    else { throw BackupError.notABackup }
+    do {
+      return try withMountedImage(url, password: password, readOnly: true) { volume in
+        let file = volume.appendingPathComponent(dataFileName)
+        guard let data = try? Data(contentsOf: file) else { throw BackupError.notABackup }
+        return try contents(fromDataFile: data)
+      }
+    } catch BackupError.diskImageFailed {
+      throw BackupError.wrongPasswordOrDamaged
+    }
+  }
+
+  /// Mounts the image under a fresh owner-only folder, hidden from Finder, runs `body`, and
+  /// always unmounts it.
+  static func withMountedImage<T>(
+    _ image: URL, password: String, readOnly: Bool, _ body: (URL) throws -> T
+  ) throws -> T {
+    let fileManager = FileManager.default
+    let mountPoint = fileManager.temporaryDirectory
+      .appendingPathComponent("AgentKeyBox-backup-\(UUID().uuidString)")
+    try fileManager.createDirectory(
+      at: mountPoint, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+    defer { try? fileManager.removeItem(at: mountPoint) }
+    var arguments = [
+      "attach", "-quiet", "-stdinpass", "-nobrowse", "-noautoopen", "-noverify",
+      "-mountpoint", mountPoint.path,
+    ]
+    if readOnly { arguments.append("-readonly") }
+    try hdiutil(arguments + [image.path], password: password)
+    defer {
+      if (try? hdiutil(["detach", "-quiet", mountPoint.path], password: nil)) == nil {
+        _ = try? hdiutil(["detach", "-quiet", "-force", mountPoint.path], password: nil)
+      }
+    }
+    return try body(mountPoint)
+  }
+
+  /// Runs `/usr/bin/hdiutil`, giving it the password on standard input (never as an argument,
+  /// where other processes could see it). Returns standard output.
+  @discardableResult
+  static func hdiutil(_ arguments: [String], password: String?) throws -> Data {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/hdiutil")
+    process.arguments = arguments
+    let input = Pipe()
+    let output = Pipe()
+    let errors = Pipe()
+    process.standardInput = input
+    process.standardOutput = output
+    process.standardError = errors
+    do {
+      try process.run()
+    } catch {
+      throw BackupError.diskImageFailed(error.localizedDescription)
+    }
+    if let password { input.fileHandleForWriting.write(Data(password.utf8)) }
+    try? input.fileHandleForWriting.close()
+    let result = output.fileHandleForReading.readDataToEndOfFile()
+    let message = errors.fileHandleForReading.readDataToEndOfFile()
+    process.waitUntilExit()
+    guard process.terminationStatus == 0 else {
+      let text = String(decoding: message, as: UTF8.self)
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+      throw BackupError.diskImageFailed(text.isEmpty ? "hdiutil \(arguments[0])" : text)
+    }
+    return result
+  }
 }

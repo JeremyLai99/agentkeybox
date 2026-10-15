@@ -28,7 +28,8 @@ You don't need to keep AgentKeyBox open: it opens when you log in, and if it is 
 
 ### Back up, and remove keys from your files
 
-- **Settings › Backup › Export Backup…** writes all your projects and keys to an encrypted `.akbbackup` file (AES-256-GCM, with a key derived from your password by PBKDF2-SHA256 at 600,000 iterations). Store the file and the password somewhere safe; **Import…** restores them on another Mac.
+- **Settings › Backup › Export Backup…** writes all your projects and keys to a password-protected `.dmg` (an AES-256 encrypted macOS disk image). Store the file and the password somewhere safe; **Import…** restores them on another Mac.
+- You can open a backup without AgentKeyBox: double-click the `.dmg`, enter the password, and you get a folder per project with its `.env` and key files (`.p8`, `.pem`, `.json`), plus a README listing them. See [docs/BACKUP_FORMAT.md](docs/BACKUP_FORMAT.md).
 - After a backup, right-click a project › **Remove Keys from Files…** empties those keys in its `.env` files and moves its key files to the Trash, so no coding agent can read them. Only values identical to what AgentKeyBox stored are removed. Your app then gets its keys from AgentKeyBox: start it with `akb run -- npm run dev` (or your own command).
 
 To check the download, compare `shasum -a 256 AgentKeyBox-<version>-macOS.zip` with the `.sha256` file published next to it.

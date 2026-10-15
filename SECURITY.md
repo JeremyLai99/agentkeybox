@@ -36,7 +36,9 @@ The current prototype includes:
 
 ## Backups
 
-Encrypted backups (`.akbbackup`) contain every project, key's metadata, and key value. They are sealed with AES-256-GCM using a key derived from the user's password with PBKDF2-HMAC-SHA256 (600,000 iterations, random 16-byte salt); the file's parameters are authenticated, so any change makes decryption fail. Exporting requires Touch ID or the login password. A backup is only as strong as its password: the app requires at least 12 characters.
+Backups are AES-256 encrypted macOS disk images (`.dmg`, made with `hdiutil`) that contain every project, key's metadata, and key value. The image is created encrypted and then filled while mounted under an owner-only folder, hidden from Finder and excluded from Spotlight, so the keys are never written to disk unencrypted; the password reaches `hdiutil` on standard input, never as an argument. Exporting requires Touch ID or the login password. A backup is only as strong as its password: the app requires at least 12 characters.
+
+Anyone with the password can open a backup without AgentKeyBox (double-click, enter the password), by design: users are never locked in. Files copied out of the opened image are plaintext; the README inside says so.
 
 "Remove Keys from Files" is available only after a backup that covers the project, empties only values identical to the stored keys, and moves key files to the Trash rather than deleting them.
 
