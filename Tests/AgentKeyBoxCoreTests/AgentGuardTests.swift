@@ -144,6 +144,24 @@ final class AgentGuardTests: XCTestCase {
     XCTAssertEqual(ledger.rules(for: root), ["Read(.env)"], "only what AgentKeyBox added is ours")
   }
 
+  func testExceptionsTheUserRemovedAreNotAddedBack() throws {
+    let rules = AgentGuard.claudeDenyRules(keyFileNames: [])
+    try AgentGuard.addClaudeDenyRules(rules, root: root, ledger: ledger)
+
+    // The user tightens it: no exceptions, every env file denied; they also drop Read(.env).
+    let file = root.appendingPathComponent(".claude/settings.local.json")
+    try JSONSerialization.data(withJSONObject: ["permissions": ["deny": ["Read(.env.*)"]]])
+      .write(to: file)
+
+    try AgentGuard.addClaudeDenyRules(rules, root: root, ledger: ledger)
+
+    let deny = try XCTUnwrap(
+      (try settings(at: root)["permissions"] as? [String: Any])?["deny"] as? [String])
+    XCTAssertFalse(deny.contains { $0.hasPrefix("Read(!") }, "removed exceptions stay removed")
+    XCTAssertTrue(deny.contains("Read(.env.*)"))
+    XCTAssertTrue(deny.contains("Read(.env)"), "a removed deny comes back; that only tightens")
+  }
+
   func testBrokenSettingsFileIsLeftAlone() throws {
     let directory = root.appendingPathComponent(".claude")
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

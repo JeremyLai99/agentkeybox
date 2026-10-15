@@ -39,9 +39,10 @@ public enum AgentGuard {
   /// Adds the rules to `.claude/settings.local.json` under `root`, keeping everything already
   /// there. A file that is not a JSON object is left untouched and reported as an error.
   ///
-  /// `ledger` remembers which rules AgentKeyBox itself wrote to each settings file. Every other
+  /// `ledger` remembers every rule AgentKeyBox has written to each settings file. Every other
   /// rule, including one identical to ours that the user wrote, is the user's and is never
-  /// weakened.
+  /// weakened. A negation we wrote that is gone was removed by the user and is not added back;
+  /// a deny rule we wrote that is gone is added back, since that only tightens access.
   public static func addClaudeDenyRules(
     _ rules: [String], root: URL, ledger: GuardRuleLedger = .shared
   ) throws {
@@ -56,7 +57,8 @@ public enum AgentGuard {
     }
     var permissions = settings["permissions"] as? [String: Any] ?? [:]
     var deny = permissions["deny"] as? [String] ?? []
-    let owned = ledger.rules(for: root).intersection(deny)
+    let written = ledger.rules(for: root)
+    let owned = written.intersection(deny)
     // Negations only carve out of rules listed before them, so new rules go first.
     let ourPositives = rules.filter { !$0.hasPrefix("Read(!") }
     let ourNegations = rules.filter { $0.hasPrefix("Read(!") }
@@ -72,7 +74,9 @@ public enum AgentGuard {
         return usersPatterns.contains { couldMatch($0, fileNamed: name) }
       })
     let positive = ourPositives.filter { !deny.contains($0) }
-    let negations = ourNegations.filter { !deny.contains($0) && !conflicting.contains($0) }
+    let negations = ourNegations.filter {
+      !deny.contains($0) && !conflicting.contains($0) && !written.contains($0)
+    }
     // Only a negation AgentKeyBox wrote may be taken back; the user's own stay.
     let withdrawn = owned.intersection(conflicting)
     let kept = deny.filter { !withdrawn.contains($0) }
@@ -84,7 +88,7 @@ public enum AgentGuard {
     let data = try JSONSerialization.data(
       withJSONObject: settings, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
     try (data + Data("\n".utf8)).write(to: file, options: .atomic)
-    ledger.setRules(owned.subtracting(withdrawn).union(positive).union(negations), for: root)
+    ledger.setRules(written.union(positive).union(negations), for: root)
   }
 
   /// Whether a `Read` pattern could match some file named `name` at any depth: its last path
@@ -144,8 +148,9 @@ public enum AgentGuardError: Error, LocalizedError, Equatable {
   }
 }
 
-/// The deny rules AgentKeyBox wrote, per Claude Code settings file, kept in AgentKeyBox's own
-/// folder (not in the user's repository). Without a record, every rule counts as the user's.
+/// Every deny rule AgentKeyBox has written, per Claude Code settings file, kept in AgentKeyBox's
+/// own folder (not in the user's repository). Rules stay listed after they are removed, so a
+/// removal is remembered. Without a record, every rule counts as the user's.
 public final class GuardRuleLedger: @unchecked Sendable {
   public static let shared = GuardRuleLedger()
   private let fileURL: URL
@@ -162,7 +167,7 @@ public final class GuardRuleLedger: @unchecked Sendable {
     }
   }
 
-  /// The rules AgentKeyBox wrote to `<root>/.claude/settings.local.json`.
+  /// The rules AgentKeyBox has ever written to `<root>/.claude/settings.local.json`.
   public func rules(for root: URL) -> Set<String> {
     lock.withLock { Set(load()[key(root)] ?? []) }
   }
