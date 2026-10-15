@@ -494,6 +494,16 @@
           return false
         }
       }
+      // The values were read one by one; a key edited in between could pair its old project
+      // with its new value. Start over rather than write a backup that restores it wrongly.
+      guard
+        BackupArchive.snapshotIsCurrent(
+          snapshotCredentials, projects: snapshotProjects, currentCredentials: credentials,
+          currentProjects: projects)
+      else {
+        statusMessage = L("Keys changed while the backup was being made. Export again.")
+        return false
+      }
       let contents = BackupContents(
         projects: snapshotProjects, credentials: snapshotCredentials, secrets: secrets)
       do {

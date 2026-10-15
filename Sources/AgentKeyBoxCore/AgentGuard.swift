@@ -51,25 +51,43 @@ public enum AgentGuard {
     var permissions = settings["permissions"] as? [String: Any] ?? [:]
     var deny = permissions["deny"] as? [String] ?? []
     // Negations only carve out of rules listed before them, so new rules go first.
-    let missing = rules.filter { !deny.contains($0) }
-    let positive = missing.filter { !$0.hasPrefix("Read(!") }
-    // A negation would also lift a deny the user wrote (for example `Read(.env.example)`), so
-    // a template the user's own rules already cover stays denied.
-    let usersRules = deny.filter { !$0.hasPrefix("Read(!") && !rules.contains($0) }
-      .compactMap(readPattern)
-    let negations = missing.filter { $0.hasPrefix("Read(!") }.filter { negation in
-      guard let pattern = readPattern(negation) else { return false }
-      let file = String(pattern.dropFirst())
-      return !usersRules.contains { GitIgnore.matches($0, path: file) }
-    }
-    guard !positive.isEmpty || !negations.isEmpty else { return }
-    deny = positive + deny + negations
+    let ourPositives = rules.filter { !$0.hasPrefix("Read(!") }
+    let ourNegations = rules.filter { $0.hasPrefix("Read(!") }
+    // A negation lifts every deny listed before it for that file name, at any depth: the
+    // user's `Read(config/.env.example)`, `Read(.env.*)`, or `Read(secrets/**)` alike. So a
+    // template that any of the user's own rules could cover stays denied. Rules identical to
+    // ours count as the user's unless an earlier run of ours wrote them (it left negations).
+    let ranBefore = deny.contains { ourNegations.contains($0) }
+    let usersPatterns = deny.filter {
+      !$0.hasPrefix("Read(!") && !(ranBefore && ourPositives.contains($0))
+    }.compactMap(readPattern)
+    let conflicting = Set(
+      ourNegations.filter { negation in
+        guard let pattern = readPattern(negation) else { return true }
+        let name = String(pattern.dropFirst())
+        return usersPatterns.contains { couldMatch($0, fileNamed: name) }
+      })
+    let positive = ourPositives.filter { !deny.contains($0) }
+    let negations = ourNegations.filter { !deny.contains($0) && !conflicting.contains($0) }
+    let kept = deny.filter { !conflicting.contains($0) }
+    guard !positive.isEmpty || !negations.isEmpty || kept.count != deny.count else { return }
+    deny = positive + kept + negations
     permissions["deny"] = deny
     settings["permissions"] = permissions
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     let data = try JSONSerialization.data(
       withJSONObject: settings, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
     try (data + Data("\n".utf8)).write(to: file, options: .atomic)
+  }
+
+  /// Whether a `Read` pattern could match some file named `name` at any depth: its last path
+  /// component (`**` read as `*`) matches the name.
+  static func couldMatch(_ pattern: String, fileNamed name: String) -> Bool {
+    var last = pattern.split(separator: "/", omittingEmptySubsequences: false).last.map(String.init)
+      ?? pattern
+    if last.isEmpty { last = "*" }  // a directory rule such as `secrets/` covers everything in it
+    last = last.replacingOccurrences(of: "**", with: "*")
+    return fnmatch(last, name, 0) == 0
   }
 
   /// The path pattern inside `Read(...)`, without a leading `./`; nil for other rules.

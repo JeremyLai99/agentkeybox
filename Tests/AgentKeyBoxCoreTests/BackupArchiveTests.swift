@@ -126,6 +126,38 @@ final class BackupArchiveTests: XCTestCase {
       plan.newCredentials.allSatisfy { contents.secrets[$0.id.uuidString] != nil })
   }
 
+  func testSnapshotIsStaleWhenAKeyMovesOrChangesDuringTheBackup() {
+    let contents = sample()
+    let keys = contents.credentials
+    XCTAssertTrue(
+      BackupArchive.snapshotIsCurrent(
+        keys, projects: contents.projects, currentCredentials: keys,
+        currentProjects: contents.projects))
+    // Added meanwhile: not in this backup, but the snapshot itself is still consistent.
+    let added = keys + [CredentialMetadata(label: "NEW", service: "Custom")]
+    XCTAssertTrue(
+      BackupArchive.snapshotIsCurrent(
+        keys, projects: contents.projects, currentCredentials: added,
+        currentProjects: contents.projects))
+    // Moved to another project and given a new value while values were being read.
+    var moved = keys
+    moved[0].projectID = contents.projects[1].id
+    moved[0].updatedAt = moved[0].updatedAt + 1
+    XCTAssertFalse(
+      BackupArchive.snapshotIsCurrent(
+        keys, projects: contents.projects, currentCredentials: moved,
+        currentProjects: contents.projects))
+    XCTAssertFalse(
+      BackupArchive.snapshotIsCurrent(
+        keys, projects: contents.projects, currentCredentials: Array(keys.dropFirst()),
+        currentProjects: contents.projects), "a key deleted meanwhile")
+    var renamed = contents.projects
+    renamed[0].name = "renamed"
+    XCTAssertFalse(
+      BackupArchive.snapshotIsCurrent(
+        keys, projects: contents.projects, currentCredentials: keys, currentProjects: renamed))
+  }
+
   func testEnvLinesReadBackUnchanged() {
     for value in ["plain", "", "a b", "x=y#z", "quote\"back\\slash", "tab\tand\r\nlines", "日本"] {
       let line = BackupArchive.envLine("KEY", value)

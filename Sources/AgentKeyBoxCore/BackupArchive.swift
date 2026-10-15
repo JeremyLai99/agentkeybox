@@ -267,6 +267,19 @@ public enum BackupArchive {
     return keys.allSatisfy { max($0.createdAt, $0.updatedAt) <= backupSnapshot }
   }
 
+  /// Whether every key and project in a backup snapshot is still exactly as it was (same
+  /// project, settings, and dates). A backup reads key values one at a time after taking the
+  /// snapshot, so a key edited in between must not be written with mismatched metadata.
+  public static func snapshotIsCurrent(
+    _ credentials: [CredentialMetadata], projects: [Project],
+    currentCredentials: [CredentialMetadata], currentProjects: [Project]
+  ) -> Bool {
+    let keysNow = Dictionary(currentCredentials.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+    let projectsNow = Dictionary(currentProjects.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+    return credentials.allSatisfy { keysNow[$0.id] == $0 }
+      && projects.allSatisfy { projectsNow[$0.id] == $0 }
+  }
+
   /// What importing `contents` adds next to what is already here. Projects already here (same
   /// ID or same folder) are reused and never count as added, so undoing a failed import can
   /// remove exactly `newProjects` without touching projects that existed before.

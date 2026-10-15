@@ -379,6 +379,8 @@ enum Translations {
       "金鑰 ID（Key ID）",
     "Keys":
       "金鑰",
+    "Keys changed while the backup was being made. Export again.":
+      "製作備份時金鑰有變動，請重新匯出。",
     "Keys move into your Keychain. Your files stay where they are.":
       "金鑰會移進你的鑰匙圈，檔案則留在原處。",
     "Language":

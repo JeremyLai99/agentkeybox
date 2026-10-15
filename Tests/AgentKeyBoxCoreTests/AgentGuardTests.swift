@@ -35,7 +35,7 @@ final class AgentGuardTests: XCTestCase {
   func testDenyRulesMergeIntoExistingSettingsOnce() throws {
     let directory = root.appendingPathComponent(".claude")
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    try #"{"model":"opus","permissions":{"allow":["Bash(npm test)"],"deny":["Read(./secrets/**)"]}}"#
+    try #"{"model":"opus","permissions":{"allow":["Bash(npm test)"],"deny":["Read(./secrets/*.pem)"]}}"#
       .write(to: directory.appendingPathComponent("settings.local.json"), atomically: true, encoding: .utf8)
 
     let rules = AgentGuard.claudeDenyRules(keyFileNames: ["server.pem"])
@@ -48,7 +48,7 @@ final class AgentGuardTests: XCTestCase {
     XCTAssertEqual(permissions["allow"] as? [String], ["Bash(npm test)"])
     let deny = try XCTUnwrap(permissions["deny"] as? [String])
     XCTAssertEqual(deny.filter { $0 == "Read(.env)" }.count, 1, "running twice adds nothing")
-    XCTAssertTrue(deny.contains("Read(./secrets/**)"))
+    XCTAssertTrue(deny.contains("Read(./secrets/*.pem)"))
     XCTAssertTrue(deny.contains("Read(server.pem)"))
     let firstNegation = try XCTUnwrap(deny.firstIndex { $0.hasPrefix("Read(!") })
     XCTAssertGreaterThan(
@@ -72,6 +72,52 @@ final class AgentGuardTests: XCTestCase {
     XCTAssertTrue(deny.contains("Read(.env.example)"))
     XCTAssertTrue(deny.contains("Read(!.env.template)"), "other templates stay readable")
     XCTAssertTrue(deny.contains("Read(.env)"))
+  }
+
+  func testUserRulesThatCouldCoverATemplateAnywhereKeepItDenied() throws {
+    for userRule in ["Read(config/.env.example)", "Read(.env.*)", "Read(./secrets/**)", "Read(**/*.example)"] {
+      let directory = root.appendingPathComponent(".claude")
+      try? FileManager.default.removeItem(at: directory)
+      try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+      try #"{"permissions":{"deny":["\#(userRule)"]}}"#
+        .write(to: directory.appendingPathComponent("settings.local.json"), atomically: true, encoding: .utf8)
+
+      try AgentGuard.addClaudeDenyRules(AgentGuard.claudeDenyRules(keyFileNames: []), root: root)
+
+      let permissions = try XCTUnwrap(try settings(at: root)["permissions"] as? [String: Any])
+      let deny = try XCTUnwrap(permissions["deny"] as? [String])
+      XCTAssertTrue(deny.contains(userRule), userRule)
+      XCTAssertTrue(deny.contains("Read(.env)"), userRule)
+      if userRule == "Read(**/*.example)" {
+        XCTAssertFalse(deny.contains("Read(!.env.example)"), userRule)
+        XCTAssertTrue(deny.contains("Read(!.env.sample)"), "\(userRule) does not cover .sample")
+      } else if userRule == "Read(config/.env.example)" {
+        XCTAssertFalse(deny.contains("Read(!.env.example)"), userRule)
+        XCTAssertTrue(deny.contains("Read(!.env.template)"), userRule)
+      } else {
+        XCTAssertFalse(deny.contains { $0.hasPrefix("Read(!") }, "\(userRule) covers every template")
+      }
+    }
+  }
+
+  func testRunningAgainKeepsOurNegationsAndDropsOnesALaterUserRuleConflictsWith() throws {
+    let rules = AgentGuard.claudeDenyRules(keyFileNames: [])
+    try AgentGuard.addClaudeDenyRules(rules, root: root)
+    try AgentGuard.addClaudeDenyRules(rules, root: root)
+    var deny = try XCTUnwrap(
+      (try settings(at: root)["permissions"] as? [String: Any])?["deny"] as? [String])
+    XCTAssertEqual(Set(deny), Set(rules), "our own Read(.env.*) does not cancel our negations")
+
+    // The user later denies a template themselves.
+    deny.insert("Read(apps/web/.env.example)", at: 0)
+    let file = root.appendingPathComponent(".claude/settings.local.json")
+    try JSONSerialization.data(withJSONObject: ["permissions": ["deny": deny]]).write(to: file)
+    try AgentGuard.addClaudeDenyRules(rules, root: root)
+    let after = try XCTUnwrap(
+      (try settings(at: root)["permissions"] as? [String: Any])?["deny"] as? [String])
+    XCTAssertFalse(after.contains("Read(!.env.example)"))
+    XCTAssertTrue(after.contains("Read(apps/web/.env.example)"))
+    XCTAssertTrue(after.contains("Read(!.env.sample)"))
   }
 
   func testBrokenSettingsFileIsLeftAlone() throws {
