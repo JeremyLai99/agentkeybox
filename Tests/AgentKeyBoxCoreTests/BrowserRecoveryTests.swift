@@ -30,19 +30,23 @@ final class BrowserRecoveryTests: XCTestCase {
   func testReservationPersistsBeforeReleaseAndCannotReuseIssuedCodeAfterReload() throws {
     let payload = SensitivePayload(
       recoveryCodes: try RecoveryCodeSet(text: "fixture-recovery-001\nfixture-recovery-002"))
-    let item = CredentialMetadata(
+    var item = CredentialMetadata(
       label: "Recovery", service: "Test", kind: .recoveryCodes, payloadRevision: payload.revision)
     var saved: Data?
     let first = try BrowserRecoveryPolicy.reserve(payload: payload, credential: item) { saved = $0 }
     let reloaded = try SensitivePayload.decode(XCTUnwrap(saved), kind: .recoveryCodes)
     XCTAssertEqual(reloaded.recoveryCodes?.entries.map(\.status), [.issued, .available])
+    XCTAssertNotEqual(reloaded.revision, payload.revision)
+    item.payloadRevision = reloaded.revision
     let next = try BrowserRecoveryPolicy.reserve(payload: reloaded, credential: item) { saved = $0 }
     XCTAssertNotEqual(first, next)
     let exhausted = try SensitivePayload.decode(XCTUnwrap(saved), kind: .recoveryCodes)
+    item.payloadRevision = exhausted.revision
     XCTAssertThrowsError(
       try BrowserRecoveryPolicy.reserve(payload: exhausted, credential: item) { _ in
         XCTFail("No available code")
       })
+    item.payloadRevision = payload.revision
     XCTAssertThrowsError(
       try BrowserRecoveryPolicy.reserve(payload: payload, credential: item) { _ in
         throw SensitiveDataError.invalidPayload

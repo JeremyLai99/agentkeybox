@@ -197,6 +197,7 @@ final class SensitiveItemTests: XCTestCase, @unchecked Sendable {
     XCTAssertEqual(outcome, .unknown)
     XCTAssertEqual(sent, 1)
     var reloaded = try SensitivePayload.decode(saved, kind: .recoveryCodes)
+    XCTAssertNotEqual(reloaded.revision, payload.revision)
     XCTAssertEqual(try reloaded.recoveryCodes?.reserveNext(), "56789-ab012")
   }
 

@@ -27,6 +27,12 @@ storage_spec.loader.exec_module(storage)
 
 
 class AcceptanceResultTests(unittest.TestCase):
+    def advance_reservation(self, root, before):
+        current = acceptance.json.loads(acceptance.json.dumps(before))
+        current["credentials"][0].update(updatedAt=2, payloadRevision=str(acceptance.uuid.uuid4()))
+        (root / "metadata.json").write_text(acceptance.json.dumps(current))
+        return current
+
     def test_storage_cancellation_distinguishes_native_auth_from_transport_failures(self):
         for mode, expected in [("auth-cancel", storage.DENIED), ("edit-pending", submission.UNKNOWN_ERROR),
                                ("remove-project-pending", submission.UNKNOWN_ERROR)]:
@@ -116,7 +122,8 @@ class AcceptanceResultTests(unittest.TestCase):
     def test_submission_recovery_requires_persisted_next_code_and_no_redirect(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            before = {"credentials": [{"id": "code", "kind": "recoveryCodes", "updatedAt": 1}]}
+            before = {"credentials": [{"id": "code", "kind": "recoveryCodes", "updatedAt": 1,
+                                       "payloadRevision": str(acceptance.uuid.uuid4())}]}
             config = {"caseID": "case", "kind": "recovery", "encoding": "json"}
             entry = dict(config, exactFields=True, expectedContentType=True, noCredentialsOrCookies=True,
                          codeIndex=0, persistedBeforePost=True, duplicate=False)
@@ -125,7 +132,12 @@ class AcceptanceResultTests(unittest.TestCase):
             path.write_text(acceptance.json.dumps(submission.statuses(1)))
             ledger = root / "submission-ledger.json"
             ledger.write_text(acceptance.json.dumps([entry]))
+            self.advance_reservation(root, before)
             submission.verify_receipt(root, before, [], config)
+            (root / "metadata.json").write_text(acceptance.json.dumps(before))
+            with self.assertRaises(RuntimeError):
+                submission.verify_receipt(root, before, [], config)
+            self.advance_reservation(root, before)
             for bad in [dict(entry, codeIndex=1), dict(entry, codeIndex=False),
                         dict(entry, persistedBeforePost=False), dict(entry, duplicate=True)]:
                 ledger.write_text(acceptance.json.dumps([bad]))
@@ -157,7 +169,8 @@ class AcceptanceResultTests(unittest.TestCase):
     def test_native_recovery_requires_one_post_after_durable_reservation(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            before = {"credentials": [{"id": "codes", "kind": "recoveryCodes", "updatedAt": 1}]}
+            before = {"credentials": [{"id": "codes", "kind": "recoveryCodes", "updatedAt": 1,
+                                       "payloadRevision": str(acceptance.uuid.uuid4())}]}
             (root / "metadata.json").write_text(acceptance.json.dumps(before))
             (root / "recovery-statuses.json").write_text(acceptance.json.dumps(recovery.expected_statuses(0)))
             recovery.verify_reservation(root, before, False)
@@ -166,8 +179,13 @@ class AcceptanceResultTests(unittest.TestCase):
             (root / "server-event.reservation").write_text('{"persistedBeforePost": true}')
             (root / "server-event.ledger").write_text(acceptance.json.dumps([
                 {"codeIndex": 0, "persistedBeforePost": True, "duplicate": False}]))
+            after = self.advance_reservation(root, before)
             recovery.verify_reservation(root, before, True)
-            recovery.verify_reservation(root, before, False, recovery.expected_statuses(1), 1)
+            (root / "metadata.json").write_text(acceptance.json.dumps(before))
+            with self.assertRaises(RuntimeError):
+                recovery.verify_reservation(root, before, True)
+            (root / "metadata.json").write_text(acceptance.json.dumps(after))
+            recovery.verify_reservation(root, after, False, recovery.expected_statuses(1), 1)
             (root / "recovery-statuses.json").write_text(acceptance.json.dumps(recovery.expected_statuses(2)))
             with self.assertRaises(RuntimeError):
                 recovery.verify_reservation(root, before, False, recovery.expected_statuses(1), 1)
@@ -186,7 +204,8 @@ class AcceptanceResultTests(unittest.TestCase):
     def test_native_recovery_advances_to_next_code_and_rejects_reuse(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            before = {"credentials": [{"id": "codes", "kind": "recoveryCodes", "updatedAt": 1}]}
+            before = {"credentials": [{"id": "codes", "kind": "recoveryCodes", "updatedAt": 1,
+                                       "payloadRevision": str(acceptance.uuid.uuid4())}]}
             (root / "metadata.json").write_text(acceptance.json.dumps(before))
             (root / "recovery-statuses.json").write_text(acceptance.json.dumps(recovery.expected_statuses(2)))
             (root / "server-event.recovery").write_text('2')
@@ -194,6 +213,7 @@ class AcceptanceResultTests(unittest.TestCase):
             entries = [{"codeIndex": i, "persistedBeforePost": True, "duplicate": False} for i in range(2)]
             ledger = root / "server-event.ledger"
             ledger.write_text(acceptance.json.dumps(entries))
+            self.advance_reservation(root, before)
             recovery.verify_reservation(root, before, True, recovery.expected_statuses(1), 1)
             for bad in [dict(entries[1], codeIndex=0), dict(entries[1], duplicate=True),
                         dict(entries[1], persistedBeforePost=False), dict(entries[1], codeIndex=True),

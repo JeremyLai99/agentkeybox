@@ -84,6 +84,7 @@ public enum SensitiveSubmissionPolicy {
     } else if var codes = payload.recoveryCodes {
       replacements[recoveryField] = try codes.reserveNext()
       payload.recoveryCodes = codes
+      payload.revision = UUID()
     } else {
       throw SensitiveDataError.invalidPayload
     }

@@ -22,6 +22,7 @@ public enum BrowserRecoveryPolicy {
     else { throw SensitiveDataError.invalidPayload }
     let code = try codes.reserveNext()
     validated.recoveryCodes = codes
+    validated.revision = UUID()
     try persist(validated.encoded())
     return code
   }

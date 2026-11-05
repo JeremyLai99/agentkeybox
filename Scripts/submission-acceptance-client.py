@@ -90,7 +90,12 @@ def verify_receipt(root, before, previous, config):
         for item in current["credentials"]:
             if item["kind"] == "recoveryCodes":
                 require(item["id"] in old, "Unexpected metadata item")
-                item["updatedAt"] = old[item["id"]]["updatedAt"]
+                previous_item = old[item["id"]]
+                require(item["payloadRevision"] != previous_item["payloadRevision"], "Reservation revision did not change")
+                uuid.UUID(item["payloadRevision"])
+                require(item["updatedAt"] > previous_item["updatedAt"], "Reservation timestamp did not advance")
+                item["payloadRevision"] = previous_item["payloadRevision"]
+                item["updatedAt"] = previous_item["updatedAt"]
     require(current == before, "Submission unexpectedly changed metadata or item revision")
 
 

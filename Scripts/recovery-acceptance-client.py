@@ -73,18 +73,19 @@ def verify_reservation(root, before, expect_post, initial_statuses=None, initial
         evidence = json.loads((root / "server-event.reservation").read_text())
         require(evidence == {"persistedBeforePost": True}, "Reservation was not durable before POST")
     if expect_post or edited:
-        # Only the selected recovery item's timestamp may change. IDs, scope, URL and revision stay.
+        # A reservation advances revision and timestamp; an edit may also change its label.
         previous_items = {item["id"]: item for item in before["credentials"]}
         for item in current["credentials"]:
             previous = previous_items.get(item["id"])
             require(previous is not None, "Unexpected fixture item")
             if item["kind"] == "recoveryCodes":
+                require(item["payloadRevision"] != previous["payloadRevision"], "Revision did not change")
+                uuid.UUID(item["payloadRevision"])
+                require(item["updatedAt"] > previous["updatedAt"], "Timestamp did not advance")
+                item["payloadRevision"] = previous["payloadRevision"]
                 if edited:
                     require(item["label"] == previous["label"] + " (edited)", "Expected native edit missing")
-                    require(item["payloadRevision"] != previous["payloadRevision"], "Revision did not change")
-                    uuid.UUID(item["payloadRevision"])
                     item["label"] = previous["label"]
-                    item["payloadRevision"] = previous["payloadRevision"]
                 item["updatedAt"] = previous["updatedAt"]
     require(current == before, "Operation changed unexpected metadata")
 

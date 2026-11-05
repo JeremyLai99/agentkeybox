@@ -1605,7 +1605,9 @@
           persistReservation: { data in
             // Synchronous on the main actor, before sending: no request can reuse this code.
             // A save error stops execution; a crash/unknown response leaves the code issued.
+            let reservation = try SensitivePayload.decode(data, kind: .recoveryCodes)
             try secretStore.save(secret: data, id: credential.id)
+            credentials[index].payloadRevision = reservation.revision
             credentials[index].updatedAt = Date()
             guard persistMetadata() else {
               throw SensitiveDataError.invalidPayload
@@ -1834,7 +1836,9 @@
             guard let index = credentials.firstIndex(of: recovery) else {
               throw SensitiveDataError.invalidPayload
             }
+            let reservation = try SensitivePayload.decode(data, kind: .recoveryCodes)
             try secretStore.save(secret: data, id: recovery.id)
+            credentials[index].payloadRevision = reservation.revision
             credentials[index].updatedAt = Date()
             guard persistMetadata() else { throw SensitiveDataError.invalidPayload }
             #if DEBUG

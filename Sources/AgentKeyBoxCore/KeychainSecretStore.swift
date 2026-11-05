@@ -17,6 +17,8 @@ import Foundation
   /// rebuild.
   public final class KeychainSecretStore: SecretStore, Sendable {
     private let service: String
+    // Serialize replacement and read repair across store instances in this process.
+    private static let replacementLock = NSRecursiveLock()
     public let usesDataProtectionKeychain: Bool
 
     public init(service: String = "dev.agentkeybox.secrets") {
@@ -30,23 +32,44 @@ import Foundation
         return
       }
 
-      // Access control cannot be changed by SecItemUpdate, so replace the item.
-      try deleteItem(baseQuery(id: id, dataProtection: true))
+      Self.replacementLock.lock()
+      defer { Self.replacementLock.unlock() }
+      try replacement(id: id, grant: nil).save(secret)
+    }
 
-      var error: Unmanaged<CFError>?
-      guard
-        let accessControl = SecAccessControlCreateWithFlags(
-          nil, kSecAttrAccessibleWhenUnlockedThisDeviceOnly, .userPresence, &error)
-      else {
-        throw SecretStoreError.unexpectedStatus(errSecParam)
+    private func replacement(id: UUID, grant: AuthenticationGrant?) -> RecoverableSecretReplacement
+    {
+      func query(_ slot: RecoverableSecretReplacement.Slot) -> [String: Any] {
+        var query = baseQuery(id: id, dataProtection: true)
+        if slot == .pending { query[kSecAttrAccount as String] = id.uuidString + ".pending" }
+        return query
       }
-      var add = baseQuery(id: id, dataProtection: true)
-      add[kSecValueData as String] = secret
-      add[kSecAttrAccessControl as String] = accessControl
-      let status = SecItemAdd(add as CFDictionary, nil)
-      guard status == errSecSuccess else {
-        throw SecretStoreError.unexpectedStatus(status)
+      func noninteractive(_ query: [String: Any]) -> [String: Any] {
+        var query = query
+        let context = LAContext()
+        context.interactionNotAllowed = true
+        query[kSecUseAuthenticationContext as String] = context
+        return query
       }
+      return RecoverableSecretReplacement(
+        add: { slot, data in
+          var error: Unmanaged<CFError>?
+          guard
+            let accessControl = SecAccessControlCreateWithFlags(
+              nil, kSecAttrAccessibleWhenUnlockedThisDeviceOnly, .userPresence, &error)
+          else { throw SecretStoreError.unexpectedStatus(errSecParam) }
+          var add = noninteractive(query(slot))
+          add[kSecValueData as String] = data
+          add[kSecAttrAccessControl as String] = accessControl
+          let status = SecItemAdd(add as CFDictionary, nil)
+          guard status == errSecSuccess else { throw SecretStoreError.unexpectedStatus(status) }
+        },
+        read: { slot in
+          var query = query(slot)
+          if let grant { query[kSecUseAuthenticationContext as String] = grant.context }
+          return try self.copyData(query)
+        },
+        remove: { slot in try self.deleteItem(noninteractive(query(slot))) })
     }
 
     public func read(id: UUID) throws -> Data? {
@@ -59,11 +82,9 @@ import Foundation
         return try copyData(baseQuery(id: id, dataProtection: false))
       }
 
-      var query = baseQuery(id: id, dataProtection: true)
-      if let grant {
-        query[kSecUseAuthenticationContext as String] = grant.context
-      }
-      if let data = try copyData(query) {
+      Self.replacementLock.lock()
+      defer { Self.replacementLock.unlock() }
+      if let data = try replacement(id: id, grant: grant).load() {
         return data
       }
       return try migrateFromLegacy(id: id)
@@ -71,7 +92,9 @@ import Foundation
 
     public func delete(id: UUID) throws {
       if usesDataProtectionKeychain {
-        try deleteItem(baseQuery(id: id, dataProtection: true))
+        Self.replacementLock.lock()
+        defer { Self.replacementLock.unlock() }
+        try replacement(id: id, grant: nil).delete()
       }
       try deleteItem(baseQuery(id: id, dataProtection: false))
     }
