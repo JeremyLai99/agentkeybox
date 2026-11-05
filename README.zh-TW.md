@@ -6,7 +6,7 @@
 
 把 API 金鑰存在本機 macOS 鑰匙圈，依專案整理好。Claude Code 或 Codex 透過 MCP 請求使用金鑰時，會先問你，你按「允許」才會用到。
 
-產品目標是：**讓 agent 在你的核准下使用敏感資料完成任務，同時不讓原始值進入 agent／模型可讀取的範圍。** 目前 alpha 支援開發用憑證，仍有下方說明的執行邊界；目前工作目錄另已加入尚未發布的實驗功能：信用卡與 recovery codes 可經逐次核准，由 App 將所選欄位送到使用者設定的 HTTPS 網址，只回傳固定格式的結果。另已加入「網站登入」與 App 管理的私有瀏覽器，支援傳統同站帳密表單、受限頁面文字及逐次核准的同站連結；符合限制的傳統復原碼表單可經另次核准續登，送出前先記錄該碼已發出。尚未支援 JavaScript 登入、SSO、TOTP 或結帳；隔離 ad-hoc 原生 MCP／CLI 復原碼成功流程已通過，GitHub 復原碼與正式簽署版本的機密使用仍待實測。詳見[受控瀏覽器](docs/INTEGRATION.md#controlled-browser--unreleased)、[介接規格](docs/INTEGRATION.md#protected-field-submission--unreleased)、[產品需求](docs/PRODUCT.md)與[開發方向](docs/ROADMAP.md)。
+產品目標是：**讓 agent 在你的核准下使用敏感資料完成任務，同時不讓原始值進入 agent／模型可讀取的範圍。** 目前 alpha 支援開發用憑證，仍有下方說明的執行邊界；目前工作目錄另已加入尚未發布的實驗功能：信用卡與 recovery codes 可經逐次核准，由 App 將所選欄位送到使用者設定的 HTTPS 網址，只回傳固定格式的結果。另已加入「網站登入」與 App 管理的私有瀏覽器，支援傳統同站帳密表單、受限頁面文字及逐次核准的同站連結；符合限制的傳統復原碼表單可經另次核准續登，送出前先記錄該碼已發出。尚未支援 JavaScript 登入、SSO、TOTP 或結帳；隔離 ad-hoc 原生 MCP／CLI 復原碼成功流程已通過，正式簽署版已通過使用 data-protection Keychain 的公開示範網站登入／讀取／關閉；簽署版卡片與復原碼送出、瀏覽器復原碼續登、GitHub 復原碼及其他尚未驗收流程仍待驗證。詳見[受控瀏覽器](docs/INTEGRATION.md#controlled-browser--unreleased)、[介接規格](docs/INTEGRATION.md#protected-field-submission--unreleased)、[產品需求](docs/PRODUCT.md)與[開發方向](docs/ROADMAP.md)。
 
 > **AI 開口問，你來決定。**
 

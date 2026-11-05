@@ -83,6 +83,8 @@ Next: watch a new vibe coder install and set up the app without help, and fix wh
 - [x] distinguish native approval timeout/pending approval from unknown transport outcomes without returning arbitrary diagnostics; acceptance must match the exact native history decision
 - [x] prepare and locally install Developer ID signed 0.4.5 with existing provisioning/Keychain entitlements, verified helper and 0.4.4 rollback; no notarization/publication
 - [x] signed local 0.4.5 + data-protection Keychain + native-approved public-demo login/read/close through installed MCP; expected protected-page marker, exact history, closed-read rejection, zero sessions and disposable-item cleanup (2026-10-27)
+- [ ] native `remove-project-pending`: remove the synthetic QA project during pending approval; require failure within 5 seconds of persisted removal, no decision/POST, freed slot and responsive broker
+- [ ] signed data-protection Keychain update acceptance: insert-only pending replacement, every interruption boundary, no additional Touch ID prompts, both-copy deletion, and stale recovery revision rejection
 - [ ] signed release sensitive-use acceptance and real private-account compatibility; extend beyond static same-origin forms only after validating every new observation path
   - The signed public-demo login slice passed. Signed card/recovery endpoint use with production PKI and real private-account/GitHub/checkout workflows remain open; the candidate is not notarized or published.
 - [x] block new types from generic HTTP, commands, environment/temp-file delivery, and `akb run`; recognize protected JSON envelopes before generic import

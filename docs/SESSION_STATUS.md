@@ -1,5 +1,47 @@
 # AgentKeyBox implementation status
 
+## Merge-blocker fixes — 2026-11-05 (unreleased)
+
+Implemented in the `feat/protected-items-browser` verification worktree, based on `aab7b5d`. No App launch/installation, production vault/Keychain/token access, native acceptance, signing, notarization or publication was performed in this pass. Historical native results below remain historical evidence; they do not validate these new binaries.
+
+| Fix | Commit | Result and regression evidence |
+| --- | --- | --- |
+| P1 text filtering | `1e557c6` | Body and link text share bounded per-text-node visibility filtering. `testPageAndLinkTextExcludeInvisibleAndBlockedDescendants` covers hidden/script/textarea/display-none/visibility-hidden/collapse descendants plus hidden body text and preserved visible labels through real WebKit. Browser policy/runtime subset: 21 tests, 0 failures. |
+| P1 project revocation | `b3d938e` | Persist project removal, revoke every removed item, then delete Keychain values. App checks browser ownership/current metadata again after awaited page operations. `testRevocationDuringReadDiscardsLatePage` and existing `testRevocationDuringFollowDiscardsLatePageAndClosesOnce` reject late pages; `ProtectedAccessRevocationTests` covers all matching login browsers, a pending recovery browser, unrelated items, and preservation of started submission outcomes. Related runtime/revocation/localization subset: 24 tests, 0 failures. |
+| P1 Keychain replacement | `8df2a51` | Approach **b**: insert-only protected pending copy, replace primary, then remove pending; authenticated reads repair pending first. Approach **a**, `SecItemUpdate`, was rejected because save callers do not carry a grant and updating user-presence items may add authentication. Mutation contexts disallow UI, while accessibility and user-presence flags remain unchanged; legacy operations retain their existing implementation. Eight `RecoverableSecretReplacementTests` cover add/delete failures, interruption after each mutation, pending-only/old-primary/same-primary recovery, repair/authentication failure, stale pending protection, deletion and stale recovery revisions. Related replacement/recovery/submission/runtime subset: 41 tests, 0 failures. |
+| P2 QA registration | `08628af` | `akb connect` invokes a Core guard before helper installation and adapter calls, returns a localized error/nonzero exit in QA, and keeps release behavior. `testQAProfileRejectsAgentRegistrationAndNormalProfileAllowsIt` plus profile/localization subset: 9 tests, 0 failures. The CLI command itself was not executed. |
+
+Recovery reservations now rotate payload revisions for both endpoint and browser use. The app persists the issued payload and matching metadata before sending. Interrupted metadata/secret writes fail closed; no recovery path silently reuses an older available-code payload. Read repair can return the latest authenticated pending value even if cleanup fails; another write stays blocked until repair succeeds. A partially committed edit/reservation may therefore require native recovery of a revision mismatch rather than silently rolling back code history.
+
+Other removal paths were inspected individually and left unchanged:
+
+- `importBackup` (original line ~635): removes only newly imported IDs after metadata-save failure. It is synchronous on the main actor; no broker request can obtain those IDs before rollback.
+- `addCredential` (original line ~830): rolls back one newly generated ID in the same synchronous call after persistence fails; no protected request/browser can exist for it.
+- `storeEnvSecrets` (original line ~951): removes only just-added environment-variable IDs without a suspension point; existing IDs are not removed. No additional protected revocation is needed.
+
+Final automated verification (same source state as the four repair commits; subsequent changes are documentation only):
+
+| Command / check | Actual result |
+| --- | --- |
+| `swift build --disable-sandbox --scratch-path .build-debug -Xswiftc -warnings-as-errors` | Exit 0; 10.33 seconds. |
+| `swift test --scratch-path .build-test -Xswiftc -warnings-as-errors` | Exit 0; **184 tests, 2 skipped, 0 failures**; 36.110 seconds for the full suite. Both skips are opt-in LiveBrowserTests, which remained disabled. |
+| `swift build --disable-sandbox --scratch-path .build-release -c release -Xswiftc -warnings-as-errors` | Exit 0; 31.91 seconds. |
+| `AGENTKEYBOX_BIN_DIR=$PWD/.build-release/release Scripts/mcp-smoke-test.sh` | Exit 0; **11 JSON-RPC responses**, including **9 expected validation errors** rejected before contacting the App. |
+| `python3 -B Scripts/test-browser-acceptance-client.py` | **24 tests, 0 failures**. Includes exact project-removal/cancellation evidence and fresh reservation-revision requirements for endpoint/browser drivers. |
+| `Scripts/security-static-check.sh` | Exit 0; both hardcoded-secret and unsafe logging/persistence checks passed. |
+| `bash -n Scripts/run-browser-acceptance-macos.sh` | Exit 0; **1 modified shell file**. Only parsed, never executed. |
+| `xcrun swift-format lint --strict` on changed Swift files | **17 files; 0 new diagnostics, 0 remaining pre-existing diagnostics**. |
+| Aggregate whitespace check | `git diff --check HEAD~4` passed with the final documentation working changes included; the corresponding post-documentation-commit check is `git diff --check HEAD~5`. |
+| Release QA exclusion | `strings -a` / `grep -F`, supplemented by raw UTF-8 checks: **3 executables × 13 markers = 39 checks, 0 matches**. |
+
+The 13 excluded markers were `AGENTKEYBOX_QA_ID`, `recovery-fixture.json`, `submission-fixture.json`, `PinnedRecoveryFixtureBrowser`, `interrupt-card-save`, `removal-project`, `remove-project-pending`, both new English QA project/card labels, both Traditional Chinese labels, and the English/Traditional Chinese QA registration error. No release executable was launched except the MCP helper's validated smoke-test input.
+
+The sandboxed builds each reported SwiftPM's two user-cache accessibility warnings; Swift compilation still passed warnings-as-errors. An initial combined edit/test invocation failed at manifest sandbox setup; the standalone, authorized `swift test` invocation succeeded. Initial combined git stage/commit commands could not create the shared worktree index lock; separate permitted git commands succeeded. No code/test failure remains.
+
+**Native/signed acceptance remains unverified:** run the fresh-profile `remove-project-pending` procedure and signed Keychain interruption/prompt-count checklist in [MACOS_TEST.md](MACOS_TEST.md). The new fixture is a dedicated DEBUG/QA project and card; its exact synthetic account is included in runner cleanup. The driver requires cancellation within **5 seconds** of persisted removal, no new approval decision or POST, unchanged code statuses, a released approval slot and a responding broker. Existing native submission and browser recovery cases also need to exercise the newly advancing reservation revision. The signed public-demo login/read/close result below remains valid historical evidence; signed card/recovery submission, browser recovery continuation and the changed Keychain replacement have not been validated here.
+
+Build cleanup is delegated to Claude as requested. Retained scratch directories: `.build-debug` **157,628 KiB**, `.build-test` **268,900 KiB**, `.build-release` **119,308 KiB** (**545,836 KiB total** at measurement). No shared DerivedData or `.xcresult` was created or removed; no build artifacts were staged. This pass freed **0 KiB** of build artifacts.
+
 ## Evidence and review scope
 
 Documentation was first reconciled on **2026-10-22** against the **0.4.0** baseline. The same task then implemented the unreleased protected-field submission increment described below. Released-product evidence, new automated checks, and still-pending GUI/provider checks are kept separate.
