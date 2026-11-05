@@ -32,7 +32,8 @@ public enum BackupError: Error, LocalizedError, Equatable {
   public var errorDescription: String? {
     switch self {
     case .passwordTooShort:
-      return L("Use a password of at least %@ characters.", "\(BackupArchive.minimumPasswordLength)")
+      return L(
+        "Use a password of at least %@ characters.", "\(BackupArchive.minimumPasswordLength)")
     case .notABackup:
       return L("This file is not an AgentKeyBox backup.")
     case .unsupportedVersion:
@@ -63,7 +64,7 @@ public enum BackupArchive {
   static let readmeFileName = "README.txt"
   /// A visible copy of each folder's `.env`, which Finder hides.
   static let visibleEnvFileName = "env.txt"
-  static let version = 1
+  static let version = 2
 
   /// The hidden data file: the backup contents plus a format version.
   struct DataFile: Codable {
@@ -109,10 +110,18 @@ public enum BackupArchive {
       "",
       L("Created: %@", contents.createdAt.formatted(date: .long, time: .shortened)),
       "",
-      L("Each folder is one project. Its .env file holds the project's keys; key files (.p8, .pem, .json) are the original files."),
-      L("Finder hides .env because its name starts with a dot, so each folder also has env.txt with the same contents. To use it in a project, copy env.txt into the project folder and rename it to .env."),
-      L("To restore everything into AgentKeyBox, choose Settings › Backup › Import… and pick this .dmg file."),
-      L("Copies you take out of this disk image are not encrypted. Delete them when you no longer need them."),
+      L(
+        "Each folder is one project. Its .env file holds the project's keys; key files (.p8, .pem, .json) are the original files."
+      ),
+      L(
+        "Finder hides .env because its name starts with a dot, so each folder also has env.txt with the same contents. To use it in a project, copy env.txt into the project folder and rename it to .env."
+      ),
+      L(
+        "To restore everything into AgentKeyBox, choose Settings › Backup › Import… and pick this .dmg file."
+      ),
+      L(
+        "Copies you take out of this disk image are not encrypted. Delete them when you no longer need them."
+      ),
       "",
     ]
     var folders: Set<String> = [readmeFileName.lowercased(), dataFileName.lowercased()]
@@ -133,8 +142,15 @@ public enum BackupArchive {
       for credential in credentials {
         let name = "\(credential.label) (\(credential.service))"
         guard let secret = contents.secrets[credential.id.uuidString] else {
+          if credential.kind.requiresControlledUse { throw SensitiveDataError.invalidPayload }
           readme.append("  - " + L("%@: no key value, not included", name))
           continue
+        }
+        if credential.kind.requiresControlledUse {
+          let payload = try SensitivePayload.decode(secret, kind: credential.kind)
+          guard payload.revision == credential.payloadRevision else {
+            throw SensitiveDataError.invalidPayload
+          }
         }
         let variable = credential.injectionVariableName
         if !credential.isFileCredential, let variable,
@@ -147,7 +163,9 @@ public enum BackupArchive {
           entries.append(Entry(path: "\(folder)/\(file)", data: secret))
           readme.append("  - " + L("%@: file %@", name, file))
         }
-        for (key, value) in (credential.settings ?? [:]).sorted(by: { $0.key < $1.key })
+        for (key, value)
+          in (credential.kind.requiresControlledUse ? [:] : credential.settings ?? [:])
+          .sorted(by: { $0.key < $1.key })
         where ApprovedCommandRunner.isValidEnvironmentVariable(key) {
           envLines.append(envLine(key, value))
         }
@@ -166,11 +184,14 @@ public enum BackupArchive {
     }
     readme.append(L("%@ key(s) in total.", "\(restored)"))
 
-    entries.append(Entry(path: readmeFileName, data: Data((readme.joined(separator: "\n") + "\n").utf8)))
+    entries.append(
+      Entry(path: readmeFileName, data: Data((readme.joined(separator: "\n") + "\n").utf8)))
     // Default date and data encodings: lossless dates, keys as Base64.
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-    let data = try encoder.encode(DataFile(version: version, contents: contents))
+    let archiveVersion =
+      contents.credentials.contains { $0.kind.requiresControlledUse } ? version : 1
+    let data = try encoder.encode(DataFile(version: archiveVersion, contents: contents))
     entries.append(Entry(path: dataFileName, data: data))
     entries.append(Entry(path: ".metadata_never_index", data: Data()))
     return entries
@@ -185,9 +206,18 @@ public enum BackupArchive {
     guard let header = try? JSONDecoder().decode(Header.self, from: data),
       header.format == "agentkeybox-backup"
     else { throw BackupError.notABackup }
-    guard header.version == version else { throw BackupError.unsupportedVersion }
+    guard (1...version).contains(header.version) else { throw BackupError.unsupportedVersion }
     guard let file = try? JSONDecoder().decode(DataFile.self, from: data) else {
       throw BackupError.wrongPasswordOrDamaged
+    }
+    for credential in file.contents.credentials where credential.kind.requiresControlledUse {
+      guard header.version >= 2, let value = file.contents.secrets[credential.id.uuidString] else {
+        throw BackupError.notABackup
+      }
+      let payload = try SensitivePayload.decode(value, kind: credential.kind)
+      guard payload.revision == credential.payloadRevision else {
+        throw SensitiveDataError.invalidPayload
+      }
     }
     return file.contents
   }
@@ -227,6 +257,9 @@ public enum BackupArchive {
     case .p8: ext = ".p8"
     case .pem: ext = ".pem"
     case .json: ext = ".json"
+    case .creditCard: ext = ".card.json"
+    case .recoveryCodes: ext = ".recovery-codes.json"
+    case .login: ext = ".login.json"
     default: ext = ".txt"
     }
     let base = safeName(credential.label, fallback: "key")
@@ -274,8 +307,10 @@ public enum BackupArchive {
     _ credentials: [CredentialMetadata], projects: [Project],
     currentCredentials: [CredentialMetadata], currentProjects: [Project]
   ) -> Bool {
-    let keysNow = Dictionary(currentCredentials.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-    let projectsNow = Dictionary(currentProjects.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+    let keysNow = Dictionary(
+      currentCredentials.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+    let projectsNow = Dictionary(
+      currentProjects.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
     return credentials.allSatisfy { keysNow[$0.id] == $0 }
       && projects.allSatisfy { projectsNow[$0.id] == $0 }
   }

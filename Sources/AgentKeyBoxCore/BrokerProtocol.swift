@@ -4,6 +4,7 @@ public enum BrokerEndpoint {
   /// Unix-domain socket inside the owner-only (0700) AgentKeyBox support directory.
   /// Unlike a fixed TCP port, other users cannot connect to or squat on this path.
   public static var defaultSocketURL: URL {
+    if let profile = DevelopmentProfile.current { return profile.file("broker.sock") }
     let base =
       FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
       ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".agentkeybox")
@@ -34,6 +35,8 @@ public enum BrokerAction: String, Codable, Sendable {
   case revealEnvironment
   /// An agent needs a credential that is not stored yet; the user enters it in AgentKeyBox.
   case requestCredential
+  case submitSensitiveFields
+  case browserLogin, browserRead, browserFollow, browserRecover, browserClose
 }
 
 public struct CredentialSummary: Codable, Hashable, Sendable {
@@ -47,6 +50,8 @@ public struct CredentialSummary: Codable, Hashable, Sendable {
   /// Non-secret values that go with the key, e.g. `ASC_ISSUER_ID`. Optional so older clients
   /// and servers still decode each other's messages.
   public var settings: [String: String]?
+  public var submissionURL: String?
+  public var loginURL: String?
 
   public init(metadata: CredentialMetadata) {
     self.id = metadata.id
@@ -55,8 +60,10 @@ public struct CredentialSummary: Codable, Hashable, Sendable {
     self.environment = metadata.environment
     self.kind = metadata.kind
     self.environmentVariableName = metadata.injectionVariableName
-    self.allowedHosts = metadata.allowedHosts
-    self.settings = metadata.settings?.isEmpty == false ? metadata.settings : nil
+    self.allowedHosts = metadata.kind.requiresControlledUse ? nil : metadata.allowedHosts
+    self.settings = metadata.kind.requiresControlledUse ? nil : metadata.settings
+    self.submissionURL = metadata.kind.requiresControlledUse ? metadata.submissionURL : nil
+    self.loginURL = metadata.kind == .login ? metadata.loginURL : nil
   }
 }
 
@@ -84,6 +91,8 @@ public struct BrokerRequest: Codable, Sendable {
   public var requestedEnvironmentVariables: [String]?
   /// `requestCredential`: provider hint such as "Stripe".
   public var credentialService: String?
+  public var sensitiveSubmission: SensitiveSubmissionRequest?
+  public var browser: BrowserCommand?
 
   public init(
     requestID: UUID = UUID(),
@@ -106,7 +115,9 @@ public struct BrokerRequest: Codable, Sendable {
     headers: [String: String]? = nil,
     body: String? = nil,
     requestedEnvironmentVariables: [String]? = nil,
-    credentialService: String? = nil
+    credentialService: String? = nil,
+    sensitiveSubmission: SensitiveSubmissionRequest? = nil,
+    browser: BrowserCommand? = nil
   ) {
     self.requestID = requestID
     self.issuedAt = issuedAt
@@ -129,6 +140,8 @@ public struct BrokerRequest: Codable, Sendable {
     self.body = body
     self.requestedEnvironmentVariables = requestedEnvironmentVariables
     self.credentialService = credentialService
+    self.sensitiveSubmission = sensitiveSubmission
+    self.browser = browser
   }
 }
 
@@ -143,6 +156,9 @@ public struct BrokerResponse: Codable, Sendable {
   public var environment: [String: String]?
   /// Secrets the user approved but that could not be injected as text (file credentials).
   public var skippedEnvironmentVariables: [String]?
+  /// Fixed enum only: never an upstream body, header, URL, or transport error.
+  public var submissionOutcome: SensitiveSubmissionOutcome?
+  public var browserPage: BrowserPage?
 
   public init(
     ok: Bool,
@@ -152,7 +168,9 @@ public struct BrokerResponse: Codable, Sendable {
     execution: CommandExecutionResult? = nil,
     http: HTTPExecutionResult? = nil,
     environment: [String: String]? = nil,
-    skippedEnvironmentVariables: [String]? = nil
+    skippedEnvironmentVariables: [String]? = nil,
+    submissionOutcome: SensitiveSubmissionOutcome? = nil,
+    browserPage: BrowserPage? = nil
   ) {
     self.ok = ok
     self.error = error
@@ -162,6 +180,8 @@ public struct BrokerResponse: Codable, Sendable {
     self.http = http
     self.environment = environment
     self.skippedEnvironmentVariables = skippedEnvironmentVariables
+    self.submissionOutcome = submissionOutcome
+    self.browserPage = browserPage
   }
 }
 
@@ -173,6 +193,19 @@ public enum BrokerError: Error, LocalizedError, Equatable {
   case brokerAuthenticationUnavailable
   case unsupportedPlatform
   case socketPathTooLong
+
+  /// Only native pre-execution approval failures may cross controlled-use result boundaries.
+  /// A transport timeout can happen after submission; it must remain an unknown outcome.
+  public var controlledApprovalMessage: String? {
+    switch self {
+    case .requestFailed("Another AgentKeyBox approval is already pending."):
+      return "Another AgentKeyBox approval is already pending."
+    case .requestFailed("Approval timed out."):
+      return "Approval timed out."
+    default:
+      return nil
+    }
+  }
 
   public var errorDescription: String? {
     switch self {

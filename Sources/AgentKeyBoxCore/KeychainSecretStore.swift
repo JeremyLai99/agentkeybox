@@ -139,6 +139,22 @@ import Foundation
     /// Looks up a nonexistent item: an entitled build gets `errSecItemNotFound`, an unentitled
     /// one gets `errSecMissingEntitlement`. Never prompts.
     private static func dataProtectionKeychainAvailable(service: String) -> Bool {
+      // A query for a missing item can return errSecItemNotFound even in an ad-hoc app;
+      // a later SecItemAdd then fails with errSecMissingEntitlement. Check the signed
+      // entitlement first so that this documented development fallback actually works.
+      var code: SecCode?
+      var staticCode: SecStaticCode?
+      var info: CFDictionary?
+      guard SecCodeCopySelf([], &code) == errSecSuccess, let code,
+        SecCodeCopyStaticCode(code, [], &staticCode) == errSecSuccess, let staticCode,
+        SecCodeCopySigningInformation(
+          staticCode, SecCSFlags(rawValue: kSecCSSigningInformation), &info)
+          == errSecSuccess,
+        let dictionary = info as? [String: Any],
+        let entitlements = dictionary[kSecCodeInfoEntitlementsDict as String] as? [String: Any],
+        let groups = entitlements["keychain-access-groups"] as? [String],
+        groups.contains(where: { !$0.isEmpty })
+      else { return false }
       let query: [String: Any] = [
         kSecClass as String: kSecClassGenericPassword,
         kSecAttrService as String: service,

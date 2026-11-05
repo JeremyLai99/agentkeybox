@@ -21,6 +21,9 @@ echo "==> MCP smoke test"
 echo "==> CLI smoke test"
 ./Scripts/cli-smoke-test.sh
 
+echo "==> Native acceptance result checks"
+python3 -B Scripts/test-browser-acceptance-client.py
+
 echo "==> Security static checks"
 ./Scripts/security-static-check.sh
 

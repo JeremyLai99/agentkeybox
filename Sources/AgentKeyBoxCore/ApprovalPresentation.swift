@@ -78,6 +78,47 @@ public struct ApprovalPresentation: Equatable, Sendable {
     }
 
     switch request.kind {
+    case .browserRecovery:
+      if let credential { facts.append(Fact(L("Item"), credential.label)) }
+      facts.append(Fact(L("Website login"), request.operation ?? ""))
+      facts.append(Fact(L("Sends to"), request.url ?? ""))
+      return ApprovalPresentation(
+        headline: L("%@ wants to use one recovery code", agent), subtitle: subtitle,
+        facts: facts,
+        warning: Warning(
+          title: L("Review this recovery-code use"),
+          message: L(
+            "One code will be marked Issued before it is sent in this private browser. It will not be reused automatically, even if verification fails. The agent can read the resulting page only after this step completes."
+          )),
+        detailsExpanded: true, denyIsDefault: true, rememberableHost: nil, sessionApprovalLabel: nil
+      )
+    case .browserLogin, .browserFollow:
+      if let credential { facts.append(Fact(L("Item"), credential.label)) }
+      facts.append(Fact(L("Website"), request.url ?? ""))
+      return ApprovalPresentation(
+        headline: request.kind == .browserLogin
+          ? L("%@ wants to sign in to a website", agent)
+          : L("%@ wants to open a link in your signed-in session", agent),
+        subtitle: subtitle, facts: facts,
+        warning: Warning(
+          title: L("Review this browser access"),
+          message: L(
+            "The agent can read page text after sign-in. Opening a link may change data on the website. Passwords and cookies stay in AgentKeyBox. You can end browser access in Settings."
+          )), detailsExpanded: true, denyIsDefault: true, rememberableHost: nil,
+        sessionApprovalLabel: nil)
+    case .sensitiveSubmission:
+      if let credential { facts.append(Fact(L("Item"), credential.label)) }
+      facts.append(Fact(L("Sends to"), request.url ?? ""))
+      return ApprovalPresentation(
+        headline: L("%@ wants to submit protected fields", agent), subtitle: subtitle,
+        facts: facts,
+        warning: Warning(
+          title: L("Review this submission"),
+          message: L(
+            "Only the result is returned to the agent. Submission can have effects at the destination. Recovery codes stay unavailable until you review their status."
+          )),
+        detailsExpanded: true, denyIsDefault: true, rememberableHost: nil, sessionApprovalLabel: nil
+      )
     case .httpRequest:
       let host = request.url.flatMap { URLComponents(string: $0)?.host } ?? L("an unknown website")
       switch request.hostStatus ?? .unrestricted {

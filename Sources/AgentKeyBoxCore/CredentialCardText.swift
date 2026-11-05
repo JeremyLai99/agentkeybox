@@ -21,6 +21,18 @@ public enum CredentialCardText {
   /// Only text keys can be sent by `http_request`, so file credentials never get the
   /// "any website" notice.
   public static func attention(for credential: CredentialMetadata) -> Attention? {
+    if credential.kind == .login {
+      return (try? BrowserPolicy.loginURL(credential.loginURL)) == nil
+        ? Attention(
+          message: L("Set a sign-in page before agent use."),
+          action: L("Set Website…"), opensAdvanced: false) : nil
+    }
+    if credential.kind.requiresControlledUse {
+      return (try? SensitiveSubmissionPolicy.destination(credential.submissionURL)) == nil
+        ? Attention(
+          message: L("Set a submission destination before agent use."),
+          action: L("Set Destination…"), opensAdvanced: false) : nil
+    }
     let settings = ProviderBundles.settingsNeedingAttention(for: credential)
     if !settings.missing.isEmpty {
       let names = settings.missing.map { L($0.label) }
@@ -31,7 +43,8 @@ public enum CredentialCardText {
     }
     if let invalid = settings.invalid.first {
       return Attention(
-        message: L("The %@ doesn't look right", L(invalid.label)), action: L("Fix %@…", L(invalid.label)),
+        message: L("The %@ doesn't look right", L(invalid.label)),
+        action: L("Fix %@…", L(invalid.label)),
         opensAdvanced: false)
     }
     guard !credential.isFileCredential else { return nil }

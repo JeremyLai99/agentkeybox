@@ -17,7 +17,7 @@ public final class BrokerTokenStore: @unchecked Sendable {
   private let lock = NSLock()
 
   public init(fileURL: URL? = nil) {
-    if let fileURL {
+    if let fileURL = fileURL ?? DevelopmentProfile.current?.file("broker-token") {
       self.fileURL = fileURL
     } else {
       let base =

@@ -41,7 +41,8 @@ import Foundation
       do {
         return try await sendOnce(request)
       } catch BrokerError.appNotRunning
-        where opensAppIfNeeded && AppPreferences.opensAppWhenNeeded
+        where opensAppIfNeeded && DevelopmentProfile.current == nil
+        && AppPreferences.opensAppWhenNeeded
       {
         let opened = await Task.detached { AppLauncher.openInBackground() }.value
         guard opened else { throw BrokerError.appNotRunning }

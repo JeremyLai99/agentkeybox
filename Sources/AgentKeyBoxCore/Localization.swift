@@ -38,7 +38,8 @@ public enum AppLanguage: String, Sendable {
 /// Where the chosen language is stored. The app, the `akb` CLI, and the MCP helper all read the
 /// app's preferences, so the terminal speaks the same language as the window.
 public enum Localization {
-  public static let preferencesDomain = "dev.agentkeybox.app"
+  public static let preferencesDomain =
+    DevelopmentProfile.current?.preferencesDomain ?? "dev.agentkeybox.app"
   static let preferenceKey = "AgentKeyBoxLanguage"
 
   private final class Override: @unchecked Sendable {

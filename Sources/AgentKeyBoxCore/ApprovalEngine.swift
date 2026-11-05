@@ -120,7 +120,7 @@ public actor ApprovalEngine {
         let host = request.url.flatMap({ URLComponents(string: $0)?.host?.lowercased() })
       else { return nil }
       return .http(host: host)
-    case .environment:
+    case .environment, .sensitiveSubmission, .browserLogin, .browserFollow, .browserRecovery:
       return nil
     }
   }

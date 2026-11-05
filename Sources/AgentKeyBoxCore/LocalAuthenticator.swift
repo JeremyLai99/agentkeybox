@@ -48,10 +48,18 @@ public enum LocalAuthenticationError: Error, LocalizedError {
         return nil
       }
       lock.withLock { activeContext = context }
+      #if DEBUG
+        DevelopmentRecoveryFixture.recordAuthenticationPhase("pending")
+        DevelopmentSubmissionFixture.recordAuthenticationPhase("pending")
+      #endif
       defer {
         lock.withLock {
           if activeContext === context { activeContext = nil }
         }
+        #if DEBUG
+          DevelopmentRecoveryFixture.recordAuthenticationPhase("ended")
+          DevelopmentSubmissionFixture.recordAuthenticationPhase("ended")
+        #endif
       }
       do {
         let success = try await context.evaluatePolicy(

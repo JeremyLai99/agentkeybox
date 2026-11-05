@@ -19,6 +19,22 @@ public enum CredentialKind: String, Codable, CaseIterable, Sendable {
   case pem
   case json
   case environmentVariable
+  case creditCard
+  case recoveryCodes
+  case login
+
+  /// These values must remain inside the dedicated submission/browser executors.
+  public var requiresControlledUse: Bool {
+    self == .creditCard || self == .recoveryCodes || self == .login
+  }
+
+  public var protectedTitle: String {
+    switch self {
+    case .login: return "Website login"
+    case .creditCard: return "Credit card"
+    default: return "Recovery codes"
+    }
+  }
 }
 
 public struct CredentialMetadata: Identifiable, Codable, Hashable, Sendable {
@@ -37,6 +53,12 @@ public struct CredentialMetadata: Identifiable, Codable, Hashable, Sendable {
   /// App Store Connect key or `SUPABASE_URL` for a Supabase key. They are shown on the key's
   /// card, listed to agents, and set next to the key when an approved command runs.
   public var settings: [String: String]?
+  /// User-configured exact HTTPS endpoint for controlled field submission. No wildcard hosts.
+  public var submissionURL: String?
+  /// Native-user configured sign-in page. Login values themselves stay in Keychain.
+  public var loginURL: String?
+  /// Binds protected metadata to its Keychain payload; a partial edit must fail closed.
+  public var payloadRevision: UUID?
   public var createdAt: Date
   public var updatedAt: Date
 
@@ -50,6 +72,9 @@ public struct CredentialMetadata: Identifiable, Codable, Hashable, Sendable {
     environmentVariableName: String? = nil,
     allowedHosts: [String]? = nil,
     settings: [String: String]? = nil,
+    submissionURL: String? = nil,
+    loginURL: String? = nil,
+    payloadRevision: UUID? = nil,
     createdAt: Date = Date(),
     updatedAt: Date = Date()
   ) {
@@ -62,6 +87,9 @@ public struct CredentialMetadata: Identifiable, Codable, Hashable, Sendable {
     self.environmentVariableName = environmentVariableName
     self.allowedHosts = allowedHosts
     self.settings = settings
+    self.submissionURL = submissionURL
+    self.loginURL = loginURL
+    self.payloadRevision = payloadRevision
     self.createdAt = createdAt
     self.updatedAt = updatedAt
   }
@@ -69,6 +97,7 @@ public struct CredentialMetadata: Identifiable, Codable, Hashable, Sendable {
   /// The variable name used when injecting into a process. Metadata saved before
   /// `environmentVariableName` existed falls back to the label when it is a valid name.
   public var injectionVariableName: String? {
+    guard !kind.requiresControlledUse else { return nil }
     if let environmentVariableName, !environmentVariableName.isEmpty {
       return ApprovedCommandRunner.isAllowedInjectionTarget(environmentVariableName)
         ? environmentVariableName : nil
@@ -92,6 +121,10 @@ public enum AgentRequestKind: String, Codable, Sendable {
   case command
   case httpRequest
   case environment
+  case sensitiveSubmission
+  case browserLogin
+  case browserFollow
+  case browserRecovery
 }
 
 public struct AgentRequest: Identifiable, Codable, Hashable, Sendable {
@@ -102,6 +135,8 @@ public struct AgentRequest: Identifiable, Codable, Hashable, Sendable {
   public var headerNames: [String] = []
   public var bodyPreview: String?
   public var hostStatus: HTTPHostStatus?
+  /// Snapshot bound to the approval so edits while prompting invalidate controlled use.
+  public var credentialVersion: Date?
   /// For `.environment`: variable names that will be revealed to the requesting terminal.
   public var environmentVariables: [String] = []
   public var agentID: String

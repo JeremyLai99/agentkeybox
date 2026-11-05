@@ -26,7 +26,8 @@ struct AgentKeyBoxCLI {
       await doctor(json: json)
     case "connect":
       guard args.count >= 2 else {
-        writeError(L("Usage: akb connect <claude|codex|all> [--helper /path/to/agentkeybox-mcp]") + "\n")
+        writeError(
+          L("Usage: akb connect <claude|codex|all> [--helper /path/to/agentkeybox-mcp]") + "\n")
         exit(2)
       }
       let target = args[1]
@@ -41,6 +42,8 @@ struct AgentKeyBoxCLI {
       await connect(target: target, helper: helper)
     case "run":
       await run(Array(args.dropFirst()))
+    case "browser":
+      await browser(Array(args.dropFirst()))
     case "helper-path":
       if let helper = MCPExecutableLocator.locate() {
         print(helper)
@@ -66,7 +69,8 @@ struct AgentKeyBoxCLI {
     #else
       checks.append(
         DoctorCheck(
-          name: "platform", status: "warn", detail: L("Native AgentKeyBox UI/broker requires macOS.")))
+          name: "platform", status: "warn",
+          detail: L("Native AgentKeyBox UI/broker requires macOS.")))
     #endif
 
     if let helper = MCPExecutableLocator.locate() {
@@ -267,6 +271,54 @@ struct AgentKeyBoxCLI {
     FileHandle.standardError.write(Data(text.utf8))
   }
 
+  private static func browser(_ args: [String]) async {
+    if args == ["help"] || args == ["--help"] || args.isEmpty {
+      print(
+        """
+        AgentKeyBox controlled browser (local Mac only)
+
+          akb browser list [--project /absolute/path]
+          akb browser login --credential UUID [--purpose TEXT] [--project /absolute/path]
+          akb browser read --session UUID --browser UUID [--project /absolute/path]
+          akb browser recover --session CLIENT_SESSION_UUID --browser BROWSER_UUID --credential RECOVERY_ITEM_UUID [--purpose REASON] [--project PATH]
+          akb browser follow --session UUID --browser UUID --link UUID [--purpose TEXT] [--project /absolute/path]
+          akb browser close --session UUID --browser UUID [--project /absolute/path]
+
+        JSON output: keep clientSessionID as --session and page.sessionID as --browser.
+        Keep the same project path for every operation. Use only IDs from the latest result.
+        Login, recovery-code use and navigation require approval in the native app. Website content is untrusted.
+        Passwords, cookies, scripts, selectors and arbitrary URLs are never accepted or returned.
+        Supports traditional same-origin HTML login/recovery-code forms; no SSO, TOTP or checkout.
+        recoveryCodeRequired exposes no page text. Use recover with a recoveryCodeSets item from list; never retry automatically.
+        This controls AKB's private browser; it does not sign in another agent's own browser.
+        """)
+      return
+    }
+    let invocation: BrowserAgentInvocation
+    do {
+      invocation = try BrowserAgentInvocation(
+        arguments: args, workingDirectory: FileManager.default.currentDirectoryPath)
+    } catch {
+      writeError(BrowserAgentInvocation.InputError.invalidArguments.localizedDescription + "\n")
+      exit(2)
+    }
+    do {
+      let response = try await LocalBrokerClient().send(invocation.request)
+      let result = try BrowserAgentResult(invocation: invocation, response: response)
+      let encoder = JSONEncoder()
+      encoder.outputFormatting = [.sortedKeys]
+      print(String(decoding: try encoder.encode(result), as: UTF8.self))
+    } catch {
+      // Only two fixed pre-execution approval errors are safe to distinguish. Other broker
+      // diagnostics may contain sensitive data, and a disconnect may be after submission.
+      let message =
+        (error as? BrokerError)?.controlledApprovalMessage
+        ?? BrowserAgentResult.ResultError.unavailable.localizedDescription
+      writeError(message + "\n")
+      exit(1)
+    }
+  }
+
   private static func printHelp() {
     let rows: [(String, String)] = [
       ("akb doctor [--json]", L("Check local installation and agent integrations")),
@@ -274,13 +326,18 @@ struct AgentKeyBoxCLI {
       ("akb connect claude", L("Configure Claude Code MCP integration")),
       ("akb connect codex", L("Configure Codex MCP integration")),
       ("akb connect all", L("Configure both supported agents")),
-      ("akb run [--only A,B] -- <cmd>", L("Run a command with this project's secrets after approval")),
+      (
+        "akb run [--only A,B] -- <cmd>",
+        L("Run a command with this project's secrets after approval")
+      ),
+      ("akb browser help", L("Use the controlled browser from a local agent")),
       ("akb helper-path", L("Print the discovered agentkeybox-mcp path")),
       ("akb help", ""),
     ]
     let usage = rows.map { command, summary in
       summary.isEmpty
-        ? "  \(command)" : "  \(command.padding(toLength: 32, withPad: " ", startingAt: 0))\(summary)"
+        ? "  \(command)"
+        : "  \(command.padding(toLength: 32, withPad: " ", startingAt: 0))\(summary)"
     }
     print("AgentKeyBox CLI (akb)\n\n" + L("Usage:") + "\n" + usage.joined(separator: "\n"))
   }

@@ -14,7 +14,7 @@
       // A single main window, so the menu bar's "Open AgentKeyBox" brings it back instead of
       // opening duplicates.
       // `.id` rebuilds each window when the language changes, so every `L(_:)` is read again.
-      Window("AgentKeyBox", id: "main") {
+      Window(DevelopmentProfile.current == nil ? "AgentKeyBox" : "AgentKeyBox QA", id: "main") {
         ContentView()
           .environmentObject(model)
           .frame(minWidth: 860, minHeight: 560)
@@ -44,6 +44,13 @@
   /// Opened for a coding agent or at login, AgentKeyBox starts quietly in the menu bar instead
   /// of showing its main window; approval prompts still come forward on their own.
   final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationWillFinishLaunching(_ notification: Notification) {
+      // SMAppService owns Open at Login. Otherwise macOS's "Reopen windows when logging
+      // back in" can relaunch the app even after that setting is turned off. Opt out once
+      // per process; do not balance this with enableRelaunchOnLogin when the toggle changes.
+      NSApp.disableRelaunchOnLogin()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
       guard Self.launchedInBackground else { return }
       // SwiftUI creates the main window right after launch; close it once it exists.
@@ -118,6 +125,7 @@
       case .p8: name = "Credential-P8"
       case .pem: name = "Credential-PEM"
       case .json: name = "Credential-JSON"
+      case .creditCard, .recoveryCodes, .login: return nil
       }
       return image("credential-types", name, points: 32)
     }
@@ -159,6 +167,10 @@
         Button(L("Ask Every Time")) { model.revokeSessionApprovals() }
       }
 
+      if model.browserSessionCount > 0 {
+        Button(L("End Browser Access")) { model.closeAllBrowsers() }
+      }
+
       if !model.accessLog.isEmpty {
         Divider()
         Text(L("Recent"))
@@ -191,8 +203,11 @@
           .interpolation(.high)
           .frame(width: size, height: size)
       } else {
-        Image(systemName: "key.fill")
-          .frame(width: size, height: size)
+        Image(
+          systemName: kind == .creditCard
+            ? "creditcard" : kind == .recoveryCodes ? "lock.rectangle.on.rectangle" : "key.fill"
+        )
+        .frame(width: size, height: size)
       }
     }
   }
@@ -344,28 +359,88 @@
     @Published var accessLog: [AccessEvent] = []
     /// Agent sessions that currently skip the prompt for some requests.
     @Published var activeSessionCount = 0
+    @Published var browserSessionCount = 0
+    private var browsers: [UUID: ControlledBrowserSession] = [:]
     @Published var selection: SidebarItem? {
       // A message like "Saved DEMO_API_KEY." belongs to the page it came from.
       didSet { if selection != oldValue { statusMessage = nil } }
     }
 
-    private let secretStore = KeychainSecretStore()
+    private let secretStore = KeychainSecretStore(
+      service: DevelopmentProfile.current?.keychainService ?? "dev.agentkeybox.secrets")
     private let approvalEngine = ApprovalEngine()
-    private let metadataStore = MetadataStore()
+    private let metadataStore = MetadataStore(
+      fileURL: DevelopmentProfile.current?.file("metadata.json"))
     private let brokerTokenStore = BrokerTokenStore()
     private let authenticator = LocalAuthenticator()
-    private let accessLogStore = AccessLogStore()
+    private let accessLogStore = AccessLogStore(
+      fileURL: DevelopmentProfile.current?.file("access-log.json"))
     private let promptPanel = PromptPanelController()
     private var brokerServer: LocalBrokerServer?
     private var pendingBrokerContinuation: CheckedContinuation<BrokerResponse, Never>?
     private var pendingBrokerRequest: BrokerRequest?
     private var pendingApprovalTimeoutTask: Task<Void, Never>?
     private var decisionInProgress = false
+    /// Editing cancels an approval/authentication wait, but cannot undo an already-started POST.
+    private var executingSubmissionID: UUID?
     /// Claimed synchronously before the first suspension point so concurrent broker requests
     /// cannot both pass the "nothing pending" check while the main actor is re-entered.
     private var approvalSlotReserved = false
 
     init() {
+      #if DEBUG
+        if let profile = DevelopmentProfile.current {
+          do {
+            if let fixture = try DevelopmentSubmissionFixture.load(profile: profile) {
+              try fixture.seed(store: secretStore, metadata: metadataStore)
+            } else if let fixture = try DevelopmentRecoveryFixture.load(profile: profile) {
+              try fixture.seed(store: secretStore, metadata: metadataStore)
+            } else {
+              // Public synthetic account advertised by this testing site. Only the isolated QA
+              // Keychain service receives it. Normal approval + LocalAuthenticator still run.
+              let payload = SensitivePayload(
+                login: try! StoredLogin(username: "tomsmith", password: "SuperSecretPassword!"))
+              let item = CredentialMetadata(
+                id: profile.id, label: "QA — Public login demonstration", service: "The Internet",
+                kind: .login,
+                loginURL: "https://the-internet.herokuapp.com/login",
+                payloadRevision: payload.revision)
+              // These synthetic items test refusal/timeout only. A reserved .invalid destination
+              // cannot receive a card or recovery code, even if someone approves by mistake.
+              let cardPayload = SensitivePayload(
+                card: try! StoredCard(
+                  number: "4242424242424242", cardholder: "AKB synthetic card fixture",
+                  expirationMonth: 12, expirationYear: 2099))
+              let cardItem = CredentialMetadata(
+                id: profile.fixtureID(1), label: "QA — Synthetic card (refusal only)",
+                service: "QA fixture", kind: .creditCard,
+                submissionURL: "https://akb-acceptance.invalid/card",
+                payloadRevision: cardPayload.revision)
+              let recoveryPayload = SensitivePayload(
+                recoveryCodes: try! RecoveryCodeSet(text: "akb-qa-code-one\nakb-qa-code-two"))
+              let recoveryItem = CredentialMetadata(
+                id: profile.fixtureID(2), label: "QA — Synthetic recovery codes (refusal only)",
+                service: "QA fixture", kind: .recoveryCodes,
+                submissionURL: "https://akb-acceptance.invalid/recovery",
+                payloadRevision: recoveryPayload.revision)
+              do {
+                try secretStore.save(secret: payload.encoded(), id: item.id)
+                try secretStore.save(secret: cardPayload.encoded(), id: cardItem.id)
+                try secretStore.save(secret: recoveryPayload.encoded(), id: recoveryItem.id)
+                try metadataStore.save(
+                  MetadataSnapshot(credentials: [item, cardItem, recoveryItem]))
+              } catch {
+                if case SecretStoreError.unexpectedStatus(let status) = error {
+                  FileHandle.standardError.write(Data("QA Keychain OSStatus: \(status)\n".utf8))
+                }
+                fatalError("Could not initialize isolated AgentKeyBox QA fixture")
+              }
+            }
+          } catch {
+            fatalError("Could not initialize isolated AgentKeyBox recovery fixture")
+          }
+        }
+      #endif
       let (snapshot, quarantined) = metadataStore.loadWithRecovery()
       self.projects = snapshot.projects
       // Keys saved before provider bundles get the settings that can be filled in without asking.
@@ -392,8 +467,12 @@
       } catch {
         self.brokerStatus = L("Broker unavailable: %@", error.localizedDescription)
       }
-      keepAgentsConnected()
-      openAtLoginByDefault()
+      if DevelopmentProfile.current == nil {
+        keepAgentsConnected()
+        openAtLoginByDefault()
+      } else {
+        offersMoveToApplications = false
+      }
     }
 
     // MARK: - Startup
@@ -414,6 +493,7 @@
     }
 
     func setOpensAtLogin(_ enabled: Bool) {
+      guard DevelopmentProfile.current == nil else { return }
       UserDefaults.standard.set(true, forKey: "AgentKeyBoxLoginItemConfigured")
       do {
         if enabled {
@@ -537,7 +617,10 @@
       for credential in plan.newCredentials {
         guard let secret = contents.secrets[credential.id.uuidString] else { continue }
         do {
-          try secretStore.save(secret: secret, id: credential.id)
+          let value =
+            credential.kind.requiresControlledUse
+            ? try SensitivePayload.restored(secret, kind: credential.kind) : secret
+          try secretStore.save(secret: value, id: credential.id)
           added.append(credential)
         } catch {
           statusMessage = L("Could not save %@: %@", credential.label, error.localizedDescription)
@@ -555,6 +638,9 @@
         return
       }
       selectFirstProjectIfNeeded()
+      #if DEBUG
+        recordSubmissionFixtureStorage()
+      #endif
       statusMessage = L(
         "Imported %@ key(s) and %@ project(s).", "\(added.count)", "\(addedProjects)")
     }
@@ -574,7 +660,8 @@
     /// and reported. Requires a backup that covers the project.
     func removeKeysFromFiles(in project: Project) async {
       guard backupCovers(project) else {
-        statusMessage = L("Export a backup first, so these files are not the only other copy of your keys.")
+        statusMessage = L(
+          "Export a backup first, so these files are not the only other copy of your keys.")
         return
       }
       let keys = credentials.filter { $0.projectID == project.id }
@@ -649,9 +736,11 @@
         "Removed %@ key(s) from .env files and moved %@ key file(s) to the Trash. Start your app with: akb run -- <your command>.",
         "\(emptied)", "\(trashed)")
       if !different.isEmpty {
-        message += " " + L(
-          "Left %@ alone because it differs from the stored key.",
-          Set(different).sorted().joined(separator: ", "))
+        message +=
+          " "
+          + L(
+            "Left %@ alone because it differs from the stored key.",
+            Set(different).sorted().joined(separator: ", "))
       }
       if !untouched.isEmpty {
         message += " " + L("Could not change %@.", untouched.joined(separator: ", "))
@@ -698,8 +787,24 @@
       kind: CredentialKind = .apiKey,
       environmentVariableName: String? = nil,
       allowedHosts: [String]? = nil,
-      settings: [String: String]? = nil
+      settings: [String: String]? = nil,
+      submissionURL: String? = nil,
+      loginURL: String? = nil
     ) -> CredentialMetadata? {
+      let payload: SensitivePayload?
+      do {
+        if kind.requiresControlledUse {
+          payload = try SensitivePayload.decode(secret, kind: kind)
+        } else {
+          guard SensitivePayload.importedKind(secret) == nil else {
+            throw SensitiveDataError.controlledUseRequired
+          }
+          payload = nil
+        }
+      } catch {
+        statusMessage = (error as? SensitiveDataError)?.localizedDescription
+        return nil
+      }
       let metadata = CredentialMetadata(
         label: label,
         service: service,
@@ -708,9 +813,17 @@
         kind: kind,
         environmentVariableName: environmentVariableName,
         allowedHosts: allowedHosts,
-        settings: settings?.isEmpty == false ? settings : nil
+        settings: kind.requiresControlledUse ? nil : settings?.isEmpty == false ? settings : nil,
+        submissionURL: submissionURL,
+        loginURL: loginURL,
+        payloadRevision: payload?.revision
       )
       do {
+        if kind.requiresControlledUse {
+          _ = try SensitivePayload.decode(secret, kind: kind)
+          if submissionURL != nil { _ = try SensitiveSubmissionPolicy.destination(submissionURL) }
+          if loginURL != nil { _ = try BrowserPolicy.loginURL(loginURL) }
+        }
         try secretStore.save(secret: secret, id: metadata.id)
         credentials.append(metadata)
         guard persistMetadata() else {
@@ -733,6 +846,7 @@
         credentials.insert(credential, at: min(index, credentials.count))
         return
       }
+      invalidateProtectedAccess(for: credential.id)
       do {
         try secretStore.delete(id: credential.id)
         statusMessage = L("Credential deleted.")
@@ -898,7 +1012,8 @@
           continue
         }
         guard let data = try? Data(contentsOf: file.url) else { continue }
-        let hosts = ProviderCatalog.preset(matchingService: file.service, environmentKey: nil)?
+        let hosts =
+          ProviderCatalog.preset(matchingService: file.service, environmentKey: nil)?
           .allowedHosts ?? []
         if addCredential(
           label: file.label, service: file.service, secret: data, projectID: project.id,
@@ -959,10 +1074,19 @@
     func importCredentialFile(at url: URL, projectID: UUID?) {
       do {
         let data = try Data(contentsOf: url)
+        if let kind = SensitivePayload.importedKind(data, filename: url.lastPathComponent) {
+          let restored = try SensitivePayload.restored(data, kind: kind)
+          addCredential(
+            label: url.deletingPathExtension().lastPathComponent,
+            service: kind.protectedTitle, secret: restored,
+            projectID: projectID, kind: kind)
+          return
+        }
         // A recognized key (AuthKey_<ID>.p8, a service account) gets its provider's name,
         // website list, and settings, the same as during project setup.
         if let file = ProjectScanner.classifyKeyFile(url) {
-          let hosts = ProviderCatalog.preset(matchingService: file.service, environmentKey: nil)?
+          let hosts =
+            ProviderCatalog.preset(matchingService: file.service, environmentKey: nil)?
             .allowedHosts ?? []
           addCredential(
             label: file.label, service: file.service, secret: data, projectID: projectID,
@@ -1000,29 +1124,29 @@
     }
 
     #if DEBUG
-    func simulateRequest(agentID: String = "claude-code", agentName: String = "Claude Code") {
-      guard let credential = credentials.first else {
-        statusMessage = L("Add a credential first.")
-        return
+      func simulateRequest(agentID: String = "claude-code", agentName: String = "Claude Code") {
+        guard let credential = credentials.first else {
+          statusMessage = L("Add a credential first.")
+          return
+        }
+        guard !approvalSlotReserved, pendingRequest == nil, pendingCredentialRequest == nil else {
+          statusMessage = L("Finish the pending approval first.")
+          return
+        }
+        let project = projects.first
+        pendingBrokerRequest = nil
+        pendingRequest = AgentRequest(
+          agentID: agentID,
+          agentDisplayName: agentName,
+          projectPath: project?.rootPath ?? FileManager.default.homeDirectoryForCurrentUser.path,
+          credentialIdentifier: credential.id.uuidString,
+          purpose: "Use \(credential.service) for the current coding task",
+          operation: "/usr/bin/true",
+          executablePath: "/usr/bin/true",
+          arguments: []
+        )
+        NSApp.activate(ignoringOtherApps: true)
       }
-      guard !approvalSlotReserved, pendingRequest == nil, pendingCredentialRequest == nil else {
-        statusMessage = L("Finish the pending approval first.")
-        return
-      }
-      let project = projects.first
-      pendingBrokerRequest = nil
-      pendingRequest = AgentRequest(
-        agentID: agentID,
-        agentDisplayName: agentName,
-        projectPath: project?.rootPath ?? FileManager.default.homeDirectoryForCurrentUser.path,
-        credentialIdentifier: credential.id.uuidString,
-        purpose: "Use \(credential.service) for the current coding task",
-        operation: "/usr/bin/true",
-        executablePath: "/usr/bin/true",
-        arguments: []
-      )
-      NSApp.activate(ignoringOtherApps: true)
-    }
     #endif
 
     var keychainStatus: String {
@@ -1112,6 +1236,9 @@
         let event = await approvalEngine.record(
           decision: recordedDecision, request: request, credentialLabel: historyLabel,
           credentialIDs: self.historyCredentialIDs(for: request))
+        // Editing/closing can end this request while the actor records the decision. A stale
+        // completion must neither persist an approval nor start an operation after cancellation.
+        guard self.pendingRequest?.id == requestID else { return }
         self.recordAccess(event)
 
         if decision == .deny {
@@ -1138,11 +1265,19 @@
         case .httpRequest:
           response = await executeApprovedHTTPRequest(
             brokerRequest, credential: credential!, decision: decision, grant: grant)
+        case .submitSensitiveFields:
+          executingSubmissionID = requestID
+          response = await executeSensitiveSubmission(
+            brokerRequest, expectedVersion: request.credentialVersion, grant: grant)
+          if executingSubmissionID == requestID { executingSubmissionID = nil }
+        case .browserLogin, .browserFollow, .browserRecover:
+          response = await executeBrowserRequest(
+            brokerRequest, expectedVersion: request.credentialVersion, grant: grant)
         case .revealEnvironment:
           response = await revealApprovedEnvironment(
             request.environmentVariables, projectPath: request.projectPath, decision: decision,
             grant: grant)
-        case .listCredentials, .requestCredential:
+        case .listCredentials, .requestCredential, .browserRead, .browserClose:
           response = BrokerResponse(ok: false, error: "Unexpected approval type.")
         }
 
@@ -1208,11 +1343,15 @@
     /// somewhere else (e.g. into an app bundle that has since moved). Agents the user has not
     /// connected are left alone.
     func keepAgentsConnected() {
+      guard DevelopmentProfile.current == nil else { return }
       Task {
         guard
-          let helper = await Task.detached(priority: .utility, operation: {
-            HelperInstaller.installBundledHelper()
-          }).value
+          let helper = await Task.detached(
+            priority: .utility,
+            operation: {
+              HelperInstaller.installBundledHelper()
+            }
+          ).value
         else { return }
         for adapter in [ClaudeCodeAdapter() as any AgentAdapter, CodexAdapter()] {
           let key = Self.registeredHelperKey(adapter.id)
@@ -1238,6 +1377,7 @@
     /// the Trash unless macOS was running it from a temporary translocated copy, whose original
     /// location is not known.
     func moveToApplications() {
+      guard DevelopmentProfile.current == nil else { return }
       guard pendingRequest == nil, pendingCredentialRequest == nil else {
         statusMessage = L("Finish the pending approval first.")
         return
@@ -1296,6 +1436,7 @@
 
     private func connect<A: AgentAdapter>(adapter: A, update: @escaping @MainActor (String) -> Void)
     {
+      guard DevelopmentProfile.current == nil else { return }
       guard let helper = HelperInstaller.installBundledHelper() else {
         update("MCP helper not found")
         statusMessage = AgentIntegrationError.helperNotFound.localizedDescription
@@ -1317,6 +1458,412 @@
       }
     }
 
+    // MARK: - Protected items
+
+    func loadSensitiveItem(_ credential: CredentialMetadata) async throws -> SensitivePayload {
+      let editorAuthenticator = LocalAuthenticator()
+      let grant = try await editorAuthenticator.authenticate(
+        reason: L("Review this protected item in AgentKeyBox?"))
+      defer { grant?.invalidate() }
+      guard let data = try await readSecret(credential.id, grant: grant),
+        credentials.contains(credential)
+      else { throw SensitiveDataError.invalidPayload }
+      let payload = try SensitivePayload.decode(data, kind: credential.kind)
+      guard payload.revision == credential.payloadRevision else {
+        throw SensitiveDataError.invalidPayload
+      }
+      return payload
+    }
+
+    /// Native editor only. There is no broker operation to change a destination or code state.
+    func saveSensitiveItem(
+      original: CredentialMetadata?, label: String, projectID: UUID?,
+      destination: String, payload: SensitivePayload
+    ) async -> Bool {
+      do {
+        guard !label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        let endpoint = destination.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !endpoint.isEmpty {
+          if payload.kind == .login {
+            _ = try BrowserPolicy.loginURL(endpoint)
+          } else {
+            _ = try SensitiveSubmissionPolicy.destination(endpoint)
+          }
+        }
+        var payload = payload
+        payload.revision = UUID()
+        if let original {
+          let previous = try await loadSensitiveItem(original)
+          guard let index = credentials.firstIndex(of: original), previous.kind == payload.kind
+          else {
+            throw SensitiveDataError.invalidPayload
+          }
+          if let prior = previous.recoveryCodes, var next = payload.recoveryCodes,
+            prior.generation != next.generation
+          {
+            next.preserveHistory(from: prior)
+            payload.recoveryCodes = next
+          }
+          let data = try payload.encoded()
+          _ = try SensitivePayload.decode(data, kind: original.kind)
+          invalidateProtectedAccess(for: original.id)
+          credentials[index].label = label
+          credentials[index].projectID = projectID
+          credentials[index].submissionURL =
+            payload.kind == .login || endpoint.isEmpty ? nil : endpoint
+          credentials[index].loginURL = payload.kind == .login && !endpoint.isEmpty ? endpoint : nil
+          credentials[index].payloadRevision = payload.revision
+          credentials[index].environmentVariableName = nil
+          credentials[index].allowedHosts = nil
+          credentials[index].settings = nil
+          credentials[index].updatedAt = Date()
+          let outcome = CredentialEditCommit.perform(
+            saveMetadata: { persistMetadata() },
+            saveSecret: {
+              #if DEBUG
+                try DevelopmentSubmissionFixture.pauseBeforeSecretSave(id: original.id)
+              #endif
+              try self.secretStore.save(secret: data, id: original.id)
+            },
+            restoreMetadata: {
+              self.credentials[index] = original
+              self.persistMetadata()
+            })
+          guard outcome == .saved else {
+            statusMessage = L("Could not save this protected item. Try again.")
+            return false
+          }
+        } else {
+          guard
+            addCredential(
+              label: label, service: payload.kind.protectedTitle,
+              secret: try payload.encoded(), projectID: projectID, kind: payload.kind,
+              submissionURL: payload.kind == .login || endpoint.isEmpty ? nil : endpoint,
+              loginURL: payload.kind == .login && !endpoint.isEmpty ? endpoint : nil) != nil
+          else { return false }
+        }
+        #if DEBUG
+          recordSubmissionFixtureStorage()
+        #endif
+        statusMessage = L("Saved securely in Keychain.")
+        return true
+      } catch {
+        statusMessage = L("Could not save this protected item. Check its fields and try again.")
+        return false
+      }
+    }
+
+    private func handleSensitiveSubmission(_ brokerRequest: BrokerRequest) async -> BrokerResponse {
+      guard let credential = visibleCredential(for: brokerRequest),
+        let submission = brokerRequest.sensitiveSubmission
+      else {
+        return BrokerResponse(ok: false, error: "Protected item or submission is unavailable.")
+      }
+      do {
+        let url = try SensitiveSubmissionPolicy.validate(submission, credential: credential)
+        var request = AgentRequest(
+          agentID: brokerRequest.agentID, agentDisplayName: brokerRequest.agentDisplayName,
+          projectPath: normalize(brokerRequest.projectPath),
+          credentialIdentifier: credential.id.uuidString,
+          purpose: brokerRequest.purpose, operation: "POST \(url.absoluteString)")
+        request.kind = .sensitiveSubmission
+        request.credentialVersion = credential.updatedAt
+        request.httpMethod = "POST"
+        request.url = url.absoluteString
+        let preview = try JSONSerialization.data(
+          withJSONObject: submission.fields, options: [.prettyPrinted, .sortedKeys])
+        request.bodyPreview = String(decoding: preview, as: UTF8.self)
+        request.headerNames = ["Content-Type: \(submission.encoding.rawValue)"]
+        return await presentForApproval(request, brokerRequest: brokerRequest)
+      } catch {
+        return BrokerResponse(
+          ok: false,
+          error: (error as? SensitiveDataError)?.localizedDescription
+            ?? "Invalid protected submission.")
+      }
+    }
+
+    private func executeSensitiveSubmission(
+      _ brokerRequest: BrokerRequest, expectedVersion: Date?, grant: AuthenticationGrant?
+    ) async -> BrokerResponse {
+      guard let credential = visibleCredential(for: brokerRequest),
+        credential.kind.requiresControlledUse, credential.updatedAt == expectedVersion,
+        let submission = brokerRequest.sensitiveSubmission
+      else {
+        return BrokerResponse(ok: false, error: "Protected item changed. Request approval again.")
+      }
+      do {
+        guard let data = try await readSecret(credential.id, grant: grant),
+          let index = credentials.firstIndex(of: credential)
+        else {
+          return BrokerResponse(ok: false, error: "Protected item changed. Request approval again.")
+        }
+        let payload = try SensitivePayload.decode(data, kind: credential.kind)
+        let outcome = try await SensitiveSubmissionExecutor.execute(
+          submission, credential: credential, payload: payload,
+          persistReservation: { data in
+            // Synchronous on the main actor, before sending: no request can reuse this code.
+            // A save error stops execution; a crash/unknown response leaves the code issued.
+            try secretStore.save(secret: data, id: credential.id)
+            credentials[index].updatedAt = Date()
+            guard persistMetadata() else {
+              throw SensitiveDataError.invalidPayload
+            }
+            #if DEBUG
+              if let profile = DevelopmentProfile.current,
+                let fixture = try DevelopmentSubmissionFixture.load(profile: profile)
+              {
+                try fixture.recordStoredStatuses(store: secretStore)
+              }
+            #endif
+          })
+        return BrokerResponse(ok: true, decision: .allowOnce, submissionOutcome: outcome)
+      } catch let error as SensitiveDataError {
+        return BrokerResponse(ok: false, error: error.localizedDescription)
+      } catch {
+        // Keychain/encoding/transport diagnostics must never reveal payload fragments.
+        return BrokerResponse(
+          ok: false, error: "Protected submission could not be prepared. Nothing was sent.")
+      }
+    }
+
+    // MARK: - Controlled browser
+
+    /// Closing a lease (explicitly, on expiry, or on failure) also ends its in-flight prompt.
+    /// Match the browser, not just the credential: another lease may use the same login.
+    private func browserDidClose(_ browserID: UUID) {
+      browsers.removeValue(forKey: browserID)
+      browserSessionCount = browsers.count
+      guard pendingBrokerRequest?.browser?.sessionID == browserID,
+        pendingRequest?.kind == .browserLogin || pendingRequest?.kind == .browserFollow
+          || pendingRequest?.kind == .browserRecovery
+      else { return }
+      finishPrompt(
+        BrokerResponse(ok: false, error: ControlledBrowserError.unavailable.localizedDescription),
+        message: L("Browser access ended on this Mac."))
+    }
+
+    private func invalidateProtectedAccess(for credentialID: UUID) {
+      if pendingRequest?.credentialIdentifier == credentialID.uuidString,
+        pendingRequest?.kind == .sensitiveSubmission,
+        executingSubmissionID != pendingRequest?.id
+      {
+        finishPrompt(
+          BrokerResponse(ok: false, error: "Protected item changed. Request approval again."),
+          message: L("Protected item changed. Request approval again."))
+      }
+      let pendingBrowser =
+        pendingBrokerRequest?.credentialIdentifier == credentialID.uuidString
+        ? pendingBrokerRequest?.browser?.sessionID : nil
+      for browser in Array(browsers.values)
+      where browser.credential.id == credentialID || browser.id == pendingBrowser {
+        browser.close()
+      }
+      if pendingRequest?.credentialIdentifier == credentialID.uuidString,
+        pendingRequest?.kind == .browserLogin || pendingRequest?.kind == .browserFollow
+          || pendingRequest?.kind == .browserRecovery
+      {
+        finishPrompt(
+          BrokerResponse(ok: false, error: ControlledBrowserError.unavailable.localizedDescription),
+          message: L("Browser access ended on this Mac."))
+      }
+    }
+
+    #if DEBUG
+      private func recordSubmissionFixtureStorage() {
+        guard let profile = DevelopmentProfile.current,
+          let fixture = try? DevelopmentSubmissionFixture.load(profile: profile)
+        else { return }
+        try? fixture.recordStoredState(store: secretStore, metadata: metadataStore)
+      }
+    #endif
+
+    func closeAllBrowsers() {
+      for browser in Array(browsers.values) { browser.close() }
+      browsers.removeAll()
+      browserSessionCount = 0
+      statusMessage = L("Browser access ended on this Mac.")
+      if pendingRequest?.kind == .browserLogin || pendingRequest?.kind == .browserFollow
+        || pendingRequest?.kind == .browserRecovery
+      {
+        finishPrompt(
+          BrokerResponse(ok: false, error: ControlledBrowserError.unavailable.localizedDescription),
+          message: L("Browser access ended on this Mac."))
+      }
+    }
+
+    private func browserOwner(_ request: BrokerRequest) throws -> BrowserOwner {
+      try BrowserOwner(
+        agentID: request.agentID, projectPath: normalize(request.projectPath),
+        sessionID: request.sessionID ?? "")
+    }
+
+    private func ownedBrowser(_ request: BrokerRequest) throws -> ControlledBrowserSession {
+      guard let command = request.browser, let browser = browsers[command.sessionID] else {
+        throw ControlledBrowserError.unavailable
+      }
+      try browser.authorize(browserOwner(request))
+      guard credentials.contains(browser.credential),
+        credentialIsVisible(browser.credential, for: request.projectPath)
+      else {
+        browser.close()
+        throw ControlledBrowserError.unavailable
+      }
+      return browser
+    }
+
+    private func handleBrowserRequest(_ request: BrokerRequest) async -> BrokerResponse {
+      do {
+        if request.action == .browserLogin {
+          guard let credential = visibleCredential(for: request), credential.kind == .login,
+            browsers.count < 4
+          else { throw ControlledBrowserError.unavailable }
+          let browser: ControlledBrowserSession
+          #if DEBUG
+            if let profile = DevelopmentProfile.current,
+              let fixture = try DevelopmentRecoveryFixture.load(profile: profile)
+            {
+              browser = try fixture.browser(credential: credential, owner: browserOwner(request))
+            } else {
+              browser = try ControlledBrowserSession(
+                credential: credential, owner: browserOwner(request))
+            }
+          #else
+            browser = try ControlledBrowserSession(
+              credential: credential, owner: browserOwner(request))
+          #endif
+          let browserID = browser.id
+          browsers[browserID] = browser
+          browserSessionCount = browsers.count
+          browser.onClose = { [weak self] in
+            self?.browserDidClose(browserID)
+          }
+          var succeeded = false
+          defer { if !succeeded { browser.close() } }
+          try await browser.prepare()
+          guard credentials.contains(credential), let target = browser.submissionURL else {
+            throw ControlledBrowserError.unavailable
+          }
+          var pending = request
+          pending.browser = BrowserCommand(sessionID: browser.id)
+          let response = await presentBrowserApproval(pending, browser: browser, url: target)
+          succeeded = response.ok && response.browserPage != nil
+          return response
+        }
+        let browser = try ownedBrowser(request)
+        switch request.action {
+        case .browserClose:
+          browser.close()
+          return BrokerResponse(ok: true)
+        case .browserRead:
+          return BrokerResponse(ok: true, browserPage: try await browser.read())
+        case .browserRecover:
+          guard let recovery = visibleCredential(for: request), recovery.kind == .recoveryCodes
+          else {
+            throw ControlledBrowserError.unavailable
+          }
+          let target = try browser.prepareRecovery(credential: recovery)
+          var succeeded = false
+          defer { if !succeeded { browser.close() } }
+          var approval = AgentRequest(
+            agentID: request.agentID, agentDisplayName: request.agentDisplayName,
+            projectPath: normalize(request.projectPath),
+            credentialIdentifier: recovery.id.uuidString, purpose: request.purpose,
+            operation: browser.credential.label, sessionID: request.sessionID)
+          approval.kind = .browserRecovery
+          approval.credentialVersion = recovery.updatedAt
+          approval.url = target.absoluteString
+          let response = await presentForApproval(approval, brokerRequest: request)
+          succeeded = response.ok && response.browserPage != nil
+          return response
+        case .browserFollow:
+          guard let link = request.browser?.linkID else { throw ControlledBrowserError.invalidLink }
+          let target = try browser.destination(for: link)
+          var pending = request
+          pending.credentialIdentifier = browser.credential.id.uuidString
+          pending.url = target.absoluteString
+          return await presentBrowserApproval(pending, browser: browser, url: target)
+        default: throw ControlledBrowserError.unavailable
+        }
+      } catch {
+        return BrokerResponse(
+          ok: false,
+          error: ((error as? ControlledBrowserError) ?? .failed).localizedDescription)
+      }
+    }
+
+    private func presentBrowserApproval(
+      _ broker: BrokerRequest,
+      browser: ControlledBrowserSession, url: URL
+    ) async -> BrokerResponse {
+      var request = AgentRequest(
+        agentID: broker.agentID, agentDisplayName: broker.agentDisplayName,
+        projectPath: normalize(broker.projectPath),
+        credentialIdentifier: browser.credential.id.uuidString,
+        purpose: broker.purpose, sessionID: broker.sessionID)
+      request.kind = broker.action == .browserLogin ? .browserLogin : .browserFollow
+      request.credentialVersion = browser.credential.updatedAt
+      request.url = url.absoluteString
+      return await presentForApproval(request, brokerRequest: broker)
+    }
+
+    private func executeBrowserRequest(
+      _ request: BrokerRequest,
+      expectedVersion: Date?, grant: AuthenticationGrant?
+    ) async -> BrokerResponse {
+      do {
+        let browser = try ownedBrowser(request)
+        guard request.action == .browserRecover || browser.credential.updatedAt == expectedVersion
+        else {
+          browser.close()
+          throw ControlledBrowserError.unavailable
+        }
+        let page: BrowserPage
+        if request.action == .browserLogin {
+          guard let data = try await readSecret(browser.credential.id, grant: grant),
+            credentials.contains(browser.credential)
+          else {
+            browser.close()
+            throw ControlledBrowserError.unavailable
+          }
+          let payload = try SensitivePayload.decode(data, kind: .login)
+          page = try await browser.signIn(payload: payload)
+        } else if request.action == .browserRecover {
+          guard let recovery = visibleCredential(for: request), recovery.kind == .recoveryCodes,
+            recovery.updatedAt == expectedVersion,
+            let data = try await readSecret(recovery.id, grant: grant),
+            credentials.contains(recovery)
+          else { throw ControlledBrowserError.unavailable }
+          let payload = try SensitivePayload.decode(data, kind: .recoveryCodes)
+          page = try await browser.recover(credential: recovery, payload: payload) { data in
+            guard let index = credentials.firstIndex(of: recovery) else {
+              throw SensitiveDataError.invalidPayload
+            }
+            try secretStore.save(secret: data, id: recovery.id)
+            credentials[index].updatedAt = Date()
+            guard persistMetadata() else { throw SensitiveDataError.invalidPayload }
+            #if DEBUG
+              if let profile = DevelopmentProfile.current,
+                let fixture = try DevelopmentRecoveryFixture.load(profile: profile)
+              {
+                try fixture.recordStoredStatuses(store: secretStore)
+              }
+            #endif
+          }
+        } else {
+          guard let link = request.browser?.linkID, let raw = request.url,
+            let target = URL(string: raw)
+          else { throw ControlledBrowserError.invalidLink }
+          page = try await browser.follow(linkID: link, approvedURL: target)
+        }
+        return BrokerResponse(ok: true, decision: .allowOnce, browserPage: page)
+      } catch {
+        return BrokerResponse(
+          ok: false,
+          error: ((error as? ControlledBrowserError) ?? .failed).localizedDescription)
+      }
+    }
+
     // MARK: - Broker
 
     private func handleBrokerRequest(_ brokerRequest: BrokerRequest) async -> BrokerResponse {
@@ -1324,6 +1871,8 @@
         let visible = credentials.filter { credentialIsVisible($0, for: brokerRequest.projectPath) }
         return BrokerResponse(ok: true, credentials: visible.map(CredentialSummary.init(metadata:)))
       }
+
+      if brokerRequest.action == .browserClose { return await handleBrowserRequest(brokerRequest) }
 
       guard !approvalSlotReserved, pendingRequest == nil, pendingCredentialRequest == nil else {
         return BrokerResponse(ok: false, error: "Another AgentKeyBox approval is already pending.")
@@ -1342,6 +1891,10 @@
         return await handleRevealEnvironment(brokerRequest)
       case .requestCredential:
         return await handleCredentialRequest(brokerRequest)
+      case .submitSensitiveFields:
+        return await handleSensitiveSubmission(brokerRequest)
+      case .browserLogin, .browserRead, .browserFollow, .browserRecover, .browserClose:
+        return await handleBrowserRequest(brokerRequest)
       }
     }
 
@@ -1364,6 +1917,11 @@
         ApprovedCommandRunner.isAllowedInjectionTarget(environmentVariable)
       else {
         return BrokerResponse(ok: false, error: "Invalid execution request.")
+      }
+
+      guard !credential.kind.requiresControlledUse else {
+        return BrokerResponse(
+          ok: false, error: SensitiveDataError.controlledUseRequired.localizedDescription)
       }
 
       let operation = ([executablePath] + (brokerRequest.arguments ?? [])).joined(separator: " ")
@@ -1395,7 +1953,11 @@
       guard let credential = visibleCredential(for: brokerRequest) else {
         return BrokerResponse(ok: false, error: "Credential is not available to this project.")
       }
-      // Rejected requests (wrong host, http://, misplaced placeholder) never reach the user.
+      guard !credential.kind.requiresControlledUse else {
+        return BrokerResponse(
+          ok: false, error: SensitiveDataError.controlledUseRequired.localizedDescription)
+      }
+      // Invalid requests never reach the user; unlisted hosts require explicit review.
       let validated: ValidatedHTTPRequest
       do {
         validated = try HTTPRequestPolicy.validate(
@@ -1440,7 +2002,8 @@
         return BrokerResponse(
           ok: false,
           error:
-            "No AgentKeyBox secrets with an environment variable name are available to this folder.")
+            "No AgentKeyBox secrets with an environment variable name are available to this folder."
+        )
       }
       guard let executablePath = brokerRequest.executablePath else {
         return BrokerResponse(ok: false, error: "Invalid run request.")
@@ -1467,7 +2030,9 @@
       else {
         return BrokerResponse(
           ok: false,
-          error: "env_var must be a valid, non-reserved environment variable name (not PATH, HOME, DYLD_*, …).")
+          error:
+            "env_var must be a valid, non-reserved environment variable name (not PATH, HOME, DYLD_*, …)."
+        )
       }
       let projectPath = normalize(brokerRequest.projectPath)
 
@@ -1579,6 +2144,12 @@
       decision: ApprovalDecision,
       grant: AuthenticationGrant?
     ) async -> BrokerResponse {
+      guard let credential = visibleCredential(for: brokerRequest),
+        credential.id == credentialID, !credential.kind.requiresControlledUse
+      else {
+        return BrokerResponse(
+          ok: false, error: "Credential is not available for command execution.")
+      }
       guard let executablePath = brokerRequest.executablePath,
         let environmentVariable = brokerRequest.environmentVariable
       else {
@@ -1589,6 +2160,10 @@
       do {
         guard let stored = try await readSecret(credentialID, grant: grant) else {
           return BrokerResponse(ok: false, error: "Credential value is missing from Keychain.")
+        }
+        guard SensitivePayload.importedKind(stored) == nil else {
+          return BrokerResponse(
+            ok: false, error: SensitiveDataError.controlledUseRequired.localizedDescription)
         }
         secret = stored
       } catch {
@@ -1626,6 +2201,11 @@
       decision: ApprovalDecision,
       grant: AuthenticationGrant?
     ) async -> BrokerResponse {
+      guard let current = visibleCredential(for: brokerRequest),
+        !current.kind.requiresControlledUse, current == credential
+      else {
+        return BrokerResponse(ok: false, error: "Credential changed. Request approval again.")
+      }
       do {
         // Re-validate against the current allowlist in case it changed while the prompt was open.
         let validated = try HTTPRequestPolicy.validate(
@@ -1636,6 +2216,10 @@
           allowedHosts: credential.allowedHosts)
         guard let secret = try await readSecret(credential.id, grant: grant) else {
           return BrokerResponse(ok: false, error: "Credential value is missing from Keychain.")
+        }
+        guard SensitivePayload.importedKind(secret) == nil else {
+          return BrokerResponse(
+            ok: false, error: SensitiveDataError.controlledUseRequired.localizedDescription)
         }
         let result = try await HTTPRequestExecutor.execute(validated, secretData: secret)
         return BrokerResponse(ok: true, decision: decision, http: result)
@@ -1660,6 +2244,7 @@
         }
         do {
           guard let data = try await readSecret(credential.id, grant: grant),
+            SensitivePayload.importedKind(data) == nil,
             let value = String(data: data, encoding: .utf8)
           else {
             skipped.append(name)
@@ -1690,7 +2275,9 @@
     {
       var result: [String: CredentialMetadata] = [:]
       for credential in credentials
-      where !credential.isFileCredential && credentialIsVisible(credential, for: projectPath) {
+      where !credential.isFileCredential && !credential.kind.requiresControlledUse
+        && credentialIsVisible(credential, for: projectPath)
+      {
         guard let name = credential.injectionVariableName else { continue }
         if let only, !only.contains(name) { continue }
         if let current = result[name] {
@@ -1755,7 +2342,8 @@
 
     func credentials(in item: SidebarItem) -> [CredentialMetadata] {
       let projectID = item.projectID
-      return credentials
+      return
+        credentials
         .filter { $0.projectID == projectID }
         .sorted { $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending }
     }
@@ -1790,6 +2378,10 @@
       allowedHosts: [String], settings: [String: String]? = nil, newSecret: String?
     ) -> Bool {
       guard let index = credentials.firstIndex(where: { $0.id == id }) else { return false }
+      guard !credentials[index].kind.requiresControlledUse else {
+        statusMessage = SensitiveDataError.controlledUseRequired.localizedDescription
+        return false
+      }
       let variable = environmentVariableName.trimmingCharacters(in: .whitespaces)
       guard variable.isEmpty || ApprovedCommandRunner.isAllowedInjectionTarget(variable) else {
         statusMessage = L("%@ can't be used as a variable name.", variable)
@@ -1840,6 +2432,7 @@
 
     /// "Ask every time": ends all session grants.
     func revokeSessionApprovals() {
+      closeAllBrowsers()
       Task {
         await approvalEngine.revokeAllSessions()
         self.activeSessionCount = 0
@@ -1888,9 +2481,14 @@
     }
 
     var pendingPromptTitle: String? {
-      if let request = pendingRequest { return L("%@ wants access", ApprovalPresentation.agentText(request.agentDisplayName, limit: 40)) }
+      if let request = pendingRequest {
+        return L(
+          "%@ wants access", ApprovalPresentation.agentText(request.agentDisplayName, limit: 40))
+      }
       if let prompt = pendingCredentialRequest {
-        return L("%@ needs a credential", ApprovalPresentation.agentText(prompt.agentDisplayName, limit: 40))
+        return L(
+          "%@ needs a credential",
+          ApprovalPresentation.agentText(prompt.agentDisplayName, limit: 40))
       }
       return nil
     }
@@ -1907,11 +2505,14 @@
         promptPanel.show(
           ApprovalView(request: request, presentation: approvalPresentation(for: request))
             .environmentObject(self).tint(.agentKeyBlue),
-          title: L("%@ wants access", ApprovalPresentation.agentText(request.agentDisplayName, limit: 40)))
+          title: L(
+            "%@ wants access", ApprovalPresentation.agentText(request.agentDisplayName, limit: 40)))
       } else if let prompt = pendingCredentialRequest {
         promptPanel.show(
           CredentialRequestView(prompt: prompt).environmentObject(self).tint(.agentKeyBlue),
-          title: L("%@ needs a credential", ApprovalPresentation.agentText(prompt.agentDisplayName, limit: 40)))
+          title: L(
+            "%@ needs a credential",
+            ApprovalPresentation.agentText(prompt.agentDisplayName, limit: 40)))
       } else {
         promptPanel.close()
       }
@@ -2032,11 +2633,15 @@
     @ViewBuilder private var allowButton: some View {
       if presentation.denyIsDefault {
         // No keyboard shortcut: allowing a flagged request takes a deliberate click.
-        Button(L("Allow Once")) { model.decide(.allowOnce, rememberHost: rememberHost, rememberSession: rememberSession) }
+        Button(L("Allow Once")) {
+          model.decide(.allowOnce, rememberHost: rememberHost, rememberSession: rememberSession)
+        }
       } else {
-        Button(L("Allow Once")) { model.decide(.allowOnce, rememberHost: rememberHost, rememberSession: rememberSession) }
-          .buttonStyle(.borderedProminent)
-          .keyboardShortcut(.defaultAction)
+        Button(L("Allow Once")) {
+          model.decide(.allowOnce, rememberHost: rememberHost, rememberSession: rememberSession)
+        }
+        .buttonStyle(.borderedProminent)
+        .keyboardShortcut(.defaultAction)
       }
     }
 
@@ -2055,7 +2660,9 @@
               value: request.deliveryMode == .tempFile
                 ? L("Temporary file path in %@", variable) : L("Environment variable %@", variable))
           }
-        case .httpRequest:
+        case .browserLogin, .browserFollow, .browserRecovery:
+          monospacedBlock(L("Website"), request.url ?? "")
+        case .httpRequest, .sensitiveSubmission:
           monospacedBlock(L("Request"), "\(request.httpMethod ?? "GET") \(request.url ?? "")")
           if !request.headerNames.isEmpty {
             LabeledContent(L("Headers"), value: request.headerNames.joined(separator: ", "))
@@ -2101,6 +2708,14 @@
 
     private var footnote: String {
       switch request.kind {
+      case .browserLogin, .browserFollow, .browserRecovery:
+        return L(
+          "Browser access lasts up to 15 minutes. Ending it destroys this local session; it does not revoke sessions on the website or other devices."
+        )
+      case .sensitiveSubmission:
+        return L(
+          "The destination receives the selected values. The agent receives no response body, headers, or redirect URL. A receipt does not confirm payment or sign-in success."
+        )
       case .command:
         return L(
           "AgentKeyBox runs this command on your Mac and returns redacted output. The agent never sees the key, but the command itself could send it elsewhere."
@@ -2163,7 +2778,8 @@
                 icon: .environmentVariable,
                 title: secret.key,
                 detail: ProviderBundles.includes(settings: secret.settings)
-                  ?? (secret.looksSecret ? secret.sourceFile : L("%@ · setting", secret.sourceFile)))
+                  ?? (secret.looksSecret ? secret.sourceFile : L("%@ · setting", secret.sourceFile))
+              )
             }
             ForEach(plan.scan.keyFiles) { file in
               row(
@@ -2190,7 +2806,9 @@
           }
           if !foundNothing {
             Toggle(
-              L("Keep coding agents from reading these files (adds rules to AGENTS.md, CLAUDE.md, and Claude Code settings)"),
+              L(
+                "Keep coding agents from reading these files (adds rules to AGENTS.md, CLAUDE.md, and Claude Code settings)"
+              ),
               isOn: $guardAgents)
           }
           ForEach(plan.agents) { agent in
@@ -2296,9 +2914,11 @@
         HStack {
           Button(L("Cancel")) { model.cancelEnvImport() }
           Spacer()
-          Button(L("Import %@", "\(selected.count)")) { model.confirmEnvImport(selectedKeys: selected) }
-            .buttonStyle(.borderedProminent)
-            .disabled(selected.isEmpty)
+          Button(L("Import %@", "\(selected.count)")) {
+            model.confirmEnvImport(selectedKeys: selected)
+          }
+          .buttonStyle(.borderedProminent)
+          .disabled(selected.isEmpty)
         }
       }
       .padding(24)
@@ -2315,8 +2935,12 @@
       VStack(alignment: .leading, spacing: 16) {
         HStack(spacing: 12) {
           ApprovalGlyph()
-          Text(L("%@ needs a credential", ApprovalPresentation.agentText(prompt.agentDisplayName, limit: 40)))
-            .font(.title2.bold())
+          Text(
+            L(
+              "%@ needs a credential",
+              ApprovalPresentation.agentText(prompt.agentDisplayName, limit: 40))
+          )
+          .font(.title2.bold())
         }
 
         LabeledContent(L("Variable"), value: prompt.environmentVariable)

@@ -43,10 +43,14 @@ enum Translations {
       "%@ 分鐘前",
     "%@ needs a credential":
       "%@ 需要一把金鑰",
+    "%@ recovery codes":
+      "%@ 組復原碼",
     "%@ secret(s) for akb run":
       "akb run 用的 %@ 把金鑰",
     "%@ wants access":
       "%@ 想要存取",
+    "%@ wants to open a link in your signed-in session":
+      "%@ 想在已登入的工作階段開啟連結",
     "%@ wants to run a command with a key":
       "%@ 想用一把金鑰執行一個指令",
     "%@ wants to run a command with your %@ key":
@@ -55,12 +59,18 @@ enum Translations {
       "%@ 想把一把金鑰送到新的地方",
     "%@ wants to send your %@ key somewhere new":
       "%1$@ 想把你的 %2$@ 金鑰送到新的地方",
+    "%@ wants to sign in to a website":
+      "%@ 想要登入網站",
     "%@ wants to start %@ with %@ keys":
       "%1$@ 想帶著 %3$@ 把金鑰啟動 %2$@",
     "%@ wants to start %@ with 1 key":
       "%1$@ 想帶著 1 把金鑰啟動 %2$@",
+    "%@ wants to submit protected fields":
+      "%@ 想送出受保護的欄位",
     "%@ wants to use a key":
       "%@ 想使用一把金鑰",
+    "%@ wants to use one recovery code":
+      "%@ 想要使用一組復原碼",
     "%@ wants to use your %@ key":
       "%1$@ 想使用你的 %2$@ 金鑰",
     "%@ · Claude Code can ask for them":
@@ -97,6 +107,8 @@ enum Translations {
       "把 %@ 加進 .gitignore，避免被提交到 git",
     "Add %@…":
       "補上%@…",
+    "Add Item":
+      "新增項目",
     "Add Key":
       "加入金鑰",
     "Add Missing Details…":
@@ -167,6 +179,10 @@ enum Translations {
       "任何網站",
     "Approval timed out.":
       "核准已逾時。",
+    "Approve sign-in in AgentKeyBox. The agent can read page text and request same-site links for up to 15 minutes. Supported recovery-code pages require a separate approval. JavaScript sign-in, SSO and TOTP are not supported.":
+      "在 AgentKeyBox 核准登入後，agent 可在最長 15 分鐘內讀取頁面文字並申請開啟同站連結。支援的復原碼頁面需要另外核准。不支援 JavaScript 登入、SSO 與 TOTP。",
+    "Approve sign-in in AgentKeyBox. The agent can then read page text and request same-site links for up to 15 minutes. Traditional username/password forms only; JavaScript sign-in, SSO, and verification codes are not supported yet.":
+      "在 AgentKeyBox 核准登入後，agent 可在 15 分鐘內讀取頁面文字並要求開啟同站連結。目前支援傳統帳密表單，尚未支援 JavaScript 登入、SSO 或驗證碼。",
     "Approved request completed.":
       "已完成核准的請求。",
     "Approved request failed: %@":
@@ -175,6 +191,8 @@ enum Translations {
       "每次都詢問",
     "At least %@ characters.":
       "至少 %@ 個字元。",
+    "Available":
+      "可使用",
     "Backed up %@ key(s) to %@.":
       "已把 %1$@ 把金鑰備份到 %2$@。",
     "Backup":
@@ -187,16 +205,26 @@ enum Translations {
       "本機服務檢查只能在 macOS 上執行。",
     "Broker unavailable: %@":
       "本機服務無法使用：%@",
+    "Browser access ended on this Mac.":
+      "已結束這台 Mac 上的瀏覽器存取。",
+    "Browser access lasts up to 15 minutes. Ending it destroys this local session; it does not revoke sessions on the website or other devices.":
+      "瀏覽器存取最長 15 分鐘。結束後會銷毀此本機工作階段，不會撤銷網站伺服器或其他裝置上的登入。",
     "Can be sent to":
       "可以送到",
     "Can be sent to any website":
       "可以送到任何網站",
     "Cancel":
       "取消",
+    "Card number":
+      "卡號",
+    "Cardholder":
+      "持卡人",
     "Certificate":
       "憑證",
     "Check local installation and agent integrations":
       "檢查本機安裝和代理連接狀態",
+    "Check the card number, cardholder, and expiration date.":
+      "請檢查卡號、持卡人與到期日。",
     "Check this command":
       "請確認這個指令",
     "Choose Folder…":
@@ -211,6 +239,8 @@ enum Translations {
       "選擇你的專案資料夾，AgentKeyBox 會找出裡面的金鑰。",
     "Claude Code connected":
       "Claude Code 已連接",
+    "Code %@":
+      "第 %@ 組",
     "Coding agents":
       "程式代理",
     "Command":
@@ -255,6 +285,8 @@ enum Translations {
       "無法把 AgentKeyBox 移到 %1$@：%2$@",
     "Could not read %@ from Keychain.":
       "無法從鑰匙圈讀取 %@。",
+    "Could not read this recovery-code file.":
+      "無法讀取這份復原碼檔案。",
     "Could not save %@: %@":
       "無法儲存 %1$@：%2$@",
     "Could not save keys: %@":
@@ -263,6 +295,14 @@ enum Translations {
       "無法儲存金鑰：%@",
     "Could not save the new key: %@":
       "無法儲存新金鑰：%@",
+    "Could not save this protected item. Check its fields and try again.":
+      "無法儲存此受保護項目。請檢查欄位後重試。",
+    "Could not save this protected item. Close the editor and try again.":
+      "無法儲存此受保護項目。請關閉編輯視窗後重試。",
+    "Could not save this protected item. Try again.":
+      "無法儲存此受保護項目，請重試。",
+    "Could not unlock this item. Close the editor and try again.":
+      "無法解鎖此項目。請關閉編輯視窗後重試。",
     "Could not write the backup: %@":
       "無法寫入備份：%@",
     "Created: %@":
@@ -275,6 +315,8 @@ enum Translations {
       "已拒絕提供金鑰。",
     "Credential was not found.":
       "找不到這把金鑰。",
+    "Credit card":
+      "信用卡",
     "Delete %@?":
       "要刪除 %@ 嗎？",
     "Delete Key":
@@ -295,6 +337,8 @@ enum Translations {
       "這次 %2$@ 工作階段內，傳到 %1$@ 不再詢問",
     "Don't ask again for this command during this %@ session":
       "這次 %@ 工作階段內，這個指令不再詢問",
+    "Drop a .env or key file here, or use Add Item.":
+      "將 .env 或金鑰檔案拖到這裡，或使用「新增項目」。",
     "Drop a .env or key file here, or use Add Key.":
       "把 .env 或金鑰檔拖到這裡，或按「加入金鑰」。",
     "Drop files or another project folder anywhere in this window.":
@@ -303,8 +347,16 @@ enum Translations {
       "把專案資料夾拖到這裡",
     "Each folder is one project. Its .env file holds the project's keys; key files (.p8, .pem, .json) are the original files.":
       "每個資料夾是一個專案。.env 檔裡是這個專案的金鑰；金鑰檔（.p8、.pem、.json）就是原本的檔案。",
+    "Each use requires approval. AgentKeyBox sends selected fields directly to this exact destination and returns only a fixed result. Browser sessions and checkout automation are not supported yet.":
+      "每次使用都需要核准。AgentKeyBox 會直接將所選欄位送到此指定網址，只回傳固定格式的結果。目前尚未支援瀏覽器登入狀態與自動結帳。",
     "Edit…":
       "編輯…",
+    "End Browser Access":
+      "結束瀏覽器存取",
+    "Enter a username and password for this website login.":
+      "請輸入此網站的使用者名稱與密碼。",
+    "Enter one recovery code per line, without duplicates or headings.":
+      "每行輸入一組復原碼，請勿重複或包含標題。",
     "Environment variable %@":
       "環境變數 %@",
     "Every approval requires Touch ID or your login password. Secrets are protected by Touch ID in the data protection keychain.":
@@ -315,6 +367,10 @@ enum Translations {
       "所有專案",
     "Everywhere":
       "全部通用",
+    "Expiration month":
+      "到期月份",
+    "Expiration year":
+      "到期年份",
     "Export Backup…":
       "匯出備份…",
     "Export a backup first, so these files are not the only other copy of your keys.":
@@ -335,6 +391,8 @@ enum Translations {
       "資料夾",
     "Folder on the original Mac: %@":
       "原本 Mac 上的資料夾：%@",
+    "For browser use, this exact URL must match the recovery form submission destination. Each use requires approval and marks one code Issued before sending. Failures never automatically restore availability. No GitHub compatibility has been verified.":
+      "用於瀏覽器時，此網址必須與復原碼表單的送出網址完全相符。每次使用都須核准，並在送出前將一組碼標為「已取用」。失敗不會自動恢復可用狀態。目前尚未驗證 GitHub 相容性。",
     "Get your %@ key":
       "取得你的 %@ 金鑰",
     "Global keys":
@@ -351,6 +409,10 @@ enum Translations {
       "匯入",
     "Import %@":
       "匯入 %@",
+    "Import Code File…":
+      "匯入復原碼檔案⋯",
+    "Import File…":
+      "匯入檔案…",
     "Import a Backup":
       "匯入備份",
     "Imported %@ key(s) and %@ project(s).":
@@ -365,8 +427,14 @@ enum Translations {
       "注入為",
     "Installed, but AgentKeyBox MCP is not configured.":
       "已安裝，但還沒設定 AgentKeyBox MCP。",
+    "Issued codes are not reused automatically, even after an error or restart. Restored codes need review.":
+      "已送出的復原碼不會自動重用，即使發生錯誤或重新啟動也一樣。從備份還原的復原碼需要重新確認。",
+    "Issued — result unverified":
+      "已送出，結果未確認",
     "Issuer ID":
       "發行者 ID（Issuer ID）",
+    "Item":
+      "項目",
     "Its %@ keys are deleted from your Keychain, and agents can no longer use them. Files in the project folder are not changed.":
       "它的 %@ 把金鑰會從鑰匙圈刪除，代理也不能再使用。專案資料夾裡的檔案不會變動。",
     "Its key is deleted from your Keychain, and agents can no longer use it. Files in the project folder are not changed.":
@@ -411,6 +479,8 @@ enum Translations {
       "名稱",
     "Native AgentKeyBox UI/broker requires macOS.":
       "AgentKeyBox 的視窗和本機服務需要 macOS。",
+    "Needs review":
+      "待確認",
     "Needs the %@":
       "還缺%@",
     "No backup yet":
@@ -425,6 +495,8 @@ enum Translations {
       "沒有待處理的請求",
     "No project":
       "未指定專案",
+    "No recovery code is available. Review its status in AgentKeyBox.":
+      "沒有可用的復原碼。請在 AgentKeyBox 中確認狀態。",
     "No requests yet":
       "還沒有任何請求",
     "Not Now":
@@ -439,6 +511,14 @@ enum Translations {
       "尚未使用",
     "Nothing was imported.":
       "沒有匯入任何項目。",
+    "One code per line. Import replaces the set; matching codes keep their previous status.":
+      "每行一組復原碼。匯入會替換整組資料；相同的復原碼會保留原本狀態。",
+    "One code will be marked Issued before it is sent in this private browser. It will not be reused automatically, even if verification fails. The agent can read the resulting page only after this step completes.":
+      "一組復原碼會先標為「已取用」，再透過此私有瀏覽器送出。即使驗證失敗，也不會自動重用。完成這個步驟後，agent 才能讀取結果頁面。",
+    "Only mark a code Available after verifying that it was not consumed. AgentKeyBox cannot check this with the service.":
+      "請先確認復原碼尚未用過，再標記為「可使用」。AgentKeyBox 無法向服務查詢此狀態。",
+    "Only the result is returned to the agent. Submission can have effects at the destination. Recovery codes stay unavailable until you review their status.":
+      "Agent 只會收到固定格式的結果。送出後可能在目的網站產生實際操作；已送出的復原碼會保持不可用，直到你確認其狀態。",
     "Open":
       "打開",
     "Open AgentKeyBox":
@@ -459,6 +539,8 @@ enum Translations {
       "其他",
     "Password":
       "密碼",
+    "Paste Codes":
+      "貼上復原碼",
     "Paste New Key…":
       "貼上新金鑰…",
     "Paste the %@ key here":
@@ -469,6 +551,8 @@ enum Translations {
       "貼上新的金鑰",
     "Print the discovered agentkeybox-mcp path":
       "顯示找到的 agentkeybox-mcp 路徑",
+    "Private browser sessions: %@":
+      "私有瀏覽器工作階段：%@",
     "Private key":
       "私密金鑰",
     "Project":
@@ -479,6 +563,8 @@ enum Translations {
       "已加入專案。",
     "Projects":
       "專案",
+    "Protected item changed. Request approval again.":
+      "受保護項目已變更，請重新要求核准。",
     "Purpose":
       "用途",
     "Quit AgentKeyBox":
@@ -487,6 +573,8 @@ enum Translations {
       "最近",
     "Recent access":
       "最近的存取",
+    "Recovery codes":
+      "復原碼",
     "Remove %@":
       "移除 %@",
     "Remove %@ from AgentKeyBox?":
@@ -511,18 +599,29 @@ enum Translations {
       "已移除 %@。專案裡的檔案沒有變動。",
     "Request":
       "請求",
+    "Review this browser access":
+      "確認此次瀏覽器存取",
     "Review this command":
       "請仔細檢查這個指令",
+    "Review this protected item in AgentKeyBox?":
+      "在 AgentKeyBox 中檢視此受保護項目？",
+    "Review this recovery-code use":
+      "確認此次復原碼使用",
+    "Review this submission":
+      "確認這次送出內容",
     "Review: %@":
       "查看：%@",
     "Run a command from your terminal with this project's secrets":
       "在終端機用這個專案的金鑰執行指令",
+    "Use the controlled browser from a local agent": "讓本機 agent 使用受控瀏覽器",
     "Run a command with this project's secrets after approval":
       "核准後，用這個專案的金鑰執行指令",
     "Same as macOS":
       "跟隨 macOS",
     "Save":
       "儲存",
+    "Save recovery-code status changes?":
+      "儲存復原碼的狀態變更？",
     "Saved %@ for %@.":
       "已為 %2$@ 儲存 %1$@。",
     "Saved %@.":
@@ -537,8 +636,20 @@ enum Translations {
       "服務",
     "Service Account":
       "服務帳戶",
+    "Set Destination…":
+      "設定目的網址⋯",
     "Set Up":
       "設定",
+    "Set Website…":
+      "設定網站⋯",
+    "Set a sign-in page before agent use.":
+      "設定登入頁面後，agent 才能要求使用。",
+    "Set a submission destination before agent use.":
+      "請先設定目的網址，agent 才能提出使用請求。",
+    "Set an HTTPS sign-in page without a query or fragment.":
+      "請設定 HTTPS 登入頁面，不含查詢參數或片段。",
+    "Set an exact HTTPS submission URL without a query, fragment, or login details.":
+      "請設定完整的 HTTPS 目的網址，不可包含查詢參數、片段或登入資訊。",
     "Set up %@":
       "設定 %@",
     "Should look like %@":
@@ -547,12 +658,16 @@ enum Translations {
       "在 Finder 中顯示",
     "Show password":
       "顯示密碼",
+    "Sign-in page":
+      "登入頁面",
     "Simulate Claude Request":
       "模擬 Claude 請求",
     "Starting local broker…":
       "正在啟動本機服務…",
     "Startup":
       "啟動",
+    "Submission destination":
+      "目的網址",
     "Supported credential files are .p8, .pem, and .json.":
       "支援的金鑰檔案有 .p8、.pem 和 .json。",
     "Temporary file path in %@":
@@ -563,12 +678,20 @@ enum Translations {
       "這個專案已經在 AgentKeyBox 裡了。",
     "The %@ doesn't look right":
       "%@ 的格式看起來不對",
+    "The agent can read page text after sign-in. Opening a link may change data on the website. Passwords and cookies stay in AgentKeyBox. You can end browser access in Settings.":
+      "登入後，agent 可以讀取頁面文字。開啟連結可能變更網站資料。密碼與 cookie 留在 AgentKeyBox 內，你可以隨時在設定結束瀏覽器存取。",
     "The backup holds all your projects and keys, encrypted with this password. Keep the file and the password somewhere safe, such as a password manager.":
       "備份會包含你所有的專案和金鑰，並用這組密碼加密。請把檔案和密碼存在安全的地方，例如密碼管理器。",
+    "The browser could not complete this operation. Its private session was closed.":
+      "瀏覽器無法完成此次操作，已關閉其私有工作階段。",
+    "The browser is handling a protected operation. Try again after it finishes.":
+      "瀏覽器正在處理受保護的操作，請待完成後再試。",
     "The command includes a network URL.":
       "這個指令包含網址。",
     "The command includes an inline code or shell execution flag.":
       "這個指令包含直接執行程式碼或 shell 的參數。",
+    "The destination receives the selected values. The agent receives no response body, headers, or redirect URL. A receipt does not confirm payment or sign-in success.":
+      "目的網站會收到所選的資料值。Agent 不會收到回應本文、標頭或重新導向網址。收到請求不代表付款或登入成功。",
     "The executable is a file inside the project, which the agent can edit.":
       "這個程式是專案裡的檔案，代理可以修改它。",
     "The key is removed from your Keychain. Agents can no longer ask for it.":
@@ -577,8 +700,14 @@ enum Translations {
       "金鑰會存進你的鑰匙圈，不會傳給 %@。代理只會知道這把金鑰已經存在，而且每次使用仍需要你核准。",
     "The keys are handed to this command in your terminal and to anything it starts. Only allow commands you started yourself.":
       "金鑰會交給你終端機裡的這個指令，以及它啟動的所有程式。只允許你自己啟動的指令。",
+    "The name and destination are visible to agents. Leave the destination empty to keep this item unavailable for submission.":
+      "Agent 可以看到名稱與目的網址。將目的網址留空，即可讓此項目暫時無法送出。",
+    "The name and website are visible to agents. Leave the website empty to keep this item unavailable for use.":
+      "agent 可以看到名稱與網站。若網站留白，此項目將無法被 agent 使用。",
     "The passwords don't match.":
       "兩次輸入的密碼不一樣。",
+    "The security code (CVV) is not stored.":
+      "不儲存安全碼（CVV）。",
     "There are no keys to back up yet.":
       "目前還沒有可以備份的金鑰。",
     "This backup from %@ has %@ key(s) in %@ project(s). Keys you already have are kept.":
@@ -587,6 +716,10 @@ enum Translations {
       "這份備份已在 Finder 裡開著。請先退出「AgentKeyBox Backup」磁碟，再試一次。",
     "This backup was made by a newer AgentKeyBox. Update AgentKeyBox and try again.":
       "這份備份是由較新版的 AgentKeyBox 建立的，請更新 AgentKeyBox 後再試。",
+    "This browser session expired. Request a new sign-in.":
+      "此瀏覽器工作階段已過期，請重新要求登入。",
+    "This browser session is unavailable. Request a new sign-in.":
+      "此瀏覽器工作階段無法使用，請重新要求登入。",
     "This command needs a closer look.":
       "這個指令需要仔細看一下。",
     "This command prints the keys straight back to whoever started it.":
@@ -599,8 +732,18 @@ enum Translations {
       "這個程式會啟動參數裡指定的另一個程式。",
     "This file is not an AgentKeyBox backup.":
       "這不是 AgentKeyBox 的備份檔。",
+    "This item only supports controlled field submission, not commands or generic HTTP.":
+      "此項目僅支援受控欄位送出，無法用於指令或一般 HTTP 請求。",
+    "This item requires its controlled-use tool, not commands or generic HTTP.":
+      "此項目必須透過專用工具使用，無法交給指令或一般 HTTP 請求。",
     "This key normally only goes to %@. Only allow this if you know why.":
       "這把金鑰平常只會送到 %@。除非你清楚原因，否則不要允許。",
+    "This link is no longer available. Read the page again.":
+      "此連結已失效，請重新讀取頁面。",
+    "This page needs a sign-in method that the controlled browser does not support yet.":
+      "此頁面需要目前受控瀏覽器尚未支援的登入方式。",
+    "This protected item is damaged or has the wrong type.":
+      "此受保護項目已損毀或類型不符。",
     "This session":
       "這次工作階段",
     "This tool runs scripts defined in the project (package.json, Makefile, …), which the agent can edit before asking.":
@@ -617,6 +760,12 @@ enum Translations {
       "未知的指令：%@",
     "Unknown option for akb run: %@":
       "akb run 不認得這個選項：%@",
+    "Unlock":
+      "解鎖",
+    "Unlock to edit this protected item.":
+      "解鎖後即可編輯此受保護項目。",
+    "Update AgentKeyBox to use this protected item.":
+      "請更新 AgentKeyBox 以使用此受保護項目。",
     "Usage:":
       "用法：",
     "Usage: akb connect <claude|codex|all> [--helper /path/to/agentkeybox-mcp]":
@@ -627,12 +776,22 @@ enum Translations {
       "請使用至少 %@ 個字元的密碼。",
     "Use letters, digits, and _ only, and not PATH, HOME, or DYLD_*.":
       "只能用英文字母、數字和 _，而且不能是 PATH、HOME 或 DYLD_*。",
+    "Use supported field placeholders and bounded field names and values.":
+      "請使用支援的欄位佔位符，並遵守欄位名稱與內容長度限制。",
+    "Used":
+      "已使用",
     "Used by %@ · %@":
       "%1$@ 使用過 · %2$@",
+    "Username or email":
+      "使用者名稱或電子郵件",
     "Variable":
       "變數",
     "We found these in the folder. Likely secrets are already checked.":
       "在資料夾裡找到這些。看起來是金鑰的已經幫你勾好了。",
+    "Website":
+      "網站",
+    "Website login":
+      "網站登入",
     "When AgentKeyBox is closed, Claude Code, Codex, and akb open it in the menu bar instead of failing.":
       "AgentKeyBox 沒開的時候，Claude Code、Codex 和 akb 會自動在選單列打開它，而不是直接失敗。",
     "Where do I find these?":

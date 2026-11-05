@@ -16,6 +16,7 @@
     @EnvironmentObject private var model: AppModel
     @State private var isDropTargeted = false
     @State private var addingKey = false
+    @State private var addingSensitive: SensitiveItemKind?
     @State private var editing: EditRequest?
     @State private var fileNeedingProject: URL?
     @State private var projectToRemove: Project?
@@ -63,7 +64,9 @@
             Button(L("Cancel"), role: .cancel) {}
           } message: { _ in
             Text(
-              L("AgentKeyBox empties these keys in the project's .env files and moves its key files to the Trash, so coding agents cannot read them. Only values that match what AgentKeyBox stored are removed. Your app then gets its keys from AgentKeyBox: start it with akb run -- <your command>, for example akb run -- npm run dev.")
+              L(
+                "AgentKeyBox empties these keys in the project's .env files and moves its key files to the Trash, so coding agents cannot read them. Only values that match what AgentKeyBox stored are removed. Your app then gets its keys from AgentKeyBox: start it with akb run -- <your command>, for example akb run -- npm run dev."
+              )
             )
           }
       } detail: {
@@ -78,10 +81,21 @@
         AddKeyView(projectID: model.selectedProjectID)
           .environmentObject(model)
       }
+      .sheet(item: $addingSensitive) { item in
+        SensitiveItemView(kind: item.kind, projectID: model.selectedProjectID)
+          .environmentObject(model)
+      }
       .sheet(item: $editing) { request in
         if let credential = model.credentials.first(where: { $0.id == request.credentialID }) {
-          EditCredentialView(credential: credential, showAdvanced: request.showAdvanced)
+          if credential.kind.requiresControlledUse {
+            SensitiveItemView(
+              kind: credential.kind, projectID: credential.projectID, original: credential
+            )
             .environmentObject(model)
+          } else {
+            EditCredentialView(credential: credential, showAdvanced: request.showAdvanced)
+              .environmentObject(model)
+          }
         }
       }
       .sheet(item: $model.pendingEnvImport) { preview in
@@ -139,6 +153,8 @@
         ProjectDetailView(
           item: selection,
           addKey: { addingKey = true },
+          addSensitive: { addingSensitive = SensitiveItemKind(kind: $0) },
+          importFile: chooseCredentialFile,
           edit: { editing = EditRequest(credentialID: $0, showAdvanced: $1) })
       } else {
         Text(L("Choose a project")).foregroundStyle(.secondary)
@@ -212,6 +228,17 @@
       } else {
         fileNeedingProject = url
       }
+    }
+
+    private func chooseCredentialFile() {
+      let panel = NSOpenPanel()
+      panel.canChooseDirectories = false
+      panel.canChooseFiles = true
+      panel.allowsMultipleSelection = false
+      panel.showsHiddenFiles = true
+      panel.prompt = L("Import")
+      guard panel.runModal() == .OK, let url = panel.url else { return }
+      handleDrop(url)
     }
 
     private func chooseProjectFolder() {
@@ -335,6 +362,8 @@
     @EnvironmentObject private var model: AppModel
     let item: SidebarItem
     let addKey: () -> Void
+    let addSensitive: (CredentialKind) -> Void
+    let importFile: () -> Void
     let edit: (UUID, Bool) -> Void
 
     private var keys: [CredentialMetadata] { model.credentials(in: item) }
@@ -367,8 +396,15 @@
               Text(subtitle).foregroundStyle(.secondary)
             }
             Spacer()
-            Button(action: addKey) {
-              Label(L("Add Key"), systemImage: "plus")
+            Menu {
+              Button(L("Add Key"), action: addKey)
+              Button(L("Credit card")) { addSensitive(.creditCard) }
+              Button(L("Website login")) { addSensitive(.login) }
+              Button(L("Recovery codes")) { addSensitive(.recoveryCodes) }
+              Divider()
+              Button(L("Import File…"), action: importFile)
+            } label: {
+              Label(L("Add Item"), systemImage: "plus")
             }
             .buttonStyle(.borderedProminent)
           }
@@ -382,7 +418,7 @@
           if keys.isEmpty {
             VStack(spacing: 8) {
               Text(L("No keys yet")).font(.headline)
-              Text(L("Drop a .env or key file here, or use Add Key."))
+              Text(L("Drop a .env or key file here, or use Add Item."))
                 .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, minHeight: 160)
@@ -726,7 +762,8 @@
               ? name : variable
             model.addCredential(
               label: name,
-              service: preset?.displayName ?? ProviderCatalog.inferService(fromEnvironmentKey: name),
+              service: preset?.displayName
+                ?? ProviderCatalog.inferService(fromEnvironmentKey: name),
               secret: Data(key.utf8),
               projectID: chosenProjectID,
               kind: preset?.defaultKind ?? .apiKey,
@@ -779,7 +816,9 @@
       }
       if let link = preset.settings.first(where: \.required)?.helpURL, let url = URL(string: link) {
         LabeledContent("") {
-          Button(preset.settings.count == 1 ? L("Where do I find this?") : L("Where do I find these?")) {
+          Button(
+            preset.settings.count == 1 ? L("Where do I find this?") : L("Where do I find these?")
+          ) {
             NSWorkspace.shared.open(url)
           }
           .buttonStyle(.link)
@@ -820,12 +859,16 @@
       VStack(alignment: .leading, spacing: 14) {
         Text(L("Export an Encrypted Backup")).font(.title2.bold())
         Text(
-          L("The backup holds all your projects and keys, encrypted with this password. Keep the file and the password somewhere safe, such as a password manager.")
+          L(
+            "The backup holds all your projects and keys, encrypted with this password. Keep the file and the password somewhere safe, such as a password manager."
+          )
         )
         .foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
         Text(
-          L("You can open it without AgentKeyBox: double-click the .dmg file and enter the password to see a folder per project with its .env and key files.")
+          L(
+            "You can open it without AgentKeyBox: double-click the .dmg file and enter the password to see a folder per project with its .env and key files."
+          )
         )
         .font(.callout)
         .fixedSize(horizontal: false, vertical: true)
@@ -1001,9 +1044,13 @@
               Text(language.displayName).tag(language)
             }
           }
-          Text(L("Menus that come from macOS, such as Edit and Window, switch the next time AgentKeyBox opens."))
-            .font(.caption)
-            .foregroundStyle(.secondary)
+          Text(
+            L(
+              "Menus that come from macOS, such as Edit and Window, switch the next time AgentKeyBox opens."
+            )
+          )
+          .font(.caption)
+          .foregroundStyle(.secondary)
         }
         Section(L("Startup")) {
           Toggle(
@@ -1024,14 +1071,18 @@
             L("Open AgentKeyBox automatically when a coding agent needs a key"),
             isOn: $model.opensWhenNeeded)
           Text(
-            L("When AgentKeyBox is closed, Claude Code, Codex, and akb open it in the menu bar instead of failing.")
+            L(
+              "When AgentKeyBox is closed, Claude Code, Codex, and akb open it in the menu bar instead of failing."
+            )
           )
           .font(.caption)
           .foregroundStyle(.secondary)
         }
         Section(L("Backup")) {
           Text(
-            L("Your keys are stored on this Mac only. An encrypted backup lets you restore them on a new Mac or after a repair.")
+            L(
+              "Your keys are stored on this Mac only. An encrypted backup lets you restore them on a new Mac or after a repair."
+            )
           )
           .font(.caption)
           .foregroundStyle(.secondary)
@@ -1068,6 +1119,12 @@
           }
         }
         Section(L("Security")) {
+          HStack {
+            Text(L("Private browser sessions: %@", "\(model.browserSessionCount)"))
+            Spacer()
+            Button(L("End Browser Access")) { model.closeAllBrowsers() }
+              .disabled(model.browserSessionCount == 0)
+          }
           Text(model.keychainStatus)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)

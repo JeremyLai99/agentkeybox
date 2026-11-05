@@ -66,7 +66,8 @@ final class BackupArchiveTests: XCTestCase {
       ])
 
     let env = EnvParser.parse(String(decoding: try XCTUnwrap(files["my-app/.env"]), as: UTF8.self))
-    XCTAssertEqual(env, ["STRIPE_SECRET_KEY": String(decoding: stripe, as: UTF8.self), "NOTE": tricky])
+    XCTAssertEqual(
+      env, ["STRIPE_SECRET_KEY": String(decoding: stripe, as: UTF8.self), "NOTE": tricky])
     XCTAssertEqual(files["my-app/env.txt"], files["my-app/.env"], "a copy Finder shows")
     XCTAssertEqual(files["_ios_app/AuthKey_ABC123DEF4.p8"], p8)
     XCTAssertEqual(
@@ -169,7 +170,7 @@ final class BackupArchiveTests: XCTestCase {
     XCTAssertThrowsError(try BackupArchive.contents(fromDataFile: Data("{}".utf8))) {
       XCTAssertEqual($0 as? BackupError, .notABackup)
     }
-    let newer = Data(#"{"format":"agentkeybox-backup","version":2}"#.utf8)
+    let newer = Data(#"{"format":"agentkeybox-backup","version":999}"#.utf8)
     XCTAssertThrowsError(try BackupArchive.contents(fromDataFile: newer)) {
       XCTAssertEqual($0 as? BackupError, .unsupportedVersion)
     }
@@ -183,6 +184,52 @@ final class BackupArchiveTests: XCTestCase {
   }
 
   #if os(macOS)
+    func testProtectedPayloadsSurviveEncryptedBackupAndRestoreConservatively() throws {
+      let folder = FileManager.default.temporaryDirectory
+        .appendingPathComponent("AgentKeyBoxProtectedBackupTest-\(UUID().uuidString)")
+      try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+      defer { try? FileManager.default.removeItem(at: folder) }
+      let card = SensitivePayload(
+        card: try StoredCard(
+          number: "4242424242424242", cardholder: "Synthetic backup card",
+          expirationMonth: 12, expirationYear: 2099))
+      var set = try RecoveryCodeSet(text: "backup-code-001\nbackup-code-002\nbackup-code-003")
+      _ = try set.reserveNext()
+      set.setStatus(.used, for: set.entries[1].id)
+      let codes = SensitivePayload(recoveryCodes: set)
+      let cardItem = CredentialMetadata(
+        label: "Card", service: "QA", kind: .creditCard,
+        payloadRevision: card.revision)
+      let codeItem = CredentialMetadata(
+        label: "Codes", service: "QA", kind: .recoveryCodes,
+        payloadRevision: codes.revision)
+      let contents = BackupContents(
+        projects: [], credentials: [cardItem, codeItem],
+        secrets: [
+          cardItem.id.uuidString: try card.encoded(), codeItem.id.uuidString: try codes.encoded(),
+        ])
+      let url = folder.appendingPathComponent("protected.dmg")
+      try BackupArchive.write(contents, password: password, to: url)
+      let diskBytes = try Data(contentsOf: url)
+      XCTAssertNil(diskBytes.range(of: Data("4242424242424242".utf8)))
+      XCTAssertNil(diskBytes.range(of: Data("backup-code-001".utf8)))
+      let opened = try BackupArchive.read(from: url, password: password)
+      XCTAssertEqual(opened, contents)
+      let restored = try SensitivePayload.decode(
+        SensitivePayload.restored(
+          try XCTUnwrap(opened.secrets[codeItem.id.uuidString]), kind: .recoveryCodes),
+        kind: .recoveryCodes)
+      XCTAssertEqual(
+        restored.recoveryCodes?.entries.map(\.status), [.needsReview, .used, .needsReview])
+      XCTAssertEqual(restored.revision, codeItem.payloadRevision)
+      // A failed interrupted-edit export cannot replace the last valid encrypted backup.
+      var mismatched = contents
+      mismatched.credentials[0].payloadRevision = UUID()
+      XCTAssertThrowsError(try BackupArchive.write(mismatched, password: password, to: url))
+      XCTAssertEqual(try Data(contentsOf: url), diskBytes)
+      XCTAssertEqual(try BackupArchive.read(from: url, password: password), contents)
+    }
+
     func testEncryptedDiskImageOpensOnlyWithThePassword() throws {
       let folder = FileManager.default.temporaryDirectory
         .appendingPathComponent("AgentKeyBoxBackupTest-\(UUID().uuidString)")
@@ -201,7 +248,8 @@ final class BackupArchiveTests: XCTestCase {
       // Read-only and compressed, so Finder opens its window after a double-click.
       let info = try BackupArchive.hdiutil(
         ["imageinfo", "-plist", "-stdinpass", url.path], password: password)
-      let plist = try PropertyListSerialization.propertyList(from: info, format: nil)
+      let plist =
+        try PropertyListSerialization.propertyList(from: info, format: nil)
         as? [String: Any]
       XCTAssertEqual(plist?["Format"] as? String, "UDZO")
 
@@ -220,8 +268,10 @@ final class BackupArchiveTests: XCTestCase {
       let mountPoint = folder.appendingPathComponent("open")
       try FileManager.default.createDirectory(at: mountPoint, withIntermediateDirectories: true)
       try BackupArchive.hdiutil(
-        ["attach", "-quiet", "-stdinpass", "-nobrowse", "-noautoopen", "-mountpoint",
-         mountPoint.path, url.path], password: password)
+        [
+          "attach", "-quiet", "-stdinpass", "-nobrowse", "-noautoopen", "-mountpoint",
+          mountPoint.path, url.path,
+        ], password: password)
       XCTAssertTrue(BackupArchive.isAttached(url))
       XCTAssertThrowsError(try BackupArchive.read(from: url, password: password)) {
         XCTAssertEqual($0 as? BackupError, .alreadyOpen)
