@@ -1,5 +1,9 @@
 # Roadmap
 
+Updated on 2026-10-26 with native protected JSON import acceptance and QA launch isolation checks for the unreleased increments. Checked baseline items describe existing implementation or historical release verification; new verification is recorded separately below and in SESSION_STATUS. See [SESSION_STATUS.md](SESSION_STATUS.md) for evidence and partial-completion details.
+
+The selected direction is approved agent use of sensitive data without exposing raw values to the agent. Typed card/recovery-code storage and controlled HTTPS field submission now exist in the working tree; restricted traditional browser login and recovery continuation also exist; real-provider sign-in validation and browser checkout remain open. See [PRODUCT.md](PRODUCT.md) for requirements and exclusions.
+
 ## P0 — public alpha gate
 
 - [x] Swift/SwiftUI macOS app skeleton
@@ -28,16 +32,17 @@
 - [x] encrypted backups that open without AgentKeyBox, and Remove Keys from Files
 - [x] agent guard: Claude Code deny rules and `AGENTS.md`/`CLAUDE.md` instructions, never loosening the user's rules
 
-## P1 — usability validation
+## Implemented after the original MVP
 
-- [ ] Cursor adapter
-- [ ] Antigravity / Gemini CLI adapter
-- [x] narrowly scoped session approvals ("don't ask again during this session"; same agent session, key, and listed host or exact command; 8-hour limit)
+- [x] session approvals (same agent session, project, key, and listed host or exact command; 8-hour limit); HTTP scope does not distinguish method, path, or body
 - [x] credential edit flow
-- [ ] search/filter
 - [x] menu-bar experience
-- [x] richer App Store Connect credential bundle metadata
-- [x] safer provider-specific HTTP operations
+- [x] active-session count and **Ask Every Time** in Settings and the menu bar
+- [x] App Store Connect / Supabase bundle metadata, validation, and grouping
+- [x] generic HTTPS broker with header substitution, host review, no redirects, and bounded/redacted responses
+- [x] missing-credential prompt (`request_credential`) with local entry and dashboard links
+
+The HTTP broker is not a set of provider-specific action adapters. Read/write/delete/payment semantics and operation-scoped HTTP grants remain future work. Existing provider presets and bundles are local metadata features, not provider account-management connectors.
 
 
 ## UI / UX productization
@@ -52,120 +57,77 @@ The product direction is described in [`UI_DIRECTION.md`](UI_DIRECTION.md). Stat
 - [x] simplified approval prompt with expandable command details
 - [x] first-class file credential cards
 - [x] provider-aware credential bundles
-- [ ] human-readable error and empty states (empty states done; some errors still show system text)
+- [x] first-run, empty-project, and empty-history states
+- [ ] finish human-readable error handling (some errors still show system text)
 
 Next: watch a new vibe coder install and set up the app without help, and fix where they get stuck. The goal is not simply to make the interface prettier. The goal is to make secrets infrastructure disappear behind a workflow that a vibe coder can understand immediately.
 
-## P2 — only after usage validates the workflow
+## Selected work — protected submission and browser increments, unreleased
 
-- [ ] GitHub Copilot
-- [ ] Cline
-- [ ] Roo Code
-- [ ] Windsurf
-- [ ] encrypted multi-Mac sync
-- [ ] mobile approval companion
-- [ ] team sharing / policy controls
+### Controlled use of more sensitive-data types
 
+- [x] typed protected payloads, safe agent-visible references, old-metadata compatibility, revision binding, and format-2 encrypted backups
+- [x] recovery-code text/file import and replacement, reservation persisted before send, issued/used/needs-review states, and conservative backup restore
+- [x] structured card storage and per-use approval bound to exact stored HTTPS URL, POST, encoding, field map, and item revision; no CVV or payment semantics
+- [x] controlled endpoint-submission executor with fixed outcomes, no response-body/header/redirect output, no browser insertion, and synthetic reflection/redirect tests
+- [x] implement a controlled local traditional-HTML login/task slice: protected login items, private WKWebView, native per-use approvals, constrained text/link tools, session ownership/expiry, and local termination
+- [x] add a local-command controlled-browser entry point for agents without persistent stdio MCP, with session/project binding and fixed output/error boundaries
+- [x] test a public demo website login with production TLS and preflight GitHub's login form without sending credentials; neither establishes GitHub sign-in/2FA compatibility
+- [x] isolated native App + Keychain + normal local authentication + MCP allowed-path acceptance on a public demo website, including protected-page read and close/rejection afterwards
+- [x] isolated native MCP denial and real-deadline timeout for login/card/recovery requests; pending-slot rejection through MCP and CLI; native CLI login denial and zero remaining browser sessions
+- [x] isolated native CLI approved login/read, session/project ownership, stale-link rejection, and closing a browser while navigation approval is pending; cancel the matching prompt and release the approval slot without a new decision
+- [x] implement restricted same-origin recovery-code continuation through MCP/CLI, a separate approval, exact stored endpoint binding, reservation before fill/POST, fixed challenge output and synthetic WebKit tests
+- [x] add repeatable isolated native recovery QA with a profile-scoped loopback certificate pin, synthetic Keychain read-back statuses, receiving-server counts, and MCP/CLI allow/deny/timeout/pending-close assertions; release excludes all QA-only paths
+- [x] isolated native MCP/CLI login reaches the fixed challenge, then separately approved recovery reaches the verified result; ordered server evidence confirms durable reservation before each unique code POST
+- [x] isolated ad-hoc native recovery continuation end-to-end: MCP/CLI success, denial, actual 120-second timeout, pending-close, authenticated selected-item edit, cancellation during LocalAuthentication, and same-profile crash/restart after durable receipt; zero remaining browser sessions
+- [x] distinguish native approval timeout/pending approval from unknown transport outcomes without returning arbitrary diagnostics; acceptance must match the exact native history decision
+- [x] prepare and locally install Developer ID signed 0.4.5 with existing provisioning/Keychain entitlements, verified helper and 0.4.4 rollback; no notarization/publication
+- [x] signed local 0.4.5 + data-protection Keychain + native-approved public-demo login/read/close through installed MCP; expected protected-page marker, exact history, closed-read rejection, zero sessions and disposable-item cleanup (2026-10-27)
+- [ ] signed release sensitive-use acceptance and real private-account compatibility; extend beyond static same-origin forms only after validating every new observation path
+  - The signed public-demo login slice passed. Signed card/recovery endpoint use with production PKI and real private-account/GitHub/checkout workflows remain open; the candidate is not notarized or published.
+- [x] block new types from generic HTTP, commands, environment/temp-file delivery, and `akb run`; recognize protected JSON envelopes before generic import
+- [x] cancel the selected item's pending endpoint approval/authentication on native edit/delete, preserve already-started operation outcomes, and guard against late asynchronous decision completion; add storage lifecycle drivers and real encrypted typed-backup regression coverage
+- [x] isolated native endpoint pending-edit/authentication cancellation, real interrupted card save/restart, approved mismatch rejection, code-status editing/replacement and encrypted backup export/wrong-password/duplicate-import/restore acceptance; retain conservative restored statuses
+- [x] complete native original/renamed protected-JSON reimport through the file picker, exact scoped Keychain readback and opened-backup/original-file exposure review
+- [x] reject QA app launches without their matching profile UUID before production vault/helper/broker access; cover Launch Services reopening without the runner environment
+- [x] isolated native `submit_sensitive_fields` success and abnormal outcomes: selected card fields in form/JSON, code receipt/HTTP rejection/blocked redirect/lost response, and same-profile crash/restart after durable receipt; exactly one POST per approval, no reflected output or automatic code reuse
 
----
+Protected endpoint submission returns transport outcomes; the separate controlled browser now maintains private local login sessions and constrained page/link access. Restricted traditional recovery forms now have a separate approved continuation; GitHub authentication/recovery compatibility and checkout automation remain incomplete. Storage/import alone does not complete these features. A normal browser autofill followed by an agent-readable page is insufficient. Local integration work is in scope; provider-side payment or account-management services are not.
 
-## Credential Lifecycle / Provider Connectors
+### Agent compatibility selected on 2026-10-24
 
-AgentKeyBox may expand beyond storing and approving existing credentials into helping users acquire and manage credentials when an AI coding agent needs them.
+- [x] verify official interfaces for dots / ChatGPT Work, Meta Muse, Grok Bot and Claude Duet, recording evidence and uncertainty in [AGENT_COMPATIBILITY.md](AGENT_COMPATIBILITY.md)
+- [x] provide the `akb browser` local CLI path without exporting credentials, cookies, or scripts
+- [ ] in-product acceptance on each new host; the user currently has only Codex and Claude Code, so the other products have no account-level test evidence
+- [ ] resolve pure-cloud transport and provider-browser integration separately; no remote MCP service, public tunnel, connector submission or partner integration is implemented
 
-### Product idea
+### Approval precision and usability
 
-When an agent requests a capability and no matching credential exists, AgentKeyBox can:
+- [ ] add operation/resource constraints for supported local execution paths; do not infer safety from HTTP method or the agent's purpose text alone
+- [ ] credential search/filter
+- [ ] observe a new user's setup and approval flow, then address demonstrated usability issues
 
-1. detect that the credential is missing
-2. identify the relevant provider
-3. determine whether the provider supports credential creation programmatically
-4. ask the user for explicit approval
-5. either:
-   - create the credential through an official provider API, or
-   - guide the user through the provider's official creation flow
-6. save the resulting credential immediately into AgentKeyBox
-7. make it available to the approved agent workflow
-8. later support rotation and revocation where the provider allows it
+## Earlier backlog — unimplemented, not selected for this work
 
-```text
-Agent needs capability
-        ↓
-Credential exists?
-   ┌────┴────┐
-  Yes        No
-   ↓          ↓
-Approve    Provider connector
-and use       ↓
-          Can create automatically?
-          ┌─────────┴─────────┐
-         Yes                  No
-          ↓                    ↓
-    Ask user approval     Guide user through
-          ↓               official provider flow
-    Create + store              ↓
-          └──────────┬──────────┘
-                     ↓
-                  Use safely
-```
+- Cursor adapter
+- Antigravity / Gemini CLI adapter
+- GitHub Copilot, Cline, Roo Code, and Windsurf adapters
+- persistent **Always Allow for Project** (session controls are already implemented)
+- credential notes and further provider metadata beyond the current bundles
+- optional multi-device sync, mobile approval, and team features
 
-### Long-term lifecycle
+Standalone plaintext `.env` export is not implemented. The existing encrypted backup already contains human-readable `.env` / `env.txt` copies; its recovery use case does not require adding a new plaintext-export feature. New export paths must preserve the intended agent boundary.
 
-```text
-Create / Acquire
-      ↓
-Store
-      ↓
-Approve / Use
-      ↓
-Rotate
-      ↓
-Revoke
-```
+## Removed from the selected direction
 
-### Security principle
+The earlier **Credential Lifecycle / Provider Connectors** proposal is superseded by the 2026-10-22 scope decision. Do not schedule provider-side credential creation, OAuth account connectors, GitHub App token issuance/permission management, automatic rotation/revocation, card issuance, payment processing, or provider-enforced spending limits as the next phase.
 
-AI agents may request a capability, but they must not independently decide to create or grant themselves high-privilege credentials.
+Keep existing provider presets, dashboard links, manually supplied credentials, and approved HTTP calls. Importing a GitHub recovery-code file and using a card through a controlled local workflow do not imply building the excluded services.
 
-AgentKeyBox should translate the requested task into the smallest reasonable credential scope and require human approval before credential creation or privilege escalation.
+## Validation still open
 
-### Provider connector model
+- A real Intel Mac run remains unverified; Rosetta coverage is recorded separately.
+- Broker replay rejection and `.p8` temporary-file cleanup have historical unit-test evidence, but their through-app scenarios remain unverified in the release checklist.
+- Native browser allowed-path and login/card/recovery refusal/timeout now have isolated ad-hoc App/MCP evidence. Restricted browser recovery also passed native MCP/CLI success, separate approval, edit/authentication cancellation and durable reservation across a real QA process restart. Native CLI approved login/read/close, denial, ownership/stale-link rejection and pending-navigation cancellation also passed. Seven protected-field endpoint cases passed native approval, exact selected-field receipt, fixed outcomes and reservation retention across rejected/redirected/lost responses and restart. Endpoint authentication cancellation, pending edits, real interrupted saves, native code replacement and encrypted backup/restore also passed on 2026-10-26. Four original/renamed protected JSON imports, exact synthetic Keychain readback and exposure review passed on 2026-10-26. Developer ID signed local 0.4.5 public-demo login/read/close passed with the data-protection Keychain on 2026-10-27; its disposable item was removed and original metadata restored byte-identically. Successful readable follow, real provider workflows, and signed card/recovery use with production PKI remain open. The public demo's Logout link leads to another password form, which current observation policy intentionally refuses.
 
-Each provider connector should know:
-
-- how credentials are created
-- whether creation can be automated through an official API
-- required permissions/scopes
-- relevant metadata
-- expiration rules
-- rotation support
-- revocation support
-- whether interactive login / MFA is required
-
-Potential future connectors include:
-
-- GitHub
-- Stripe
-- Supabase
-- OpenAI
-- Apple App Store Connect
-- Cloudflare
-- Vercel
-- Firebase / Google Cloud
-
-Provider support must be verified against official provider APIs and security requirements before implementation.
-
-### Roadmap placement
-
-This is **not part of the initial MVP**.
-
-It becomes a priority only after AgentKeyBox validates the core behavior:
-
-> Agent requests credential access → user approves → workflow continues more easily than copy/paste.
-
-After that validation, the first lifecycle experiment should support **one provider only**, chosen based on:
-
-- clear official API support
-- common usage among AI-first developers
-- low risk of privilege escalation
-- measurable reduction in setup friction
+Use [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) for historical evidence and [MACOS_TEST.md](MACOS_TEST.md) for repeatable runtime checks. This documentation reconciliation does not check off those remaining tests.

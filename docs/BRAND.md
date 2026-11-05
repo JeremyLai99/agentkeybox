@@ -314,7 +314,7 @@ Current selected visual reference:
 
 `assets/brand/agentkeybox-app-icon.png`
 
-This is the current visual reference and product-direction asset. It is **not yet the final vector/master production asset**.
+This is the production raster master for 128 px and larger, as described below. Dedicated simplified/tiny SVG masters provide smaller sizes. The production asset set and its app integration already exist; a full vector recreation of the large illustration is not a release prerequisite.
 
 
 ---

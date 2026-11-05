@@ -89,3 +89,13 @@ This is what **Import…** reads. It is UTF-8 JSON with sorted keys:
 The project folders are a readable copy of the same data. Import ignores them, so changing a `.env` inside the disk does not change what Import restores.
 
 `Tests/AgentKeyBoxCoreTests/BackupArchiveTests.swift` checks this layout, `.env` lines read back unchanged, and a real encrypted image that opens only with its password.
+
+## Planned sensitive-data extensions
+
+The unreleased increment adds backup format **2** when any `creditCard`, `recoveryCodes`, or `login` item is present. Backups with only existing developer credentials remain version 1. The current reader accepts both; old applications reject version 2. Do not downgrade an installation after adding the new metadata kinds: an older reader cannot decode them. Keep a pre-upgrade backup if a rollback is needed.
+
+Each structured payload is a JSON object with `version: 1`, a `revision` UUID matching metadata `payloadRevision`, and exactly one of `card`, `recoveryCodes`, or `login`. A missing payload or revision mismatch stops export/import. A card contains `number`, `cardholder`, `expirationMonth`, and `expirationYear`; there is no CVV field. A recovery-code set contains a `generation` UUID and `entries` with stable entry UUID, raw value, and `available` / `issued` / `used` / `needsReview` status. A login contains `username` and `password`; its public sign-in page is the optional metadata `loginURL`. All are Keychain secret bytes in the running app, never non-secret metadata or settings.
+
+Inside the encrypted volume, these payloads are independently recoverable as `<label>.card.json`, `<label>.recovery-codes.json`, and `<label>.login.json`; the hidden data file holds the same payloads as Base64 secret bytes. They are never flattened into `.env` or `env.txt`, including when imported metadata contains an environment variable or settings. The reader validates schema version and payload kind before import.
+
+Import still skips item IDs already present. For newly restored recovery sets, **all non-used entries become `needsReview` before Keychain storage**; used entries stay used. Availability in a backup is not evidence of present validity. A local authenticated status correction is required before reuse. This does not synchronize with GitHub or validate a regenerated set remotely. User-directed backup recovery remains separate from agent execution; do not give an agent access to decrypted backup files.

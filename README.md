@@ -6,6 +6,8 @@
 
 Store API keys in your macOS Keychain, organize them by project, and approve access requests from Claude Code or Codex through MCP.
 
+The product goal is to let agents complete approved tasks using sensitive data while keeping raw values out of the agent/model's readable context. Today's alpha supports developer credentials with the execution limits described below. The working tree also includes an unreleased, experimental credit-card/recovery-code path: locally configured HTTPS field submission with per-use approval and fixed results. A second unreleased path adds website-login items and an app-owned browser for traditional same-origin HTML sign-in, constrained page text, and individually approved links. A restricted traditional recovery-code form can continue after a second approval, with its code saved as issued before private submission. JavaScript sign-in, SSO, TOTP and browser checkout remain unsupported; isolated ad-hoc native MCP/CLI recovery success has passed; GitHub recovery and team-signed secret-use validation remain unverified; see [controlled browser use](docs/INTEGRATION.md#controlled-browser--unreleased), [the integration contract](docs/INTEGRATION.md#protected-field-submission--unreleased), [product requirements](docs/PRODUCT.md), and [roadmap](docs/ROADMAP.md).
+
 > **AI asks. You approve.**
 
 AgentKeyBox is an experimental macOS utility for vibe coders, indie developers, and AI-first builders who do not want API keys scattered across `.env` files, notes, downloads, shell history, or chat windows.
@@ -103,14 +105,14 @@ This is still **not a hard sandbox**: a command you approve can deliberately tra
 - `.p8`, `.pem`, and JSON credential import
 - provider presets for common developer services
 - native Allow / Deny approval flow
-- Touch ID (or login password) confirmation for every approval
+- Touch ID (or login password) confirmation for interactive approvals; opted-in session grants reuse the approved context
 - protected temporary-file delivery for file credentials
 - command timeout and output-size limits
 - raw/common-encoding output redaction
 - broker authentication, freshness checks, and replay protection
 - `akb doctor` and one-command agent setup
 - provider bundles: an App Store Connect key with its Key ID and Issuer ID, a Supabase key with its project URL, shown as one card
-- "don't ask again during this session" for repeated identical requests
+- "don't ask again during this session" for the same agent session, project, key, and listed HTTP host or exact command, for up to eight hours; HTTP methods/paths/bodies are not separately scoped
 - English and Traditional Chinese interface
 
 ## Build from source
@@ -188,11 +190,11 @@ AgentKeyBox sends one HTTPS request itself, after approval, and returns the stat
 }
 ```
 
-Rules, enforced before the user is even asked:
+Request validation and execution rules:
 
 - https only; no credentials in the URL
 - `{{secret}}` only in header values, never in the URL or body
-- the host must match the credential's allowed hosts (provider presets prefill them, e.g. `api.stripe.com`, `*.supabase.co`); credentials without an allowlist are flagged in the prompt
+- the host is checked against the credential's list (presets prefill it, e.g. `api.stripe.com`, `*.supabase.co`); an unlisted host shows a warning and defaults to Deny, but can be explicitly allowed and optionally remembered; credentials without a list are labeled unrestricted
 - redirects are not followed, so the credential header is never replayed elsewhere
 - 30-second timeout, 128 KiB response limit, secret redacted from the response
 
@@ -272,7 +274,7 @@ AgentKeyBox is a standard [MCP](https://modelcontextprotocol.io) server that run
 - **Command:** `~/Library/Application Support/AgentKeyBox/bin/agentkeybox-mcp` (write out the full path if the agent does not expand `~`)
 - **Environment variables:**
   - `AGENTKEYBOX_AGENT_ID` — a short ID, e.g. `gemini-cli`
-  - `AGENTKEYBOX_AGENT_NAME` — the name shown in approval prompts, e.g. `Gemini CLI`. Without these two, prompts say "Coding Agent".
+  - `AGENTKEYBOX_AGENT_NAME` — the name shown in approval prompts, e.g. `Gemini CLI`. In the unreleased build, an unrecognized client defaults to "Local Agent" (Codex environments can be detected separately). These labels do not authenticate the vendor.
   - `AGENTKEYBOX_PROJECT_PATH` — the project folder, for agents that do not start MCP servers in the project folder. Otherwise AgentKeyBox uses the folder the helper starts in; outside your projects, the agent sees only Global keys.
 
 Many agents use a JSON shape like the one below; check your agent's documentation for the exact file and key names.
@@ -293,7 +295,7 @@ Many agents use a JSON shape like the one below; check your agent's documentatio
 
 Gemini CLI, GitHub Copilot in VS Code, Cursor, Windsurf, Cline, and Meta's Muse Code support local MCP servers and should work this way, but AgentKeyBox has **not been tested** with them yet.
 
-Agents that run in the cloud, such as OpenAI Dots, the Meta Muse app, or Codex cloud tasks, cannot use AgentKeyBox. The helper only talks to the AgentKeyBox app on the same Mac, so your keys never leave your computer. This is deliberate.
+The helper talks to AgentKeyBox on the same Mac. A cloud-only agent cannot connect directly to its stdio transport. Some products now offer connected-computer execution: the unreleased `akb browser` CLI provides a controlled local entry point for those environments. This does not sign in the agent's own cloud browser. See the [dated compatibility matrix](docs/AGENT_COMPATIBILITY.md) for dots / ChatGPT Work, Muse, Grok Bot, and Claude Duet; none of those product integrations has been certified by an in-product AKB run yet. Native approval and local authentication still apply.
 
 ## Provider presets
 

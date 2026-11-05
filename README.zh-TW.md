@@ -6,6 +6,8 @@
 
 把 API 金鑰存在本機 macOS 鑰匙圈，依專案整理好。Claude Code 或 Codex 透過 MCP 請求使用金鑰時，會先問你，你按「允許」才會用到。
 
+產品目標是：**讓 agent 在你的核准下使用敏感資料完成任務，同時不讓原始值進入 agent／模型可讀取的範圍。** 目前 alpha 支援開發用憑證，仍有下方說明的執行邊界；目前工作目錄另已加入尚未發布的實驗功能：信用卡與 recovery codes 可經逐次核准，由 App 將所選欄位送到使用者設定的 HTTPS 網址，只回傳固定格式的結果。另已加入「網站登入」與 App 管理的私有瀏覽器，支援傳統同站帳密表單、受限頁面文字及逐次核准的同站連結；符合限制的傳統復原碼表單可經另次核准續登，送出前先記錄該碼已發出。尚未支援 JavaScript 登入、SSO、TOTP 或結帳；隔離 ad-hoc 原生 MCP／CLI 復原碼成功流程已通過，GitHub 復原碼與正式簽署版本的機密使用仍待實測。詳見[受控瀏覽器](docs/INTEGRATION.md#controlled-browser--unreleased)、[介接規格](docs/INTEGRATION.md#protected-field-submission--unreleased)、[產品需求](docs/PRODUCT.md)與[開發方向](docs/ROADMAP.md)。
+
 > **AI 開口問，你來決定。**
 
 適合 vibe coder、獨立開發者，以及不想讓 API 金鑰散落在 `.env` 檔、筆記、下載資料夾、終端機紀錄或聊天視窗裡的人。
@@ -79,7 +81,7 @@ AgentKeyBox 提供的是標準的 [MCP](https://modelcontextprotocol.io)（stdio
 - **指令：** `~/Library/Application Support/AgentKeyBox/bin/agentkeybox-mcp`（如果代理不認得 `~`，請寫出完整路徑）
 - **環境變數：**
   - `AGENTKEYBOX_AGENT_ID`：簡短的代號，例如 `gemini-cli`
-  - `AGENTKEYBOX_AGENT_NAME`：核准視窗上顯示的名稱，例如 `Gemini CLI`。沒設定這兩個的話，視窗會顯示「Coding Agent」。
+  - `AGENTKEYBOX_AGENT_NAME`：核准視窗上顯示的名稱，例如 `Gemini CLI`。未發布版對無法辨識的 client 預設顯示「Local Agent」（Codex 環境另有辨識）。這些名稱是標籤，不代表已認證供應商身分。
   - `AGENTKEYBOX_PROJECT_PATH`：專案資料夾。如果代理不是從專案資料夾啟動 MCP，就用這個指定；不設定時，AgentKeyBox 會用連接程式啟動時所在的資料夾判斷，不在任何專案裡的話，代理只看得到「通用金鑰」。
 
 很多代理的設定長得像下面這樣，但確切的檔案位置和欄位名稱請以該代理的官方文件為準：
@@ -100,7 +102,7 @@ AgentKeyBox 提供的是標準的 [MCP](https://modelcontextprotocol.io)（stdio
 
 Gemini CLI、VS Code 裡的 GitHub Copilot、Cursor、Windsurf、Cline，以及 Meta 的 Muse Code 都支援本機 MCP 伺服器，照這個方式應該可以接上，但 AgentKeyBox **還沒有實際測試過**。
 
-在雲端執行的代理，例如 OpenAI 的 Dots、Meta 的 Muse App、Codex 的雲端任務，沒辦法使用 AgentKeyBox。連接程式只會和同一台 Mac 上的 AgentKeyBox 溝通，你的金鑰永遠不會離開你的電腦。這是刻意的設計。
+連接程式只和同一台 Mac 上的 AgentKeyBox 溝通，純雲端 agent 不能直接連本機 stdio MCP。部分產品現在提供已連接電腦的本機執行能力；未發布的 `akb browser` CLI 提供這類環境可評估的受控入口，仍需原生核准與本機驗證，也不會替 agent 自己的雲端瀏覽器登入。dots／ChatGPT Work、Muse、Grok Bot、Claude Duet 的官方介面與待驗收項目整理在[接入相容性表](docs/AGENT_COMPATIBILITY.md)，目前尚未在這四個產品內完成 AKB 實測。
 
 ## 它怎麼保護你的金鑰
 

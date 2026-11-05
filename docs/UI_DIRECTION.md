@@ -2,6 +2,10 @@
 
 ## Purpose
 
+Reconciled with 0.4.0 source on 2026-10-22. Existing surfaces and planned changes are distinguished below. Wireframes, names, IDs, and usage counts in this document are illustrative design examples, not exact screenshots or measured usage.
+
+The product goal is **approved agent use of sensitive data without exposing raw values to the agent**. New credit-card and recovery-code experiences must include a controlled use path; masked storage and personal copy buttons alone do not complete them. See [PRODUCT.md](PRODUCT.md).
+
 AgentKeyBox should not feel like an enterprise secrets manager or developer administration console.
 
 The long-term product direction is:
@@ -12,13 +16,13 @@ The user should understand the product without knowing terms such as RBAC, crede
 
 The core interaction remains:
 
-> **Import once → organize by project → AI asks → user approves.**
+> **Import → organize → agent requests an operation → user approves → AgentKeyBox uses the data → agent receives a safe result.**
 
 ---
 
 ## 1. Information architecture
 
-The product should become **project-centric**, not credential-centric.
+The implemented app is **project-centric**, with a Global keys section for shared credentials. Preserve that structure while evaluating how new account/card items fit the tasks that use them.
 
 Primary hierarchy:
 
@@ -41,7 +45,7 @@ rather than:
 
 ### Main application structure
 
-Recommended macOS layout:
+Illustrative layout (implemented navigation uses a project/global sidebar, cards, and agent connection controls in setup/Settings):
 
 ```text
 ┌──────────────────────┬───────────────────────────────────┐
@@ -63,7 +67,7 @@ Recommended macOS layout:
 
 ## 2. Onboarding
 
-The first-run experience should avoid configuration-heavy screens.
+The current onboarding starts with dropping/choosing a project folder, scanning supported files, and one Set Up confirmation that can also connect installed agents. The steps below describe the information users need, not four additional screens still waiting to be built.
 
 ### Step 1 — explain value
 
@@ -149,7 +153,7 @@ Key ID
 [ ABC123 ]
 
 Issuer ID
-[ optional ]
+[ required for this credential ]
 
 [ Save Securely ]
 ```
@@ -234,12 +238,14 @@ Create a test checkout session
 [Deny]                 [ Allow Once ]
 ```
 
-The default view should answer only:
+The current default view answers:
 
 1. Who is asking?
 2. Which credential?
 3. Which project?
 4. Why?
+
+HTTP prompts also show the destination. Agent-provided purpose text is labeled **Agent's reason** and quoted. Eligible unflagged requests offer **Don't ask again during this session**; for HTTP this currently covers a listed host, not a single API action. The unreleased card/recovery-code prompt shows an exact POST destination and complete field map, defaults to Deny, and offers no session grant. Browser sign-in and restricted recovery continuation now have separate native prompts; payment semantics remain future work.
 
 ### Technical details
 
@@ -309,11 +315,7 @@ They should be compiled only for debug/development builds or placed behind a dev
 
 ## 7. Provider-aware UX
 
-Provider presets should evolve beyond autofilling labels.
-
-AgentKeyBox should eventually recognize provider-specific credential bundles.
-
-Examples:
+App Store Connect and Supabase bundles already group a key with local companion metadata, validate required fields, and display those fields in one card/editor. This does not require provider-side account management. The scopes below distinguish implemented fields from possible extensions.
 
 ### Apple App Store Connect
 
@@ -322,8 +324,9 @@ Credential bundle
 - .p8 private key
 - Key ID
 - Issuer ID
-- Team ID
 ```
+
+Implemented. Team ID is not a current preset field.
 
 ### Supabase
 
@@ -334,6 +337,8 @@ Credential bundle
 - service role key
 ```
 
+Implemented grouping/validation through `ProviderCatalog`, `ProviderBundles`, and `ProjectScanner`.
+
 ### Firebase / Google
 
 ```text
@@ -343,15 +348,17 @@ Credential bundle
 - client email
 ```
 
+Partial: service-account JSON import and a label inferred from its project ID exist. A structured project-ID/client-email bundle editor is not implemented; the block above is an unselected extension idea.
+
 The product should represent the thing the user recognizes ("App Store Connect credential") rather than expose every field as an unrelated secret.
 
 ---
 
 ## 8. Menu bar direction
 
-After the main workflow is validated, AgentKeyBox should support a lightweight menu bar experience.
+The lightweight menu bar is implemented. It shows pending requests, recent decisions, active-session count and **Ask Every Time**, plus Open and Quit actions.
 
-Potential menu:
+Illustrative current menu:
 
 ```text
 AgentKeyBox
@@ -363,10 +370,11 @@ Claude Code → Stripe · Allowed
 Codex → OpenAI · Allowed
 
 Open AgentKeyBox
-Lock Vault
+Ask Every Time (when session grants exist)
+Quit AgentKeyBox
 ```
 
-Pending agent requests should be accessible quickly without requiring the main window to remain open.
+Pending requests can be reopened from the menu, and approval panels work with the main window closed. **Lock Vault** from the old sketch is not an implemented action.
 
 ---
 
@@ -378,7 +386,7 @@ Prefer:
 
 - "Claude Code wants to use Stripe"
 - "Allow once"
-- "Always allow for MyApp"
+- "Don't ask again during this session"
 - "Import credential files"
 
 Avoid exposing implementation language unless the user asks for details.
@@ -403,9 +411,9 @@ Most approvals and credential organization should be tied to the project the use
 
 ## 10. UI roadmap
 
-### Current prototype
+### Implemented baseline
 
-The existing UI is intentionally functional and engineering-oriented.
+The current project-centric UI includes setup, cards, editing, approvals, Settings, and a menu bar. It is beyond the original engineering-only prototype; remaining usability work should be based on observed problems.
 
 It currently validates:
 
@@ -415,9 +423,9 @@ It currently validates:
 - approval flow
 - access history
 
-### Public alpha UI target
+### Previously planned and now implemented
 
-Before wider public alpha:
+Confirmed in the 0.4.0 source:
 
 - [x] project-centric primary navigation
 - [x] drag-and-drop import
@@ -425,18 +433,35 @@ Before wider public alpha:
 - [x] agent connection moved into onboarding/settings
 - [x] production UI removes simulation/debug controls
 - [x] simplified approval sheet with expandable technical details
-- [ ] dedicated file credential cards
-- [ ] empty states and human-readable errors
+- [x] type-aware file credential cards with metadata/attention states
+- [x] first-run, empty-project, and empty-history states
 - [x] credential edit view
+- [x] menu bar with pending requests and recent decisions
+- [x] session approval checkbox, active-session count, and **Ask Every Time**
+- [x] App Store Connect / Supabase bundles
 
-### After workflow validation
+### Selected follow-up work
 
-- [ ] menu bar experience
-- [ ] session/project approval management UI
-- [ ] richer provider bundles
+- [ ] complete human-readable errors (some paths still show system text)
 - [ ] search/filter
-- [ ] credential lifecycle / provider connector UI
-- [ ] optional sync and multi-device surfaces
+- [x] native card and recovery-code import/edit surfaces with safe agent-visible references (unreleased)
+- [x] per-use exact-endpoint/field-map approvals and fixed transport outcomes; task-specific outcomes remain future work
+- [x] recovery-code reservation, issued/used/needs-review states, local corrections, and whole-set replacement
+- [ ] validate local execution and all agent observation paths before advertising agent support
+
+Persistent project approvals, additional provider fields, and sync/multi-device surfaces remain unimplemented, unselected backlog. Provider-side credential lifecycle/connectors are excluded from the selected direction. See [ROADMAP.md](ROADMAP.md).
+
+### New sensitive-data interactions — current increment and remaining target
+
+The working tree adds **Add Item → Credit card / Recovery codes**, native protected-field forms, paste/file code import, and a user-configured exact submission URL. Card number/cardholder use secure fields; recovery-code values are never listed, only numbered entries and local status. Editing existing items authenticates, and changing code status also requires a deliberate confirmation. No personal copy/export-to-agent button is added. The interface distinguishes standalone endpoint submission from browser recovery continuation. For a recovery set, the destination must exactly match the trusted form action; issued codes are not automatically retried. Checkout automation is unsupported.
+
+The remaining complete-task target is:
+
+For a card, the agent requests use by reference. The approval identifies the selected card, target, fields, and action without showing the full value to the agent. If submitting a payment is part of that action, bind the approval to its transaction details. Return success, failure, or a request for user intervention without raw fields. Ordinary page filling is insufficient if the agent can read the field, page scripts, accessibility tree, or screenshots afterward.
+
+For a recovery-code set, show the account and locally recorded status. An approved login/recovery operation reserves one code for controlled use. Display **outcome unknown** when submission cannot be confirmed; copying, issuing, or submitting a code does not by itself prove it was consumed. User corrections and whole-set replacement remain local actions, with no promise of remote synchronization.
+
+Manual viewing/copying can be auxiliary user actions. The defining experience remains completing an agent-requested task without returning the sensitive values to the agent.
 
 ---
 
@@ -464,3 +489,12 @@ Key constraints:
 - preserve rounded, approachable, macOS-native geometry
 - the agent represents a requester, not the owner of the credential
 - prefer SF Symbols for ordinary controls instead of creating unnecessary custom icons
+
+
+## Website login and private browser (unreleased, 2026-10-23)
+
+Add Item now includes **Website login**. The native form asks for a safe name, project, sign-in page, username and password; it does not ask users to discover form selectors or a submission endpoint. The name and website are public metadata. Username/password use secure inputs and authenticated editing.
+
+A browser login prompt names the selected item and the actual same-origin submission destination. It explains that the agent can subsequently read account-page text, offers no standing approval, and defaults to Deny. Each same-site link navigation has a separate approval because navigation may affect account data. Settings shows the number of private browser sessions and End Browser Access; the menu bar also offers termination while sessions exist.
+
+The browser has no visible webpage or arbitrary browser-control interface. A supported traditional recovery form returns fixed `recoveryCodeRequired` text with no website content or links. Its new approval names the website login, selected recovery set and actual POST destination, defaults to Deny, and explains reservation before submission and no automatic reuse. Unsupported JS/SSO/TOTP/challenge forms show a bounded error. Do not present `pageReady` as proof of authentication, `issued` as confirmed consumption, or local termination as logout/revocation on every device. Later browser/payment UX must retain these approval and observation boundaries.

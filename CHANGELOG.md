@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+- Editing or deleting a protected item now cancels its pending endpoint approval/authentication immediately, while already-started submissions keep their actual outcome. Added isolated cancellation/edit/crash acceptance tools and a real encrypted typed-backup regression covering conservative code restoration and preservation of the last valid backup after a revision-mismatch failure.
+- Added isolated native protected-field endpoint acceptance with normal approval/authentication and a DEBUG-only exact-certificate loopback fixture. Seven cases passed card form/JSON submission, code receipt/rejection/redirect/lost response and durable reservation across process restart, with one POST per approval and fixed agent-visible outcomes. Production TLS and installed builds are unchanged; provider payment/sign-in success is not implied.
+- Added isolated native recovery acceptance tooling: DEBUG-only loopback HTTPS with an exact per-run certificate pin, unchanged native authentication, synthetic Keychain status read-back before POST, and strict MCP/CLI outcome checks. The isolated native suite passed MCP/CLI recovery success, denial, real timeout, pending/edit/authentication cancellation and durable reservation across an interrupted submission/restart. No system-trust change or QA code is included in release builds.
+- Closing a private browser now cancels the matching pending native approval immediately, including the CLI close path. Added isolated native CLI login/read, session/project ownership, stale-link and pending-navigation cancellation checks, plus WebKit navigation-revocation coverage.
+- Protected MCP tools and the browser CLI now distinguish a pending approval from a native approval timeout using two fixed, allowlisted messages; transport failures retain unknown-outcome handling without raw diagnostics.
+- Added restricted browser recovery continuation through `browser_recover` / `akb browser recover`: fixed challenge state, separate native approval, exact configured form-action binding, and a code persisted as issued before private submission. Synthetic WebKit coverage includes failure/redirection/revocation and reflection filtering; isolated ad-hoc native approval is verified; team-signed secret use and GitHub compatibility remain unverified.
+- Native QA covers synthetic card/recovery refusal cases and distinguishes actual denial, timeout, concurrency rejection and accidental approval using per-request history. Added offline regression checks so transport failures or unrelated history cannot pass acceptance.
+- Added `akb browser list/login/read/follow/recover/close` for agents with local-command access, with project/session ownership, native per-use approval, and no raw browser state. New host compatibility is documented with official sources; dots, Work, Muse, Grok Bot and Duet remain unverified in-product.
+- Added opt-in production-TLS live tests against a public demo login and GitHub's login form (preflight only), plus an isolated DEBUG native QA runner. Fixed ad-hoc Keychain capability detection so an unentitled development app uses the existing legacy storage path.
+- Added unreleased website-login items and a private local browser: per-use native approval, same-origin HTML form sign-in, constrained text/link MCP tools, local termination and 15-minute session expiry. No JS login, SSO, TOTP or checkout; recovery continuation is limited to the traditional forms described above.
+- Typed credit-card and recovery-code storage in Keychain, native English/Traditional Chinese forms, code-file import, reservation/status/replacement handling, and format-2 encrypted backup restore. No CVV storage.
+- Experimental `submit_sensitive_fields`: one approved POST to a user-configured exact HTTPS endpoint, selected field placeholders, and fixed transport outcomes. No raw response content, redirect following, browser cookies, or session grants. New types are excluded from generic HTTP, commands, temporary files, and `akb run`.
+- Payload revisions prevent use of mismatched metadata after an interrupted edit; protected JSON envelopes cannot silently become generic credentials.
+- Browser checkout, GitHub sign-in, and provider-specific task success remain unimplemented. No new provider-management service is introduced.
+
 ## 0.4.0 — alpha
 
 First release meant for people to download: a notarized, universal app with a project-centric window, plain-language approvals, provider bundles, English and Traditional Chinese, and connections that survive moving or updating the app.
