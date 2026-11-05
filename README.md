@@ -293,9 +293,9 @@ Many agents use a JSON shape like the one below; check your agent's documentatio
 }
 ```
 
-Gemini CLI, GitHub Copilot in VS Code, Cursor, Windsurf, Cline, and Meta's Muse Code support local MCP servers and should work this way, but AgentKeyBox has **not been tested** with them yet.
+Gemini CLI, GitHub Copilot in VS Code, Cursor, Windsurf, and Cline support local MCP servers and should work this way, but AgentKeyBox has **not been tested** with them yet.
 
-The helper talks to AgentKeyBox on the same Mac. A cloud-only agent cannot connect directly to its stdio transport. Some products now offer connected-computer execution: the unreleased `akb browser` CLI provides a controlled local entry point for those environments. This does not sign in the agent's own cloud browser. See the [dated compatibility matrix](docs/AGENT_COMPATIBILITY.md) for dots / ChatGPT Work, Muse, Grok Bot, and Claude Duet; none of those product integrations has been certified by an in-product AKB run yet. Native approval and local authentication still apply.
+The helper talks to AgentKeyBox on the same Mac. A cloud-only agent cannot connect directly to its stdio transport. The unreleased `akb browser` CLI gives an agent that can run commands on the same Mac a controlled entry point, with native approval and local authentication. It does not sign in the agent's own cloud browser. See [the command reference](docs/INTEGRATION.md#using-the-browser-from-a-local-command--unreleased).
 
 ## Provider presets
 

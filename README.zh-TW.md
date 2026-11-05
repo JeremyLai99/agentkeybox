@@ -100,9 +100,9 @@ AgentKeyBox 提供的是標準的 [MCP](https://modelcontextprotocol.io)（stdio
 }
 ```
 
-Gemini CLI、VS Code 裡的 GitHub Copilot、Cursor、Windsurf、Cline，以及 Meta 的 Muse Code 都支援本機 MCP 伺服器，照這個方式應該可以接上，但 AgentKeyBox **還沒有實際測試過**。
+Gemini CLI、VS Code 裡的 GitHub Copilot、Cursor、Windsurf、Cline 都支援本機 MCP 伺服器，照這個方式應該可以接上，但 AgentKeyBox **還沒有實際測試過**。
 
-連接程式只和同一台 Mac 上的 AgentKeyBox 溝通，純雲端 agent 不能直接連本機 stdio MCP。部分產品現在提供已連接電腦的本機執行能力；未發布的 `akb browser` CLI 提供這類環境可評估的受控入口，仍需原生核准與本機驗證，也不會替 agent 自己的雲端瀏覽器登入。dots／ChatGPT Work、Muse、Grok Bot、Claude Duet 的官方介面與待驗收項目整理在[接入相容性表](docs/AGENT_COMPATIBILITY.md)，目前尚未在這四個產品內完成 AKB 實測。
+連接程式只和同一台 Mac 上的 AgentKeyBox 溝通，純雲端 agent 不能直接連本機 stdio MCP。未發布的 `akb browser` CLI 提供能在同一台 Mac 執行命令的 agent 一個受控入口，仍需原生核准與本機驗證，也不會替 agent 自己的雲端瀏覽器登入。詳見[指令說明](docs/INTEGRATION.md#using-the-browser-from-a-local-command--unreleased)。
 
 ## 它怎麼保護你的金鑰
 

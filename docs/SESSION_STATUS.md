@@ -1,5 +1,9 @@
 # AgentKeyBox implementation status
 
+## Agent scope decision — 2026-11-05
+
+dots / ChatGPT Work, Meta Muse (including Muse Code), Grok Bot and Claude Duet cannot be tested here, so they were removed from user-facing documentation and `docs/AGENT_COMPATIBILITY.md` was deleted. The `akb browser` command reference moved to [INTEGRATION.md](INTEGRATION.md). Later sections mentioning these products are historical records, not support claims.
+
 ## Merge-blocker fixes — 2026-11-05 (unreleased)
 
 Implemented in the `feat/protected-items-browser` verification worktree, based on `aab7b5d`. No App launch/installation, production vault/Keychain/token access, native acceptance, signing, notarization or publication was performed in this pass. Historical native results below remain historical evidence; they do not validate these new binaries.
@@ -352,7 +356,7 @@ After verification, removed the build/module caches, temporary signing files/log
 
 Implemented `akb browser list/login/read/follow/close` for local-command agents. It uses the same app-owned browser and approvals as MCP, accepts only bounded IDs/purpose/project arguments, retains no browser state in the CLI, and exports an explicit JSON result allowlist. `clientSessionID` binds independent CLI calls to the original project/session. Agent identity is the fixed `akb-browser` entry point, not a claimed authenticated vendor. Unknown MCP clients now default to `Local Agent`.
 
-Official interfaces for dots / ChatGPT Work, Meta Muse, Grok Bot and Claude Duet were researched and recorded in [AGENT_COMPATIBILITY.md](AGENT_COMPATIBILITY.md), with direct sources and a per-product acceptance gate. The user confirmed they currently have only Codex and Claude Code. The four other products therefore remain **unverified in-product**. Connected-computer execution and pure-cloud execution have different requirements; no remote MCP service, public tunnel, provider submission or cloud-browser credential handoff was implemented.
+Official interfaces for dots / ChatGPT Work, Meta Muse, Grok Bot and Claude Duet were researched and recorded in `docs/AGENT_COMPATIBILITY.md` (removed on 2026-11-05; see git history), with direct sources and a per-product acceptance gate. The user confirmed they currently have only Codex and Claude Code. The four other products therefore remain **unverified in-product**. Connected-computer execution and pure-cloud execution have different requirements; no remote MCP service, public tunnel, provider submission or cloud-browser credential handoff was implemented.
 
 ### Evidence from this run
 

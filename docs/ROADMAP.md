@@ -96,12 +96,11 @@ Next: watch a new vibe coder install and set up the app without help, and fix wh
 
 Protected endpoint submission returns transport outcomes; the separate controlled browser now maintains private local login sessions and constrained page/link access. Restricted traditional recovery forms now have a separate approved continuation; GitHub authentication/recovery compatibility and checkout automation remain incomplete. Storage/import alone does not complete these features. A normal browser autofill followed by an agent-readable page is insufficient. Local integration work is in scope; provider-side payment or account-management services are not.
 
-### Agent compatibility selected on 2026-10-24
+### Agent compatibility
 
-- [x] verify official interfaces for dots / ChatGPT Work, Meta Muse, Grok Bot and Claude Duet, recording evidence and uncertainty in [AGENT_COMPATIBILITY.md](AGENT_COMPATIBILITY.md)
 - [x] provide the `akb browser` local CLI path without exporting credentials, cookies, or scripts
-- [ ] in-product acceptance on each new host; the user currently has only Codex and Claude Code, so the other products have no account-level test evidence
-- [ ] resolve pure-cloud transport and provider-browser integration separately; no remote MCP service, public tunnel, connector submission or partner integration is implemented
+
+Decided on 2026-11-05: hosted agent products that cannot be tested here are not documented as usable, and their in-product acceptance is not scheduled. No remote MCP service, public tunnel, connector submission or partner integration is implemented or scheduled.
 
 ### Approval precision and usability
 

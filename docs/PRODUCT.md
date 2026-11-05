@@ -153,7 +153,7 @@ Existing provider presets, dashboard links, and approved HTTP requests remain su
 
 Cloud sync, accounts, mobile approval, teams, Windows/Linux GUI, enterprise administration, and compliance reporting remain outside the selected local feature work. Earlier backlog ideas require a separate scope decision before implementation.
 
-As of 2026-10-24, agent compatibility is selected work: include dots / ChatGPT Work, Meta Muse, Grok Bot and Claude Duet in interface research and acceptance criteria. Support must identify the execution surface: a local MCP client, an agent calling the local `akb browser` CLI, a future authenticated remote bridge, or an integration with a provider-owned browser. The last two are not implemented. Do not equate vendor MCP support or a 1Password partnership with working AKB integration. [AGENT_COMPATIBILITY.md](AGENT_COMPATIBILITY.md) records the evidence and remaining gates.
+Claude Code and Codex are the tested agents. Hosted agent products that cannot be tested end to end are not documented as usable, and vendor MCP support or a partnership is not evidence of a working AgentKeyBox integration. Any future support must identify the execution surface: a local MCP client, an agent calling the local `akb browser` CLI, a future authenticated remote bridge, or an integration with a provider-owned browser. The last two are not implemented.
 
 ## 8. UX principles
 
