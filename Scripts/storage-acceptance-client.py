@@ -44,6 +44,17 @@ def verify_edit(before, after, identity):
     require(new == old, "Native edit changed other fields")
 
 
+def verify_project_removal(before, after, identity):
+    item = next((item for item in before["credentials"] if item["id"] == identity), None)
+    require(item is not None and item.get("projectID"), "Fixture is not project-scoped")
+    project_id = item["projectID"]
+    require(any(project["id"] == project_id for project in before["projects"]), "Fixture project missing")
+    expected = dict(before,
+                    projects=[project for project in before["projects"] if project["id"] != project_id],
+                    credentials=[item for item in before["credentials"] if item.get("projectID") != project_id])
+    require(after == expected, "Project removal did not remove exactly its items")
+
+
 def verify_cancel(result, events, mode):
     base.check_output(result)
     expected = DENIED if mode == "auth-cancel" else submission.UNKNOWN_ERROR
@@ -111,7 +122,12 @@ def interrupt_edit(root, profile):
 def request_case(root, helpers, env, profile, mode):
     before = read(root, "metadata.json")
     ledger, statuses = submission.read_ledger(root), read(root, "submission-statuses.json")
-    identity = base.fixture_id(profile, 1 if mode != "auth-cancel" else 2)
+    identity = base.fixture_id(profile, 3 if mode == "remove-project-pending" else 2 if mode == "auth-cancel" else 1)
+    if mode == "remove-project-pending":
+        item = next((item for item in before["credentials"] if item["id"] == identity), None)
+        require(item is not None and item.get("projectID"), "Start a fresh submission QA profile with the removal fixture")
+        project = next(project for project in before["projects"] if project["id"] == item["projectID"])
+        env = dict(env, AGENTKEYBOX_PROJECT_PATH=project["rootPath"])
     run_id = str(uuid.uuid4())
     # Even an accidental approval must produce countable receiver evidence, not a server
     # configuration error. The acceptance assertions still reject any POST in these cases.
@@ -132,6 +148,7 @@ def request_case(root, helpers, env, profile, mode):
         phase = root / "submission-auth-phase"
         old_phase_time = phase.stat().st_mtime_ns if phase.exists() else 0
         purpose = {"auth-cancel": "QA 取消驗證測試：按允許後取消 Touch ID／密碼，不要完成驗證",
+                   "remove-project-pending": "QA 移除專案測試：等待 OBSERVED 後，不要核准，請在 App 移除 QA 測試專案",
                    "edit-pending": "QA 編輯中止測試：不要核准，請儲存已開啟的原生卡片編輯器",
                    "revision-blocked": "QA 儲存中斷測試：核准並完成驗證，預期版本不符而不送出"}[mode]
         fields = ({"code": "{{recovery.code}}"} if mode == "auth-cancel"
@@ -153,7 +170,7 @@ def request_case(root, helpers, env, profile, mode):
                 require(not pending.done() and time.monotonic() < deadline, "Native pending approval not observed")
                 time.sleep(0.02)
             print("OBSERVED: native approval slot is pending.", flush=True)
-            deadline = time.monotonic() + 110
+            deadline = time.monotonic() + (90 if mode == "remove-project-pending" else 110)
             if mode == "auth-cancel":
                 while not (phase.exists() and phase.stat().st_mtime_ns > old_phase_time and phase.read_text() == "pending"):
                     require(not pending.done() and time.monotonic() < deadline, "Authentication wait not observed")
@@ -161,14 +178,16 @@ def request_case(root, helpers, env, profile, mode):
                 print("OBSERVED: native authentication pending; cancel it now, do not authenticate.", flush=True)
             else:
                 while read(root, "metadata.json") == before:
-                    require(time.monotonic() < deadline, "Native edit not observed")
+                    require(not pending.done() and time.monotonic() < deadline, "Native metadata change not observed before request ended")
                     time.sleep(0.02)
-            result = pending.result(timeout=110 if mode == "auth-cancel" else 10)
+            result = pending.result(timeout=110 if mode == "auth-cancel" else 5 if mode == "remove-project-pending" else 10)
             events = [event for event in base.read_history(root) if event["id"] not in events_before]
             verify_cancel(result, events, mode)
             if mode == "auth-cancel":
                 require(phase.read_text() == "ended" and read(root, "metadata.json") == before,
                         "Authentication or metadata did not return to its initial state")
+            elif mode == "remove-project-pending":
+                verify_project_removal(before, read(root, "metadata.json"), identity)
             else:
                 verify_edit(before, read(root, "metadata.json"), identity)
                 state = read(root, "submission-storage.json")
@@ -189,7 +208,7 @@ def request_case(root, helpers, env, profile, mode):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("profile", type=uuid.UUID)
-    parser.add_argument("--case", required=True, choices=["auth-cancel", "edit-pending", "revision-blocked", "interrupt-edit"])
+    parser.add_argument("--case", required=True, choices=["auth-cancel", "edit-pending", "remove-project-pending", "revision-blocked", "interrupt-edit"])
     args = parser.parse_args()
     try:
         root, helpers, env = setup(args.profile)

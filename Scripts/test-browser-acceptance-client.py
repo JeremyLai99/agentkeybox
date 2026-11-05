@@ -28,7 +28,8 @@ storage_spec.loader.exec_module(storage)
 
 class AcceptanceResultTests(unittest.TestCase):
     def test_storage_cancellation_distinguishes_native_auth_from_transport_failures(self):
-        for mode, expected in [("auth-cancel", storage.DENIED), ("edit-pending", submission.UNKNOWN_ERROR)]:
+        for mode, expected in [("auth-cancel", storage.DENIED), ("edit-pending", submission.UNKNOWN_ERROR),
+                               ("remove-project-pending", submission.UNKNOWN_ERROR)]:
             result = {"isError": True, "content": [{"text": expected}]}
             storage.verify_cancel(result, [], mode)
             for invalid in [dict(result, isError=False),
@@ -38,6 +39,19 @@ class AcceptanceResultTests(unittest.TestCase):
                     storage.verify_cancel(invalid, [], mode)
             with self.assertRaises(RuntimeError):
                 storage.verify_cancel(result, [{"decision": "allowOnce"}], mode)
+
+    def test_project_removal_requires_exact_project_and_all_its_items(self):
+        before = {"projects": [{"id": "removed"}, {"id": "kept"}], "credentials": [
+            {"id": "card", "projectID": "removed"}, {"id": "codes", "projectID": "removed"},
+            {"id": "global"}, {"id": "other", "projectID": "kept"}]}
+        after = {"projects": [{"id": "kept"}], "credentials": before["credentials"][2:]}
+        storage.verify_project_removal(before, after, "card")
+        for invalid in [before, dict(after, projects=[]), dict(after, credentials=[]),
+                        dict(after, credentials=before["credentials"][1:])]:
+            with self.assertRaises(RuntimeError):
+                storage.verify_project_removal(before, invalid, "card")
+        with self.assertRaises(RuntimeError):
+            storage.verify_project_removal(before, after, "global")
 
     def test_native_edit_evidence_requires_new_revision_and_preserves_other_metadata(self):
         before = {"projects": [], "credentials": [{"id": "card", "label": "Card", "payloadRevision": "old",

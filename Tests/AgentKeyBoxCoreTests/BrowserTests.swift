@@ -656,6 +656,24 @@ final class BrowserPolicyTests: XCTestCase {
       XCTAssertEqual(browser.lease.phase, .closed)
     }
 
+    @MainActor func testRevocationDuringReadDiscardsLatePage() async throws {
+      let fixture = try BrowserFixture()
+      let (browser, payload) = try fixture.browser()
+      defer { browser.close() }
+      try await browser.prepare()
+      _ = try await browser.signIn(payload: payload)
+      let pending = Task { try await browser.read() }
+      let deadline = Date().addingTimeInterval(5)
+      while browser.lease.phase == .ready, Date() < deadline { await Task.yield() }
+      XCTAssertEqual(browser.lease.phase, .reading)
+      browser.close()
+      do {
+        _ = try await pending.value
+        XCTFail("A revoked read must not return a page")
+      } catch {}
+      XCTAssertEqual(browser.lease.phase, .closed)
+    }
+
     @MainActor func testRevocationDuringFollowDiscardsLatePageAndClosesOnce() async throws {
       let fixture = try BrowserFixture()
       let (browser, payload) = try fixture.browser(path: "/login-slow-follow")

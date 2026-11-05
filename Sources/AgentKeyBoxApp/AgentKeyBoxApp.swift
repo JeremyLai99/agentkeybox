@@ -761,6 +761,7 @@
         credentials = originalCredentials
         return
       }
+      for key in keys { invalidateProtectedAccess(for: key.id) }
       var failed = 0
       for key in keys {
         do { try secretStore.delete(id: key.id) } catch { failed += 1 }
@@ -1644,25 +1645,17 @@
     }
 
     private func invalidateProtectedAccess(for credentialID: UUID) {
-      if pendingRequest?.credentialIdentifier == credentialID.uuidString,
-        pendingRequest?.kind == .sensitiveSubmission,
-        executingSubmissionID != pendingRequest?.id
-      {
+      let revocation = ProtectedAccessRevocation(
+        credentialID: credentialID, pending: pendingRequest, broker: pendingBrokerRequest,
+        executingSubmissionID: executingSubmissionID,
+        browserCredentials: browsers.mapValues { $0.credential.id })
+      if revocation.cancelSubmission {
         finishPrompt(
           BrokerResponse(ok: false, error: "Protected item changed. Request approval again."),
           message: L("Protected item changed. Request approval again."))
       }
-      let pendingBrowser =
-        pendingBrokerRequest?.credentialIdentifier == credentialID.uuidString
-        ? pendingBrokerRequest?.browser?.sessionID : nil
-      for browser in Array(browsers.values)
-      where browser.credential.id == credentialID || browser.id == pendingBrowser {
-        browser.close()
-      }
-      if pendingRequest?.credentialIdentifier == credentialID.uuidString,
-        pendingRequest?.kind == .browserLogin || pendingRequest?.kind == .browserFollow
-          || pendingRequest?.kind == .browserRecovery
-      {
+      for browserID in revocation.browserIDs { browsers[browserID]?.close() }
+      if revocation.cancelBrowserApproval {
         finishPrompt(
           BrokerResponse(ok: false, error: ControlledBrowserError.unavailable.localizedDescription),
           message: L("Browser access ended on this Mac."))
@@ -1756,7 +1749,9 @@
           browser.close()
           return BrokerResponse(ok: true)
         case .browserRead:
-          return BrokerResponse(ok: true, browserPage: try await browser.read())
+          let page = try await browser.read()
+          _ = try ownedBrowser(request)
+          return BrokerResponse(ok: true, browserPage: page)
         case .browserRecover:
           guard let recovery = visibleCredential(for: request), recovery.kind == .recoveryCodes
           else {
@@ -1856,6 +1851,8 @@
           else { throw ControlledBrowserError.invalidLink }
           page = try await browser.follow(linkID: link, approvedURL: target)
         }
+        // A completed WebKit result can resume after removal on the main actor.
+        _ = try ownedBrowser(request)
         return BrokerResponse(ok: true, decision: .allowOnce, browserPage: page)
       } catch {
         return BrokerResponse(

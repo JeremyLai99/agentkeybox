@@ -38,7 +38,7 @@ cleanup() {
   done < <(/usr/bin/python3 - "$QA_ID" <<'PY'
 import sys, uuid
 profile = uuid.UUID(sys.argv[1])
-for offset in range(3):
+for offset in range(4):
     data = bytearray(profile.bytes)
     data[-1] ^= offset
     print(str(uuid.UUID(bytes=bytes(data))).upper())

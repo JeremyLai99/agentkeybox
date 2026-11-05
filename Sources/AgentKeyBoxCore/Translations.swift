@@ -2,7 +2,7 @@
 
 enum Translations {
   /// Traditional Chinese (Taiwan), keyed by the English text passed to `L(_:)`.
-  static let traditionalChinese: [String: String] = [
+  private static let commonChinese: [String: String] = [
     "%@ (this key can go to any website)":
       "%@（這把金鑰可以送到任何網站）",
     "%@ (will be added)":
@@ -855,4 +855,16 @@ enum Translations {
     "“%@”":
       "「%@」",
   ]
+
+  static let traditionalChinese: [String: String] = {
+    #if DEBUG
+      return commonChinese.merging([
+        "QA — Disposable removal project": "QA — 可移除測試專案",
+        "QA — Project removal card": "QA — 專案移除測試卡片",
+      ]) { _, value in value }
+    #else
+      return commonChinese
+    #endif
+  }()
+
 }

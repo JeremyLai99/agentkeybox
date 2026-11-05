@@ -48,9 +48,20 @@
           id: profile.fixtureID(2), label: "QA — Local submission codes",
           service: "Synthetic submission fixture", kind: .recoveryCodes,
           submissionURL: origin + "/submit/recovery", payloadRevision: codes.revision)
+        let project = Project(
+          id: profile.fixtureID(4), name: L("QA — Disposable removal project"),
+          rootPath: profile.file("removal-project").path)
+        try FileManager.default.createDirectory(
+          atPath: project.rootPath, withIntermediateDirectories: true)
+        let projectCard = CredentialMetadata(
+          id: profile.fixtureID(3), label: L("QA — Project removal card"),
+          service: cardItem.service, projectID: project.id, kind: .creditCard,
+          submissionURL: origin + "/submit/card", payloadRevision: card.revision)
+        try store.save(secret: card.encoded(), id: projectCard.id)
         try store.save(secret: card.encoded(), id: cardItem.id)
         try store.save(secret: codes.encoded(), id: codeItem.id)
-        try metadata.save(MetadataSnapshot(credentials: [cardItem, codeItem]))
+        try metadata.save(
+          MetadataSnapshot(projects: [project], credentials: [cardItem, codeItem, projectCard]))
       }
       try recordStoredState(store: store, metadata: metadata)
       try Data(UUID().uuidString.utf8).write(
@@ -118,7 +129,8 @@
     func validate(_ credential: CredentialMetadata) throws {
       let path: String
       switch (credential.id, credential.kind) {
-      case (profile.fixtureID(1), .creditCard): path = "/submit/card"
+      case (profile.fixtureID(1), .creditCard), (profile.fixtureID(3), .creditCard):
+        path = "/submit/card"
       case (profile.fixtureID(2), .recoveryCodes): path = "/submit/recovery"
       default: throw SensitiveDataError.invalidDestination
       }

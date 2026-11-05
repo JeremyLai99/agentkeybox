@@ -163,11 +163,13 @@ Additional endpoint/storage lifecycle checks use the same runner:
 ```bash
 python3 -B Scripts/storage-acceptance-client.py PROFILE_UUID --case auth-cancel
 python3 -B Scripts/storage-acceptance-client.py PROFILE_UUID --case edit-pending
+python3 -B Scripts/storage-acceptance-client.py PROFILE_UUID --case remove-project-pending
 python3 -B Scripts/storage-acceptance-client.py PROFILE_UUID --case interrupt-edit
 python3 -B Scripts/storage-acceptance-client.py PROFILE_UUID --case revision-blocked
 ```
 
 - `auth-cancel`: allow the synthetic code request, wait for the client to observe native authentication, then cancel Touch ID/password. Do not authenticate. The exact denial result, no new history decision, unchanged metadata/statuses, zero POSTs and a freed approval slot are required.
+- `remove-project-pending` (not yet natively verified): start a fresh `--submission` QA profile. Its dedicated **QA — Disposable removal project** / **QA — 可移除測試專案** contains a synthetic card; the driver uses that project's path. Run the case, wait for `OBSERVED: native approval slot is pending`, leave the request unapproved, then remove that project in the App. Within 5 seconds of persisted removal, the request must fail with the exact fixed error. The driver requires removal of exactly that project and its items, no new approval decision, zero POSTs or code-status changes, a freed approval slot, and a responding broker. The runner cleans up the additional synthetic Keychain account on exit. Run this once per fresh profile.
 - `edit-pending`: first open and authenticate the native card editor, append ` (edited)` to its label, then start the client. Leave the request unapproved and save the editor with normal authentication. The waiting request must finish promptly without a decision or POST; the new revision, unchanged destination and consistent Keychain read-back must be verified.
 - `interrupt-edit`: first unlock the native card editor and append ` (edited)` again. Start the client before saving. A DEBUG-only, one-shot hook pauses for at most ten seconds after metadata is saved but before Keychain is updated. The client checks this exact phase, kills only the verified QA PID and requires a same-profile restart with only the card revision mismatched. If the client fails to interrupt, the ordinary transaction rolls back after the bounded wait and the case fails.
 - `revision-blocked`: after that interrupted save, allow/authenticate a card submission. It must fail without a POST. Also try native backup export to a fresh QA destination: the revision mismatch must prevent an image from being written. These checks do not repair the item or silently join mismatched data.
