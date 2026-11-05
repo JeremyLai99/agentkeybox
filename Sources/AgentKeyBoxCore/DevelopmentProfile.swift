@@ -12,7 +12,25 @@ public struct DevelopmentProfile: Sendable {
   public var preferencesDomain: String { "dev.agentkeybox.qa.\(id.uuidString)" }
   public func file(_ name: String) -> URL { directory.appendingPathComponent(name) }
 
+  /// Must run before helper installation or any agent adapter action.
+  public static func requireAgentRegistrationAllowed(profile: DevelopmentProfile? = current) throws
+  {
+    #if DEBUG
+      guard profile == nil else { throw RegistrationError.isolatedProfile }
+    #endif
+  }
+
   #if DEBUG
+    enum RegistrationError: Error, LocalizedError, Equatable {
+      case isolatedProfile
+
+      var errorDescription: String? {
+        L(
+          "Agent registration is disabled in the QA profile. Use the normal AgentKeyBox installation."
+        )
+      }
+    }
+
     enum ConfigurationError: Error {
       case invalidProfile
     }

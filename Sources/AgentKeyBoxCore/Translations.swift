@@ -859,6 +859,8 @@ enum Translations {
   static let traditionalChinese: [String: String] = {
     #if DEBUG
       return commonChinese.merging([
+        "Agent registration is disabled in the QA profile. Use the normal AgentKeyBox installation.":
+          "QA 設定檔禁止註冊 agent。請使用一般的 AgentKeyBox 安裝版本。",
         "QA — Disposable removal project": "QA — 可移除測試專案",
         "QA — Project removal card": "QA — 專案移除測試卡片",
       ]) { _, value in value }

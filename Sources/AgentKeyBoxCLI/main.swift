@@ -25,6 +25,12 @@ struct AgentKeyBoxCLI {
       let json = args.contains("--json")
       await doctor(json: json)
     case "connect":
+      do {
+        try DevelopmentProfile.requireAgentRegistrationAllowed()
+      } catch {
+        writeError(error.localizedDescription + "\n")
+        exit(1)
+      }
       guard args.count >= 2 else {
         writeError(
           L("Usage: akb connect <claude|codex|all> [--helper /path/to/agentkeybox-mcp]") + "\n")

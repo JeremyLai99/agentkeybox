@@ -6,6 +6,16 @@ import XCTest
   final class DevelopmentProfileTests: XCTestCase {
     private let id = UUID(uuidString: "593D6043-A276-4C12-A1C3-453DD37062BF")!
 
+    func testQAProfileRejectsAgentRegistrationAndNormalProfileAllowsIt() throws {
+      XCTAssertNoThrow(try DevelopmentProfile.requireAgentRegistrationAllowed(profile: nil))
+      XCTAssertThrowsError(
+        try DevelopmentProfile.requireAgentRegistrationAllowed(profile: DevelopmentProfile(id: id))
+      ) { error in
+        XCTAssertEqual(error as? DevelopmentProfile.RegistrationError, .isolatedProfile)
+        XCTAssertNotNil((error as? LocalizedError)?.errorDescription)
+      }
+    }
+
     func testQABundleCannotFallBackToProductionWithoutEnvironment() {
       XCTAssertThrowsError(
         try DevelopmentProfile.selectedID(
