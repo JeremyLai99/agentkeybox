@@ -574,6 +574,24 @@ final class BrowserPolicyTests: XCTestCase {
       } catch {}
     }
 
+    @MainActor func testPageAndLinkTextExcludeInvisibleAndBlockedDescendants() async throws {
+      let fixture = try BrowserFixture()
+      let (browser, payload) = try fixture.browser()
+      defer { browser.close() }
+      try await browser.prepare()
+      let page = try await browser.signIn(payload: payload)
+      XCTAssertTrue(page.text.contains("7 open issues"))
+      XCTAssertTrue(page.text.contains("Read details"))
+      XCTAssertEqual(page.links.map(\.text), ["Read details"])
+      let encoded = String(decoding: try JSONEncoder().encode(page), as: UTF8.self)
+      for marker in [
+        "hidden-link", "script-link", "textarea-link", "display-link", "visibility-link",
+        "collapse-link", "visibility-body", "collapse-body",
+      ] {
+        XCTAssertFalse(encoded.contains(marker + "-private-value"), marker)
+      }
+    }
+
     @MainActor func testUnsupportedFormsFailBeforeAnySecretRelease() async throws {
       let fixture = try BrowserFixture()
       for path in ["/login-get", "/login-cross", "/login-otp"] {

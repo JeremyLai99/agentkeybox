@@ -96,16 +96,23 @@ enum BrowserScripts {
     const root = document.body;
     if (!root) return null;
     const blocked = 'script,style,noscript,template,input,textarea,select,option,iframe,object,embed,[hidden]';
-    const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    let text = '', node, count = 0;
-    while ((node = walk.nextNode()) && count++ < 20000 && text.length < 100000) {
-      const parent = node.parentElement;
-      if (!parent || parent.closest(blocked) || !parent.getClientRects().length) continue;
-      text += (node.textContent + '\n').slice(0, 100000 - text.length);
-    }
-    const links = [...root.querySelectorAll('a[href]')].slice(0, 100).filter(e =>
-      !e.closest(blocked) && e.getClientRects().length).map(e => ({text: e.textContent.slice(0, 500), href: e.href, truncated: e.textContent.length > 500}));
+    const visible = e => e && !e.closest(blocked) && e.getClientRects().length &&
+      !['hidden', 'collapse'].includes(getComputedStyle(e).visibility);
+    const visibleText = (element, limit, separator) => {
+      const walk = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+      let text = '', node, count = 0;
+      while ((node = walk.nextNode()) && count++ < 20000 && text.length <= limit) {
+        if (!visible(node.parentElement)) continue;
+        text += (node.textContent + separator).slice(0, limit + 1 - text.length);
+      }
+      return {text: text.slice(0, limit), truncated: count >= 20000 || text.length > limit};
+    };
+    const body = visibleText(root, 100000, '\n');
+    const links = [...root.querySelectorAll('a[href]')].slice(0, 100).filter(visible).map(e => {
+      const label = visibleText(e, 500, '');
+      return {text: label.text, href: e.href, truncated: label.truncated};
+    });
     return {title: document.title.slice(0, 2000), titleTruncated: document.title.length > 2000,
-      text, textTruncated: count >= 20000 || text.length >= 100000, links};
+      text: body.text, textTruncated: body.truncated || body.text.length >= 100000, links};
     """#
 }

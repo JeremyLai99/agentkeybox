@@ -75,7 +75,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 time.sleep(2)
             details = "/slow-details" if self.path == "/account-slow-follow" else "/details"
             self.send_html('<p>Signed in. Task result: 7 open issues.</p>'
-                f'<a href="{details}">Read details</a><a href="https://elsewhere.invalid/">Outside</a>'
+                f'<a href="{details}">Read details'
+                '<span hidden>hidden-link-private-value</span>'
+                '<script>script-link-private-value</script>'
+                '<textarea>textarea-link-private-value</textarea>'
+                '<span style="display:none">display-link-private-value</span>'
+                '<span style="visibility:hidden">visibility-link-private-value</span>'
+                '<span style="visibility:collapse">collapse-link-private-value</span>'
+                '</a><a href="https://elsewhere.invalid/">Outside</a>'
+                '<p style="visibility:hidden">visibility-body-private-value</p>'
+                '<p style="visibility:collapse">collapse-body-private-value</p>'
                 '<a href="javascript:alert(1)">Script</a>'
                 '<input type="hidden" value="hidden-private-value">'
                 '<textarea>textarea-private-value</textarea>'
