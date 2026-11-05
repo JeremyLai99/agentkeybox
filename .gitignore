@@ -7,3 +7,6 @@ xcuserdata/
 .env
 .env.*
 !.env.example
+
+# Local promotional assets; README media lives in assets/promo/.
+/promo/
