@@ -3,6 +3,36 @@ import XCTest
 @testable import AgentKeyBoxCore
 
 final class CredentialUsePolicyTests: XCTestCase {
+  func testBrowserClosureAfterExecutionNeverSuggestsAnotherSignIn() {
+    for error in [ControlledBrowserError.unavailable, .expired, .invalidLink, .failed] {
+      XCTAssertEqual(ControlledBrowserError.forOperation(error, executionStarted: true), .failed)
+      XCTAssertEqual(ControlledBrowserError.forOperation(error, executionStarted: false), error)
+    }
+    XCTAssertEqual(
+      ControlledBrowserError.forOperation(CancellationError(), executionStarted: true), .failed)
+  }
+
+  func testBeforeExecutionChangedCredentialRequiresApprovalAgain() {
+    XCTAssertEqual(
+      CredentialUsePolicy.failureDisposition(executionStarted: false, credentialIsCurrent: false),
+      .credentialChanged)
+  }
+
+  func testExecutionFailureAfterCredentialChangeNeverSuggestsReapproval() {
+    for isCurrent in [false, true] {
+      XCTAssertEqual(
+        CredentialUsePolicy.failureDisposition(
+          executionStarted: true, credentialIsCurrent: isCurrent),
+        .operationFailed)
+    }
+  }
+
+  func testPreparationFailureWithUnchangedCredentialKeepsItsOwnError() {
+    XCTAssertEqual(
+      CredentialUsePolicy.failureDisposition(executionStarted: false, credentialIsCurrent: true),
+      .operationFailed)
+  }
+
   private let project = Project(name: "Synthetic", rootPath: "/tmp/akb-policy-project")
 
   private func item() -> CredentialMetadata {

@@ -4,6 +4,11 @@ import Foundation
 public enum ControlledBrowserError: Error, LocalizedError, Equatable {
   case invalidWebsite, unsupportedForm, unavailable, busy, failed, expired, invalidLink
 
+  /// Session closure after navigation/submission started must not suggest another sign-in.
+  public static func forOperation(_ error: Error, executionStarted: Bool) -> Self {
+    executionStarted ? .failed : (error as? Self) ?? .failed
+  }
+
   public var errorDescription: String? {
     switch self {
     case .invalidWebsite: return L("Set an HTTPS sign-in page without a query or fragment.")

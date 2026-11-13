@@ -395,6 +395,7 @@
     private var decisionInProgress = false
     /// Editing cancels an approval/authentication wait, but cannot undo an already-started POST.
     private var executingSubmissionID: UUID?
+    private var executingBrowserRequestID: UUID?
     /// Claimed synchronously before the first suspension point so concurrent broker requests
     /// cannot both pass the "nothing pending" check while the main actor is re-entered.
     private var approvalSlotReserved = false
@@ -1697,6 +1698,13 @@
 
     // MARK: - Controlled browser
 
+    private var browserClosureError: ControlledBrowserError {
+      .forOperation(
+        ControlledBrowserError.unavailable,
+        executionStarted: executingBrowserRequestID != nil
+          && executingBrowserRequestID == pendingRequest?.id)
+    }
+
     /// Closing a lease (explicitly, on expiry, or on failure) also ends its in-flight prompt.
     /// Match the browser, not just the credential: another lease may use the same login.
     private func browserDidClose(_ browserID: UUID) {
@@ -1707,7 +1715,7 @@
           || pendingRequest?.kind == .browserRecovery
       else { return }
       finishPrompt(
-        BrokerResponse(ok: false, error: ControlledBrowserError.unavailable.localizedDescription),
+        BrokerResponse(ok: false, error: browserClosureError.localizedDescription),
         message: L("Browser access ended on this Mac."))
     }
 
@@ -1725,7 +1733,7 @@
       for browserID in revocation.browserIDs { browsers[browserID]?.close() }
       if revocation.cancelBrowserApproval {
         finishPrompt(
-          BrokerResponse(ok: false, error: ControlledBrowserError.unavailable.localizedDescription),
+          BrokerResponse(ok: false, error: browserClosureError.localizedDescription),
           message: L("Browser access ended on this Mac."))
       }
     }
@@ -1748,7 +1756,7 @@
         || pendingRequest?.kind == .browserRecovery
       {
         finishPrompt(
-          BrokerResponse(ok: false, error: ControlledBrowserError.unavailable.localizedDescription),
+          BrokerResponse(ok: false, error: browserClosureError.localizedDescription),
           message: L("Browser access ended on this Mac."))
       }
     }
@@ -1874,6 +1882,15 @@
       _ request: BrokerRequest,
       expectedVersion: Date?, grant: AuthenticationGrant?
     ) async -> BrokerResponse {
+      let requestID = pendingRequest?.id
+      var executionStarted = false
+      func beginExecution() {
+        executionStarted = true
+        executingBrowserRequestID = requestID
+      }
+      defer {
+        if executingBrowserRequestID == requestID { executingBrowserRequestID = nil }
+      }
       do {
         let browser = try ownedBrowser(request)
         guard request.action == .browserRecover || browser.credential.updatedAt == expectedVersion
@@ -1892,6 +1909,7 @@
           }
           _ = try ownedBrowser(request)
           let payload = try SensitivePayload.decode(data, kind: .login)
+          beginExecution()
           page = try await browser.signIn(payload: payload)
         } else if request.action == .browserRecover {
           guard let recovery = visibleCredential(for: request), recovery.kind == .recoveryCodes,
@@ -1901,6 +1919,7 @@
           else { throw ControlledBrowserError.unavailable }
           _ = try ownedBrowser(request)
           let payload = try SensitivePayload.decode(data, kind: .recoveryCodes)
+          beginExecution()
           page = try await browser.recover(credential: recovery, payload: payload) { data in
             guard let index = credentials.firstIndex(of: recovery) else {
               throw SensitiveDataError.invalidPayload
@@ -1922,6 +1941,7 @@
           guard let link = request.browser?.linkID, let raw = request.url,
             let target = URL(string: raw)
           else { throw ControlledBrowserError.invalidLink }
+          beginExecution()
           page = try await browser.follow(linkID: link, approvedURL: target)
         }
         // A completed WebKit result can resume after removal on the main actor.
@@ -1930,7 +1950,9 @@
       } catch {
         return BrokerResponse(
           ok: false,
-          error: ((error as? ControlledBrowserError) ?? .failed).localizedDescription)
+          error: ControlledBrowserError.forOperation(
+            error, executionStarted: executionStarted
+          ).localizedDescription)
       }
     }
 
@@ -2310,6 +2332,7 @@
       else {
         return await rejectChangedCredential(credential.id)
       }
+      var executionStarted = false
       do {
         // Re-validate against the current allowlist in case it changed while the prompt was open.
         let validated = try HTTPRequestPolicy.validate(
@@ -2330,13 +2353,25 @@
           return BrokerResponse(
             ok: false, error: SensitiveDataError.controlledUseRequired.localizedDescription)
         }
+        // Set this before the await: even a timeout can follow a successful remote POST.
+        executionStarted = true
         let result = try await HTTPRequestExecutor.execute(validated, secretData: secret)
         return BrokerResponse(ok: true, decision: decision, http: result)
       } catch {
-        guard
-          credentialUseIsCurrent(
-            [credential], projectPath: brokerRequest.projectPath, generation: generation)
-        else { return await rejectChangedCredential(credential.id) }
+        let disposition = CredentialUsePolicy.failureDisposition(
+          executionStarted: executionStarted,
+          credentialIsCurrent: executionStarted
+            || credentialUseIsCurrent(
+              [credential], projectPath: brokerRequest.projectPath, generation: generation)
+        )
+        if disposition == .credentialChanged {
+          return await rejectChangedCredential(credential.id)
+        }
+        if executionStarted {
+          return BrokerResponse(
+            ok: false,
+            error: ((error as? HTTPRequestExecutorError) ?? .transport).localizedDescription)
+        }
         return BrokerResponse(ok: false, error: error.localizedDescription)
       }
     }
