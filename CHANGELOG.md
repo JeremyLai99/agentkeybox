@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- “Ask Every Time” now stays effective when an earlier Touch ID approval finishes later. Editing a key (including its value, project or allowed websites), deleting it, or removing its project clears its remembered approvals and saved authentication.
+- A failed HTTP request that has already started no longer asks for approval again just because the key changed meanwhile. Browser operations interrupted after starting also return an operation failure instead of suggesting another sign-in, helping avoid duplicate actions.
+- Release-mode tests now finish normally instead of accidentally starting the command-line app. Helper and CLI process checks use built executables, and macOS CI fails if those required test programs are missing.
+
 - Agents still using a replaced helper after an AgentKeyBox update now receive localized MCP reconnect/restart guidance; `akb` asks to rerun the command. Broker signature checks remain unchanged.
 - You can now create a new project folder directly in the Add Project folder picker.
 - Browser sign-in and recovery submission now send their approved form only once, including when a website redirects back to the same address with HTTP 307/308. A blocked retry closes the private session; reserved codes stay unavailable.

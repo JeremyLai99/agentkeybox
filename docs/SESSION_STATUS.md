@@ -1,5 +1,101 @@
 # AgentKeyBox implementation status
 
+## 第二輪 code review 修復 — 2026-11-13（unreleased）
+
+本次基底為 `9b98eb7`，分支 `fix/helper-updated-message`。三項修復各自與回歸測試同筆提交，文件最後獨立提交。下方歷史完整保留。本次僅使用合成資料及測試建立的暫存環境，未啟動／安裝 App、未存取正式機密或正式 broker token、未執行原生驗收、簽署、公證或發布。
+
+### 修復、競態理由與測試
+
+| 項目 | Commit | 實際修改與理由 | 回歸測試 |
+| --- | --- | --- | --- |
+| 1. 撤銷後不能重建 session grant | `b2fbe03` | `ApprovalEngine` 持有全域及逐 credential generation；驗證 token 與建立 grant 在同一 actor 方法內完成，兩者間無 await。撤銷先發生則拒建；建立先發生則後續撤銷移除並 invalidate authentication。回傳 Bool，拒建不記 `allowSession`。App 以撤銷任務鏈銜接同步 UI 回呼，核准／查詢先等待已排入的撤銷，再配合 metadata／accessGeneration 重驗。編輯（含換值、改專案、改 hosts）、記住新 host、刪除及移除專案都撤銷涉及金鑰；指令／HTTP 讀後重驗失敗也撤銷。 | `SessionRevocationTests` 5 個新增測試，連同既有 scope／expiry 與 protected-item 測試共 23 個通過。 |
+| 2. 已開始執行的失敗保留執行語意 | `3c7771d` | 在呼叫 HTTP executor 前標記 executionStarted，之後 catch 僅回固定 executor error（未知錯誤歸為 transport），不再以金鑰異動改寫成重新核准。Core 純函式測試前後邊界。另發現瀏覽器關閉回呼可能在執行後提示重新登入，登入／導覽／復原開始後的 catch 與同步關閉回呼均改用既有固定失敗診斷。 | `CredentialUsePolicyTests` 新增 4 個測試；完整套件中該類別 9 個通過。相關選測 20 個：18 通過、2 live 跳過、0 失敗。 |
+| 3. release 測試不進 CLI main | `4989b45` | test target 僅依賴 Core。`TestProducts` 由 bundle 推導 products，允許 `AGENTKEYBOX_TEST_BIN_DIR` 覆寫；缺檔預設明確 XCTSkip，CI 的 `AGENTKEYBOX_REQUIRE_PROCESS_TESTS=1` 則使其失敗。另修正既有翻譯測試：release 掃描排除 DEBUG-only 分支，避免要求 release 保留 QA 字串；加入巢狀條件回歸測試。 | `TestProductsTests` 4 個；`LocalizationTests` 6 個；debug 的 `HelperUpdateProcessTests` 3 個均實際通過，沒有 skip。debug／release 完整測試及其 Swift Testing 階段皆 exit 0。 |
+
+新增的 session 測試名稱：
+
+- `testRevocationDuringAuthenticationPreventsGrantAndFreshApprovalSucceeds`
+- `testCredentialRevocationRemovesEveryScopeAndRejectsPendingGrantOnlyForThatKey`
+- `testGenerationCannotBeUsedForAnotherCredentialOrAfterGlobalReset`
+- `testCredentialAndGlobalRevocationInvalidateSavedAuthentications`
+- `testExpiryStillUsesEightHourBoundaryAndInvalidatesAuthentication`
+
+Authentication 失效測試使用未 evaluate 的 LAContext 替身，不呼叫鑰匙圈。Core 的逐 credential 撤銷保留其他金鑰既有 grant 及其尚待核准的 generation。
+
+新增的執行階段測試名稱：
+
+- `testBeforeExecutionChangedCredentialRequiresApprovalAgain`
+- `testExecutionFailureAfterCredentialChangeNeverSuggestsReapproval`
+- `testPreparationFailureWithUnchangedCredentialKeepsItsOwnError`
+- `testBrowserClosureAfterExecutionNeverSuggestsAnotherSignIn`
+
+第三項新增 `testFindsProductsBesideMacOSTestBundle`、`testFindsProductsWhenLinuxBundleIsProductsDirectory`、`testExplicitProductsOverrideWins`、`testMissingProductSkipsLocallyButFailsWhenRequiredByCI`，及 `testReleaseLocalizationScanExcludesOnlyDebugBranchesIncludingNestedCode`。程序測試實際執行 `testAllMCPBrokerErrorPathsPreserveUpdateMessage`、`testBrowserCLIPreservesOnlyTypedUpdateGuidance`、`testUnchangedHelperKeepsRejectionAndControlledToolsHideRawDiagnostics`，僅連接拋棄式合成 broker。
+
+本次沒有新增使用者可見字串；沿用既有 `L()` 訊息及繁中翻譯，故未修改 `Translations.swift`。翻譯與 placeholder 檢查在兩種配置皆通過。
+
+### 完成前的實際驗證
+
+| 指令／檢查 | 最終實際結果 |
+| --- | --- |
+| `swift build --disable-sandbox --scratch-path .build-debug -Xswiftc -warnings-as-errors` | 通過，3 個 executables；10.94 秒。 |
+| `swift test --scratch-path .build-test -Xswiftc -warnings-as-errors` | 通過，221 個 XCTest：219 通過、2 live 跳過、0 失敗；測試 37.550 秒，建置 2.25 秒。HelperUpdateProcessTests 3／3 通過、0 skip（2.034 秒）。Swift Testing 0 tests，正常 exit 0。 |
+| `swift test --scratch-path .build-rtest -c release -Xswiftc -warnings-as-errors` | 通過，210 個 XCTest：208 通過、2 live 跳過、0 失敗；測試 34.464 秒，建置 12.74 秒。Swift Testing 0 tests，正常 exit 0；沒有 CLI 的 `--test-bundle-path` 錯誤。 |
+| `swift build --disable-sandbox --scratch-path .build-release -c release -Xswiftc -warnings-as-errors` | 通過，3 個 executables；45.95 秒。 |
+| `AGENTKEYBOX_BIN_DIR=$PWD/.build-release/release Scripts/mcp-smoke-test.sh` | 通過，11 個 JSON-RPC 回應、9 個預期輸入驗證錯誤；不連接正式 broker。 |
+| `Scripts/check-release-qa-strings.sh .build-release/release` | 通過，3 個 executables × 10 markers × 3 encodings（UTF-8／UTF-16LE／UTF-16BE），0 命中。 |
+| `python3 -B Scripts/test-browser-acceptance-client.py` | 25 個測試，0 失敗，0.024 秒。 |
+| `python3 -B Scripts/test-release-qa-strings.py` | 4 個測試，0 失敗，1.598 秒。 |
+| `Scripts/security-static-check.sh` | 通過，exit 0。 |
+| `bash -n Scripts/check-all.sh` | 通過，exit 0；本次唯一修改的 shell 檔。未執行含禁止驗收指令的整支 check-all。 |
+| `xcrun swift-format lint --strict`（僅 13 個改過的 Swift 檔） | exit 1：新增問題 **0**，既有問題 **45**（去除工具重複診斷後）；逐筆以 `9b98eb7` 原始碼、行號對應、column 及規則比對。不能宣稱 lint 全部通過；明細如下。 |
+| `git diff --check 9b98eb7..HEAD` | 通過，文件提交後再檢查。 |
+
+SwiftPM 沙盒內 build 會顯示 user-level configuration/security cache 不可寫的兩則環境警告；Swift 編譯仍以 warnings-as-errors 成功。兩個跳過項目都是未啟用的 LiveBrowserTests；未連接公開登入站點。release 比 debug 少的測試來自既有 DEBUG 條件編譯，不是漏找程序產物而 skip。
+
+開發中先修正一次漏更新 generation 參數的測試呼叫；第一次完整測試發現新增測試不應依賴 XCTSkip 的 debug description，及 release 翻譯掃描與 DEBUG 編譯條件不符，均已修正後完整重跑。上表只列最終結果。選測數字與完整套件重疊，不可相加。
+
+### 格式檢查：新增與既有分列
+
+- **新增：0。** 本次新增／修改行沒有新格式診斷。
+- **既有：45。** `AgentKeyBoxCoreTests.swift` 42 個、`LocalizationTests.swift` 3 個。保留無關既有程式；下表列最終行號與 column，同一位置同一規則的重複輸出只算一次。
+
+| 檔案 | 規則 | 位置（line:column） |
+| --- | --- | --- |
+| `AgentKeyBoxCoreTests.swift` | `[AddLines]` | 909:106, 1006:16, 1448:22, 1448:60, 1458:22, 1458:61, 1468:22, 1468:60, 1469:20, 1469:60, 1478:22, 1478:60 |
+| `AgentKeyBoxCoreTests.swift` | `[DoNotUseSemicolons]` | 1448:47, 1458:47, 1468:47, 1469:43, 1478:47 |
+| `AgentKeyBoxCoreTests.swift` | `[Indentation]` | 1162:1, 1163:1, 1164:1, 1165:1, 1166:1 |
+| `AgentKeyBoxCoreTests.swift` | `[LineLength]` | 590:1, 612:1, 724:1, 852:1, 882:1, 899:1, 905:1, 926:1, 941:1, 974:1, 1030:1, 1039:1, 1057:1, 1200:1, 1235:1, 1267:1, 1503:1, 1559:1 |
+| `AgentKeyBoxCoreTests.swift` | `[RemoveLine]` | 724:102 |
+| `AgentKeyBoxCoreTests.swift` | `[TrailingComma]` | 727:86 |
+| `LocalizationTests.swift` | `[LineLength]` | 124:1, 125:1, 134:1 |
+
+### 第二項：其他執行路徑逐一判斷
+
+| 路徑 | 判斷及處理 |
+| --- | --- |
+| 指令執行 | 沒有同類改寫。readSecret 的 do/catch 與 `ApprovedCommandRunner.run` 的 do/catch 分開；changed 僅在開始執行前回報，執行後保留 runner 錯誤。 |
+| 環境變數 | 沒有同類改寫。此方法只準備完整 environment；每次讀取後重驗整組，尚未回傳給 CLI，沒有已開始的外部指令。失敗不回傳部分 environment；最終回傳前沒有額外 await。 |
+| `submit_sensitive_fields` | 沒有同類改寫。metadata／reservation 的可拋錯步驟全在送出前；transport 的 send 為非 throwing、固定 outcome（含 unknown），外層 catch 不會接到已送出後的網路錯誤。既有 executingSubmissionID 讓編輯不會把已開始提交改報為 changed；issued reservation 保留。相關 reservation／revocation 測試通過。 |
+| 瀏覽器 login／follow／recover | 有類似風險：原本執行後的 ownedBrowser 重驗與本機 close 回呼可能回 `unavailable`／`expired` 並提示重新登入。新增開始執行標記，catch 與 close、單筆撤銷、全域關閉的回覆共用固定 operation-failure 語意。讀取前仍保留原本診斷。 |
+| 瀏覽器 read／close | 本身不送登入／復原表單；read 的回傳前重驗保護已關閉的私人內容。close 若中止另一筆已開始的操作，該操作的關閉回呼現在回固定失敗；close 自身照常回覆。 |
+
+### 第三項：CI 的程序測試不會被靜默跳過
+
+- macOS job 原本就先 `swift build` 再 `swift test`；本次增加 `AGENTKEYBOX_REQUIRE_PROCESS_TESTS=1`。找不到 helper 或 akb 會直接失敗，不能以 XCTSkip 過關。本機完整 debug 已實際跑完 3 個程序測試。本次另增 macOS release build/test 步驟，持續檢查 runner 的 exit code。
+- Linux job 原本也先 build 再 test，並保留 MCP／CLI smoke。HelperUpdateProcessTests 依既有 `#if os(macOS) && DEBUG` 不在 Linux 或 release 編譯，因為替換執行檔的程序案例依賴 macOS DEBUG QA profile；這些案例由 macOS debug job 負責。TestProducts 的目錄推導與缺檔行為測試不受此條件限制。
+- `Scripts/check-all.sh` 原本先 build；現在在 test 前 export 同一個 require flag。使用不同建置目錄時可明確設定 `AGENTKEYBOX_TEST_BIN_DIR`，不依賴 PATH、已安裝 App 或正式 helper。
+- 以上 CI 判斷來自已更新的 workflow／腳本及本機測試；本次未啟動遠端 CI 或 Linux runner，遠端實跑狀態標為**未驗證**。
+
+### 原生驗收與收尾交接（未驗證）
+
+請 Claude 與使用者之後在隔離 profile、合成金鑰、loopback 端點進行以下驗收。必須以精確 credential ID／label／kind 選取測試資料，不以模糊搜尋挑選真實金鑰；機密值不得輸出至 agent。
+
+1. Touch ID 尚未完成時選「每次都詢問」，再完成原驗證：不能留下 session grant；下一次同請求仍須核准。核對原生 UI 與歷史不將拒建標為 allowSession。
+2. 已有 session grant 時，分別換值、改專案、改 allowed hosts、刪除金鑰、移除專案；涉及金鑰須重新詢問或不可用，其他金鑰既有 grant 不受影響。另驗證讀取等待期間編輯後不會留下 grant。真正 LAContext／Touch ID 失效仍需簽署的原生流程確認。
+3. loopback 接收一次 POST 後暫停回應，在期間編輯金鑰再斷線／逾時：回覆固定執行失敗而非重新核准；確認只有一次 POST，勿自動重送。瀏覽器登入／復原開始後關閉或撤銷，也應回固定操作失敗，復原碼維持 issued。
+
+自動化驗證已完成；未解限制是原生競態／Touch ID 驗收、遠端 CI／Linux 實跑，以及上述 45 個既有格式問題。未產生自訂 Xcode DerivedData 或 `.xcresult`，未清除共用目錄。依本次指示，四個 SwiftPM 建置目錄留給 Claude 清理：`.build-debug` 約 162 MiB、`.build-test` 約 273 MiB、`.build-rtest` 約 249 MiB、`.build-release` 約 119 MiB；未 add、未刪除，釋放建置空間 0。
+
 ## Final pre-merge checks — 2026-11-13
 
 Run on `6c504ca` before merging to `main`.
