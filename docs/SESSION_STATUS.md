@@ -1,5 +1,15 @@
 # AgentKeyBox implementation status
 
+## Final pre-merge checks — 2026-11-13
+
+Run on `6c504ca` before merging to `main`.
+
+- **Automated:** debug and release builds with warnings as errors; 197 Swift tests (195 passed, 2 opt-in live tests skipped, 0 failures); MCP and CLI smoke against release binaries; release QA-string scan; offline acceptance-driver tests; security static check; shell syntax; `git diff --check`.
+- **QA `akb connect` refusal (native):** with `AGENTKEYBOX_QA_ID` set, `connect all`, `connect claude --helper …` and `connect codex` each exited 1 with the localized refusal. No helper was installed in the QA profile. The real Claude Code and Codex registrations and the fixed-path helper were unchanged.
+- **QA guard isolation (native):** setting up a synthetic project with agent guard on wrote `guard-rules.json` inside the QA profile only. No production `guard-rules.json` was created.
+- **`card-form` on a fresh three-fixture profile:** passed with one native approval and one exact-fields POST. A first attempt was correctly refused by the driver's allowlist because an extra synthetic project had been added in the same profile.
+- **Add Project picker:** the New Folder button appears in both the QA build and the installed Developer ID signed build.
+
 ## Signed retest of the seven review fixes — 2026-11-13 (unreleased)
 
 Developer ID signed arm64 build of `725d6ff` installed in `/Applications`; the user completed every Touch ID prompt.
