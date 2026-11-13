@@ -11,6 +11,8 @@ import subprocess
 import time
 import uuid
 
+from submission_fixture_items import validate_items
+
 spec = importlib.util.spec_from_file_location("acceptance", Path(__file__).with_name("browser-acceptance-client.py"))
 base = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(base)
@@ -153,14 +155,9 @@ def run_case(args):
             "Release helper cannot select isolated storage")
     before = json.loads((root / "metadata.json").read_text())
     base.check_output(before)
-    items = {item["id"]: item for item in before["credentials"]}
     card_id, code_id = (base.fixture_id(args.profile, offset) for offset in (1, 2))
-    require(set(items) == {card_id, code_id}, "Unexpected fixture items")
     origin = "https://127.0.0.1:" + str(settings["port"])
-    for identity, kind, path in [(card_id, "creditCard", "/submit/card"),
-                                 (code_id, "recoveryCodes", "/submit/recovery")]:
-        require(items[identity]["kind"] == kind and items[identity].get("submissionURL") == origin + path,
-                "Item is not bound to its exact fixture destination")
+    validate_items(args.profile, before["credentials"], origin)
     previous = read_ledger(root)
     count = code_count(previous)
     require(json.loads((root / "submission-statuses.json").read_text()) == statuses(count),

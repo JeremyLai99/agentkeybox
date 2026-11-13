@@ -8,10 +8,37 @@ import plistlib
 import subprocess
 import uuid
 
+from submission_fixture_items import validate_items
+
 
 def require(condition, message):
     if not condition:
         raise RuntimeError(message)
+
+
+def verify_contents(profile, origin, contents, expected_statuses, files):
+    items = validate_items(profile, contents['credentials'], origin)
+    require(set(contents['secrets']) == set(items), 'Unexpected backup secrets')
+    values = ['4242424242424242', 'AKB synthetic card fixture'] + [f'fixture-submit-code-{n:03}' for n in range(1, 9)]
+    statuses = None
+    for item in contents['credentials']:
+        payload = json.loads(base64.b64decode(contents['secrets'][item['id']]))
+        require(payload['revision'] == item['payloadRevision'], 'Backup revision mismatch')
+        if item['kind'] == 'creditCard':
+            require(payload['card'] == {'number': values[0], 'cardholder': values[1],
+                                      'expirationMonth': 12, 'expirationYear': 2099}, 'Unexpected card')
+        elif item['kind'] == 'recoveryCodes':
+            entries = payload['recoveryCodes']['entries']
+            require([entry['value'] for entry in entries] == values[2:], 'Unexpected code values')
+            statuses = [entry['status'] for entry in entries]
+        else:
+            raise RuntimeError('Unexpected backup kind')
+    require(statuses == expected_statuses, 'Backup lost native statuses')
+    require(not any(p.name in ('.env', 'env.txt') for p in files), 'Protected values entered environment export')
+    require(len([p for p in files if p.name.endswith('.card.json')]) == len(items) - 1
+            and len([p for p in files if p.name.endswith('.recovery-codes.json')]) == 1,
+            'Missing protected export envelopes')
+    return statuses
 
 
 def inspect(profile, image):
@@ -47,26 +74,10 @@ def inspect(profile, image):
         stored = json.loads((root / 'metadata.json').read_text())
         require(contents['credentials'] == stored['credentials'] and contents['projects'] == stored['projects'],
                 'Backup metadata differs from current native items')
-        require(len(contents['credentials']) == 2, 'Only the two synthetic fixture items may be inspected')
-        statuses = None
-        for item in contents['credentials']:
-            payload = json.loads(base64.b64decode(contents['secrets'][item['id']]))
-            require(payload['revision'] == item['payloadRevision'], 'Backup revision mismatch')
-            if item['kind'] == 'creditCard':
-                require(payload['card'] == {'number': values[0], 'cardholder': values[1],
-                                          'expirationMonth': 12, 'expirationYear': 2099}, 'Unexpected card')
-            elif item['kind'] == 'recoveryCodes':
-                entries = payload['recoveryCodes']['entries']
-                require([entry['value'] for entry in entries] == values[2:], 'Unexpected code values')
-                statuses = [entry['status'] for entry in entries]
-            else:
-                raise RuntimeError('Unexpected backup kind')
-        require(statuses == json.loads((root / 'submission-statuses.json').read_text()), 'Backup lost native statuses')
-        files = [p for p in mount.rglob('*') if p.is_file()]
-        require(not any(p.name in ('.env', 'env.txt') for p in files), 'Protected values entered environment export')
-        require(len([p for p in files if p.name.endswith('.card.json')]) == 1
-                and len([p for p in files if p.name.endswith('.recovery-codes.json')]) == 1,
-                'Missing protected export envelopes')
+        statuses = verify_contents(
+            profile, 'https://127.0.0.1:' + str(config['port']), contents,
+            json.loads((root / 'submission-statuses.json').read_text()),
+            [p for p in mount.rglob('*') if p.is_file()])
         print('PASS: encrypted format-2 image; exact synthetic payloads/revisions/statuses; protected JSON only, no env export.')
         print('Code statuses: ' + ', '.join(statuses))
     finally:

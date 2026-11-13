@@ -26,7 +26,52 @@ storage = importlib.util.module_from_spec(storage_spec)
 storage_spec.loader.exec_module(storage)
 
 
+backup_spec = importlib.util.spec_from_file_location(
+    "backup", Path(__file__).with_name("inspect-submission-backup.py"))
+backup = importlib.util.module_from_spec(backup_spec)
+backup_spec.loader.exec_module(backup)
+
+
 class AcceptanceResultTests(unittest.TestCase):
+    def test_submission_allowlist_and_backup_with_optional_project_card(self):
+        profile = acceptance.uuid.uuid4()
+        origin = "https://127.0.0.1:45678"
+        identities = [acceptance.fixture_id(profile, n) for n in (1, 2, 3, 4)]
+        items = [dict(id=identity, kind=kind, submissionURL=origin + path, payloadRevision="revision")
+                 for identity, kind, path in [(identities[0], "creditCard", "/submit/card"),
+                                              (identities[1], "recoveryCodes", "/submit/recovery"),
+                                              (identities[2], "creditCard", "/submit/card")]]
+        items[2]["projectID"] = identities[3]
+        for count in (2, 3):
+            selected = items[:count]
+            self.assertEqual(set(submission.validate_items(profile, selected, origin)), set(identities[:count]))
+            contents = {"credentials": selected, "secrets": {}}
+            files = []
+            for item in selected:
+                payload = {"revision": "revision"}
+                if item["kind"] == "creditCard":
+                    payload["card"] = dict(number="4242424242424242", cardholder="AKB synthetic card fixture",
+                                           expirationMonth=12, expirationYear=2099)
+                    files.append(Path(item["id"] + ".card.json"))
+                else:
+                    payload["recoveryCodes"] = {"entries": [dict(value=f"fixture-submit-code-{n:03}",
+                                                               status="available") for n in range(1, 9)]}
+                    files.append(Path(item["id"] + ".recovery-codes.json"))
+                contents["secrets"][item["id"]] = backup.base64.b64encode(acceptance.json.dumps(payload).encode()).decode()
+            backup.verify_contents(profile, origin, contents, submission.statuses(0), files)
+            with self.assertRaises(RuntimeError):
+                backup.verify_contents(profile, origin, contents, submission.statuses(0), files[:-1])
+        for invalid in [items + [dict(items[0], id=str(acceptance.uuid.uuid4()))],
+                        items + [items[0]], items[:1],
+                        items[:2] + [dict(items[2], projectID=None)],
+                        items[:2] + [dict(items[2], kind="recoveryCodes")],
+                        items[:2] + [dict(items[2], submissionURL=origin + "/other")]]:
+            with self.assertRaises(RuntimeError):
+                submission.validate_items(profile, invalid, origin)
+            with self.assertRaises(RuntimeError):
+                backup.verify_contents(profile, origin, dict(contents, credentials=invalid),
+                                       submission.statuses(0), files)
+
     def advance_reservation(self, root, before):
         current = acceptance.json.loads(acceptance.json.dumps(before))
         current["credentials"][0].update(updatedAt=2, payloadRevision=str(acceptance.uuid.uuid4()))
