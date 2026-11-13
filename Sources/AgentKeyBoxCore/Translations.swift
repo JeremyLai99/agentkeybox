@@ -151,6 +151,10 @@ enum Translations {
       "AgentKeyBox 會在你的 Mac 上執行這個指令，並回傳遮蔽過金鑰的輸出。代理看不到金鑰，但指令本身仍有可能把它送到別處。",
     "AgentKeyBox sends this one request itself and returns the redacted response. The agent never sees the key, and redirects are not followed.":
       "AgentKeyBox 會自己送出這一個請求，並回傳遮蔽過金鑰的回應。代理看不到金鑰，也不會跟著轉址。",
+    "AgentKeyBox was updated, but this agent is still using the old connection. Reconnect the agentkeybox MCP server (in Claude Code: /mcp → agentkeybox → Reconnect), or restart your agent, then try again.":
+      "AgentKeyBox 已更新，但這個代理仍在使用舊版連線。請重新連線 agentkeybox MCP 伺服器（在 Claude Code 輸入 /mcp → agentkeybox → Reconnect），或重新啟動代理，然後再試一次。",
+    "AgentKeyBox was updated. Run this command again.":
+      "AgentKeyBox 已更新。請重新執行這個指令。",
     "AgentKeyBox will ask every time again.":
       "AgentKeyBox 會恢復每次都詢問。",
     "Alias for doctor":

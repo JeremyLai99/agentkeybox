@@ -67,6 +67,7 @@ private indirect enum JSONValue: Codable, Sendable {
 @main
 struct AgentKeyBoxMCP {
   static func main() async {
+    _ = ExecutableIdentity.atLaunch
     let server = MCPServer()
     await server.run()
   }

@@ -189,12 +189,14 @@ public enum BrokerError: Error, LocalizedError, Equatable {
   case appNotRunning
   case invalidResponse
   case requestFailed(String)
+  case clientUpdated(BrokerClientKind)
   case requestTimedOut
   case brokerAuthenticationUnavailable
   case unsupportedPlatform
   case socketPathTooLong
 
-  /// Only native pre-execution approval failures may cross controlled-use result boundaries.
+  /// Only fixed pre-execution approval failures and local update guidance may cross
+  /// controlled-use result boundaries. Raw broker diagnostics are never added to this list.
   /// A transport timeout can happen after submission; it must remain an unknown outcome.
   public var controlledApprovalMessage: String? {
     switch self {
@@ -202,6 +204,8 @@ public enum BrokerError: Error, LocalizedError, Equatable {
       return "Another AgentKeyBox approval is already pending."
     case .requestFailed("Approval timed out."):
       return "Approval timed out."
+    case .clientUpdated(let kind):
+      return kind.updatedMessage
     default:
       return nil
     }
@@ -215,6 +219,8 @@ public enum BrokerError: Error, LocalizedError, Equatable {
       return "AgentKeyBox returned an invalid response."
     case .requestFailed(let message):
       return message
+    case .clientUpdated(let kind):
+      return kind.updatedMessage
     case .requestTimedOut:
       return "AgentKeyBox approval timed out."
     case .brokerAuthenticationUnavailable:

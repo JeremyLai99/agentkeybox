@@ -14,6 +14,7 @@ struct DoctorCheck: Codable {
 @main
 struct AgentKeyBoxCLI {
   static func main() async {
+    _ = ExecutableIdentity.atLaunch
     let args = Array(CommandLine.arguments.dropFirst())
     guard let command = args.first else {
       printHelp()
@@ -99,7 +100,9 @@ struct AgentKeyBoxCLI {
 
     #if os(macOS)
       do {
-        let response = try await LocalBrokerClient(timeoutSeconds: 2, opensAppIfNeeded: false).send(
+        let response = try await LocalBrokerClient(
+          timeoutSeconds: 2, opensAppIfNeeded: false, kind: .commandLine
+        ).send(
           BrokerRequest(
             action: .listCredentials,
             agentID: "akb-doctor",
@@ -230,7 +233,7 @@ struct AgentKeyBoxCLI {
 
     let response: BrokerResponse
     do {
-      response = try await LocalBrokerClient().send(
+      response = try await LocalBrokerClient(kind: .commandLine).send(
         BrokerRequest(
           action: .revealEnvironment,
           agentID: "terminal",
@@ -309,13 +312,13 @@ struct AgentKeyBoxCLI {
       exit(2)
     }
     do {
-      let response = try await LocalBrokerClient().send(invocation.request)
+      let response = try await LocalBrokerClient(kind: .commandLine).send(invocation.request)
       let result = try BrowserAgentResult(invocation: invocation, response: response)
       let encoder = JSONEncoder()
       encoder.outputFormatting = [.sortedKeys]
       print(String(decoding: try encoder.encode(result), as: UTF8.self))
     } catch {
-      // Only two fixed pre-execution approval errors are safe to distinguish. Other broker
+      // Only fixed pre-execution approval errors and local update guidance are safe. Other broker
       // diagnostics may contain sensitive data, and a disconnect may be after submission.
       let message =
         (error as? BrokerError)?.controlledApprovalMessage

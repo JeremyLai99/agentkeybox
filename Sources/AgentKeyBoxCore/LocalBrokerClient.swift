@@ -21,17 +21,21 @@ import Foundation
     private let tokenStore: BrokerTokenStore
     private let timeoutSeconds: TimeInterval
     private let opensAppIfNeeded: Bool
+    private let kind: BrokerClientKind
+    private let executableIdentity = ExecutableIdentity.atLaunch
 
     public init(
       socketURL: URL = BrokerEndpoint.defaultSocketURL,
       tokenStore: BrokerTokenStore = BrokerTokenStore(),
       timeoutSeconds: TimeInterval = BrokerEndpoint.defaultClientTimeout,
-      opensAppIfNeeded: Bool = true
+      opensAppIfNeeded: Bool = true,
+      kind: BrokerClientKind = .mcpHelper
     ) {
       self.socketURL = socketURL
       self.tokenStore = tokenStore
       self.timeoutSeconds = timeoutSeconds
       self.opensAppIfNeeded = opensAppIfNeeded
+      self.kind = kind
     }
 
     /// Sends one request. When AgentKeyBox is not running, opens it in the background (unless
@@ -117,7 +121,10 @@ import Foundation
                         finish(.success(response))
                       } else {
                         finish(
-                          .failure(BrokerError.requestFailed(response.error ?? "Request denied.")))
+                          .failure(
+                            self.kind.rejectionError(
+                              message: response.error ?? "Request denied.",
+                              executable: self.executableIdentity)))
                       }
                     } catch {
                       finish(.failure(BrokerError.invalidResponse))
@@ -174,7 +181,8 @@ import Foundation
       socketURL: URL = BrokerEndpoint.defaultSocketURL,
       tokenStore: BrokerTokenStore = BrokerTokenStore(),
       timeoutSeconds: TimeInterval = BrokerEndpoint.defaultClientTimeout,
-      opensAppIfNeeded: Bool = true
+      opensAppIfNeeded: Bool = true,
+      kind: BrokerClientKind = .mcpHelper
     ) {}
     public func send(_ request: BrokerRequest) async throws -> BrokerResponse {
       throw BrokerError.unsupportedPlatform
