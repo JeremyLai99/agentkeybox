@@ -482,7 +482,8 @@ final class BrowserPolicyTests: XCTestCase {
           XCTAssertEqual(browser.lease.phase, .closed)
           let marker = "cross-origin-request" + (recovery ? ".recovery" : ".post")
           XCTAssertEqual(
-            try String(contentsOf: fixture.directory.appendingPathComponent(marker), encoding: .utf8),
+            try String(
+              contentsOf: fixture.directory.appendingPathComponent(marker), encoding: .utf8),
             "1")
           if recovery {
             let payload = try SensitivePayload.decode(XCTUnwrap(saved), kind: .recoveryCodes)
