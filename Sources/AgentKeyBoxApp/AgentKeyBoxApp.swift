@@ -378,6 +378,9 @@
       service: DevelopmentProfile.current?.keychainService ?? "dev.agentkeybox.secrets")
     private let approvalEngine = ApprovalEngine()
     private var accessGeneration = UUID()
+    // UI mutations enqueue revocation synchronously. New approvals/lookups drain this chain
+    // before touching the engine, even when the UI callback itself cannot await an actor.
+    private var sessionRevocationTask: Task<Void, Never>?
     private let metadataStore = MetadataStore(
       fileURL: DevelopmentProfile.current?.file("metadata.json"))
     private let brokerTokenStore = BrokerTokenStore()
@@ -1209,9 +1212,14 @@
       let historyLabel = self.historyLabel(for: request)
 
       Task {
+        await sessionRevocationTask?.value
+        let sessionGeneration = await approvalEngine.sessionGeneration(for: request)
+        guard self.pendingRequest?.id == requestID else { return }
         // Every approval requires Touch ID or the login password. With the data protection
         // keychain the same authentication then unlocks the secrets, so there is one prompt.
         var grant: AuthenticationGrant?
+        var sessionGranted = false
+        defer { if !sessionGranted { grant?.invalidate() } }
         if decision != .deny {
           do {
             grant = try await authenticator.authenticate(
@@ -1259,7 +1267,27 @@
         // "Don't ask again this session": keep this authentication for identical requests.
         let recordedDecision: ApprovalDecision
         if decision != .deny, rememberSession, ApprovalEngine.canGrantSession(for: request) {
-          await approvalEngine.grantSession(for: request, authentication: grant)
+          guard let approvedCredential,
+            credentialUseIsCurrent(
+              [approvedCredential], projectPath: request.projectPath, generation: generation)
+          else {
+            finishPrompt(
+              credentialChangedResponse, message: L("Credential changed. Request approval again."))
+            return
+          }
+          sessionGranted = await approvalEngine.grantSession(
+            for: request, authentication: grant, generation: sessionGeneration)
+          guard sessionGranted,
+            self.pendingRequest?.id == requestID,
+            credentialUseIsCurrent(
+              [approvedCredential], projectPath: request.projectPath, generation: generation)
+          else {
+            let response = await rejectChangedCredential(approvedCredential.id)
+            if self.pendingRequest?.id == requestID {
+              finishPrompt(response, message: L("Credential changed. Request approval again."))
+            }
+            return
+          }
           self.activeSessionCount = await approvalEngine.activeSessionCount()
           recordedDecision = .allowSession
         } else {
@@ -1684,6 +1712,7 @@
     }
 
     private func invalidateProtectedAccess(for credentialID: UUID) {
+      queueSessionRevocation(for: credentialID)
       let revocation = ProtectedAccessRevocation(
         credentialID: credentialID, pending: pendingRequest, broker: pendingBrokerRequest,
         executingSubmissionID: executingSubmissionID,
@@ -1982,6 +2011,7 @@
       )
 
       let generation = accessGeneration
+      await sessionRevocationTask?.value
       if let approval = await approvalEngine.sessionApproval(for: request) {
         await recordSessionUse(request, credential: credential)
         return await executeApprovedCommand(
@@ -2028,6 +2058,7 @@
       request.hostStatus = validated.hostStatus
       request.sessionID = brokerRequest.sessionID
       let generation = accessGeneration
+      await sessionRevocationTask?.value
       if let approval = await approvalEngine.sessionApproval(for: request) {
         await recordSessionUse(request, credential: credential)
         return await executeApprovedHTTPRequest(
@@ -2185,6 +2216,13 @@
       BrokerResponse(ok: false, error: L("Credential changed. Request approval again."))
     }
 
+    /// A failed before-use check must not leave a reusable authentication behind.
+    private func rejectChangedCredential(_ credentialID: UUID) async -> BrokerResponse {
+      await approvalEngine.revokeSessions(for: credentialID.uuidString)
+      activeSessionCount = await approvalEngine.activeSessionCount()
+      return credentialChangedResponse
+    }
+
     private func credentialUseIsCurrent(
       _ approved: [CredentialMetadata], projectPath: String, generation: UUID
     ) -> Bool {
@@ -2205,7 +2243,7 @@
           [credential], projectPath: brokerRequest.projectPath, generation: generation),
         !credential.kind.requiresControlledUse
       else {
-        return credentialChangedResponse
+        return await rejectChangedCredential(credential.id)
       }
       guard let executablePath = brokerRequest.executablePath,
         let environmentVariable = brokerRequest.environmentVariable
@@ -2219,7 +2257,7 @@
         guard
           credentialUseIsCurrent(
             [credential], projectPath: brokerRequest.projectPath, generation: generation)
-        else { return credentialChangedResponse }
+        else { return await rejectChangedCredential(credential.id) }
         guard let stored = value else {
           return BrokerResponse(ok: false, error: "Credential value is missing from Keychain.")
         }
@@ -2232,7 +2270,7 @@
         guard
           credentialUseIsCurrent(
             [credential], projectPath: brokerRequest.projectPath, generation: generation)
-        else { return credentialChangedResponse }
+        else { return await rejectChangedCredential(credential.id) }
         return BrokerResponse(ok: false, error: "Could not read credential from Keychain.")
       }
 
@@ -2270,7 +2308,7 @@
           [credential], projectPath: brokerRequest.projectPath, generation: generation),
         !credential.kind.requiresControlledUse
       else {
-        return credentialChangedResponse
+        return await rejectChangedCredential(credential.id)
       }
       do {
         // Re-validate against the current allowlist in case it changed while the prompt was open.
@@ -2284,7 +2322,7 @@
         guard
           credentialUseIsCurrent(
             [credential], projectPath: brokerRequest.projectPath, generation: generation)
-        else { return credentialChangedResponse }
+        else { return await rejectChangedCredential(credential.id) }
         guard let secret = value else {
           return BrokerResponse(ok: false, error: "Credential value is missing from Keychain.")
         }
@@ -2298,7 +2336,7 @@
         guard
           credentialUseIsCurrent(
             [credential], projectPath: brokerRequest.projectPath, generation: generation)
-        else { return credentialChangedResponse }
+        else { return await rejectChangedCredential(credential.id) }
         return BrokerResponse(ok: false, error: error.localizedDescription)
       }
     }
@@ -2502,6 +2540,7 @@
         statusMessage = L("Could not save the new key: %@", reason)
         return false
       }
+      invalidateProtectedAccess(for: id)
       statusMessage = L("Saved %@.", label)
       return true
     }
@@ -2519,10 +2558,20 @@
     func revokeSessionApprovals() {
       accessGeneration = UUID()
       closeAllBrowsers()
-      Task {
-        await approvalEngine.revokeAllSessions()
-        self.activeSessionCount = 0
-        self.statusMessage = L("AgentKeyBox will ask every time again.")
+      queueSessionRevocation()
+      statusMessage = L("AgentKeyBox will ask every time again.")
+    }
+
+    private func queueSessionRevocation(for credentialID: UUID? = nil) {
+      let previous = sessionRevocationTask
+      sessionRevocationTask = Task {
+        await previous?.value
+        if let credentialID {
+          await approvalEngine.revokeSessions(for: credentialID.uuidString)
+        } else {
+          await approvalEngine.revokeAllSessions()
+        }
+        activeSessionCount = await approvalEngine.activeSessionCount()
       }
     }
 
@@ -2559,6 +2608,7 @@
       hosts.append(host)
       credentials[index].allowedHosts = hosts
       credentials[index].updatedAt = Date()
+      queueSessionRevocation(for: credentialID)
       persistMetadata()
     }
 

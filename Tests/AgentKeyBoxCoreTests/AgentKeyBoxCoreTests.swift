@@ -51,7 +51,9 @@ final class AgentKeyBoxCoreTests: XCTestCase {
       sessionID: "session-1"
     )
 
-    await engine.grantSession(for: request, authentication: nil)
+    await engine.grantSession(
+      for: request, authentication: nil,
+      generation: await engine.sessionGeneration(for: request))
     let same = await engine.sessionApproval(for: request)
     XCTAssertNotNil(same)
 
@@ -324,7 +326,9 @@ final class AgentKeyBoxCoreTests: XCTestCase {
       deliveryMode: .environment,
       sessionID: "s1"
     )
-    await engine.grantSession(for: base, authentication: nil)
+    await engine.grantSession(
+      for: base, authentication: nil,
+      generation: await engine.sessionGeneration(for: base))
     let baseApproval = await engine.sessionApproval(for: base)
     XCTAssertNotNil(baseApproval)
 
@@ -357,7 +361,9 @@ final class AgentKeyBoxCoreTests: XCTestCase {
   func testSessionApprovalForHTTPCoversTheSameListedHostOnly() async {
     let engine = ApprovalEngine()
     let balance = sessionHTTPRequest(host: "api.stripe.com", status: .listed)
-    await engine.grantSession(for: balance, authentication: nil)
+    await engine.grantSession(
+      for: balance, authentication: nil,
+      generation: await engine.sessionGeneration(for: balance))
 
     var charges = balance
     charges.url = "https://api.stripe.com/v1/charges"
@@ -374,7 +380,9 @@ final class AgentKeyBoxCoreTests: XCTestCase {
     let unlisted = sessionHTTPRequest(
       host: "hooks.example.dev", status: .unlisted(allowed: ["api.stripe.com"]))
     XCTAssertFalse(ApprovalEngine.canGrantSession(for: unlisted))
-    await engine.grantSession(for: unlisted, authentication: nil)
+    await engine.grantSession(
+      for: unlisted, authentication: nil,
+      generation: await engine.sessionGeneration(for: unlisted))
     let unlistedApproval = await engine.sessionApproval(for: unlisted)
     XCTAssertNil(unlistedApproval)
 
@@ -393,7 +401,9 @@ final class AgentKeyBoxCoreTests: XCTestCase {
     let engine = ApprovalEngine()
     let request = sessionHTTPRequest(host: "api.stripe.com", status: .listed)
     let start = Date(timeIntervalSince1970: 1_000_000)
-    await engine.grantSession(for: request, authentication: nil, now: start)
+    await engine.grantSession(
+      for: request, authentication: nil,
+      generation: await engine.sessionGeneration(for: request), now: start)
 
     let withinLimit = await engine.sessionApproval(
       for: request, now: start.addingTimeInterval(ApprovalEngine.maxSessionAge - 60))
@@ -404,7 +414,9 @@ final class AgentKeyBoxCoreTests: XCTestCase {
       for: request, now: start.addingTimeInterval(ApprovalEngine.maxSessionAge + 1))
     XCTAssertNil(expired)
 
-    await engine.grantSession(for: request, authentication: nil)
+    await engine.grantSession(
+      for: request, authentication: nil,
+      generation: await engine.sessionGeneration(for: request))
     await engine.revokeAllSessions()
     let revoked = await engine.sessionApproval(for: request)
     XCTAssertNil(revoked)

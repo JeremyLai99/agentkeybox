@@ -210,7 +210,9 @@ final class SensitiveItemTests: XCTestCase, @unchecked Sendable {
     request.kind = .sensitiveSubmission
     request.url = item.submissionURL
     XCTAssertFalse(ApprovalEngine.canGrantSession(for: request))
-    await engine.grantSession(for: request, authentication: nil)
+    await engine.grantSession(
+      for: request, authentication: nil,
+      generation: await engine.sessionGeneration(for: request))
     let grant = await engine.sessionApproval(for: request)
     XCTAssertNil(grant)
     let presentation = ApprovalPresentation.make(

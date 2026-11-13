@@ -37,9 +37,18 @@ public actor ApprovalEngine {
     public var authentication: AuthenticationGrant?
   }
 
+  /// Opaque snapshot taken before authentication. Either kind of revocation makes it stale.
+  public struct SessionGeneration: Equatable, Sendable {
+    fileprivate var all: UUID
+    fileprivate var credentialIdentifier: String
+    fileprivate var credential: UUID?
+  }
+
   public static let maxSessionAge: TimeInterval = 8 * 60 * 60
 
   private var sessionGrants: [SessionKey: SessionGrant] = [:]
+  private var generation = UUID()
+  private var credentialGenerations: [String: UUID] = [:]
   private var events: [AccessEvent] = []
 
   public init() {}
@@ -49,12 +58,28 @@ public actor ApprovalEngine {
     request.sessionID != nil && scope(for: request) != nil
   }
 
+  public func sessionGeneration(for request: AgentRequest) -> SessionGeneration {
+    SessionGeneration(
+      all: generation, credentialIdentifier: request.credentialIdentifier,
+      credential: credentialGenerations[request.credentialIdentifier])
+  }
+
+  /// No suspension between the generation check and insertion: revocation either prevents
+  /// this grant or removes it afterwards. Callers must not record allowSession on false.
+  @discardableResult
   public func grantSession(
-    for request: AgentRequest, authentication: AuthenticationGrant?, now: Date = Date()
-  ) {
-    guard let key = Self.key(for: request) else { return }
+    for request: AgentRequest, authentication: AuthenticationGrant?,
+    generation expected: SessionGeneration, now: Date = Date()
+  ) -> Bool {
+    guard expected == sessionGeneration(for: request), let key = Self.key(for: request) else {
+      return false
+    }
+    if let previous = sessionGrants[key], previous.authentication !== authentication {
+      previous.authentication?.invalidate()
+    }
     sessionGrants[key] = SessionGrant(
       authentication: authentication, expiresAt: now.addingTimeInterval(Self.maxSessionAge))
+    return true
   }
 
   public func sessionApproval(for request: AgentRequest, now: Date = Date()) -> SessionApproval? {
@@ -74,8 +99,19 @@ public actor ApprovalEngine {
 
   /// "Ask every time again": drops every grant and invalidates the saved authentications.
   public func revokeAllSessions() {
+    generation = UUID()
+    credentialGenerations.removeAll()
     for grant in sessionGrants.values { grant.authentication?.invalidate() }
     sessionGrants.removeAll()
+  }
+
+  /// Also prevents approvals already waiting for authentication from recreating these grants.
+  public func revokeSessions(for credentialIdentifier: String) {
+    credentialGenerations[credentialIdentifier] = UUID()
+    for (key, grant) in sessionGrants where key.credentialIdentifier == credentialIdentifier {
+      grant.authentication?.invalidate()
+      sessionGrants[key] = nil
+    }
   }
 
   @discardableResult
