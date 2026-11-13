@@ -7,21 +7,26 @@ import XCTest
     private let id = UUID(uuidString: "593D6043-A276-4C12-A1C3-453DD37062BF")!
 
     func testGuardRulesStayInSelectedProfileAndExplicitOverrideWins() throws {
-      let profile = DevelopmentProfile(id: UUID())
-      let manager = FileManager.default
-      let project = profile.file("project")
-      try manager.createDirectory(at: project, withIntermediateDirectories: true)
-      defer { try? manager.removeItem(at: profile.directory) }
-      let ledger = GuardRuleLedger(profile: profile)
-      try AgentGuard.protect(projectRoot: project, keyFileNames: ["synthetic.pem"], ledger: ledger)
-      XCTAssertTrue(manager.fileExists(atPath: profile.file("guard-rules.json").path))
-      XCTAssertTrue(
-        GuardRuleLedger(profile: profile).rules(for: project).contains("Read(synthetic.pem)"))
-      let explicit = profile.file("explicit-ledger.json")
-      let override = GuardRuleLedger(fileURL: explicit, profile: profile)
-      override.setRules(["Read(other.pem)"], for: project)
-      XCTAssertTrue(manager.fileExists(atPath: explicit.path))
-      XCTAssertFalse(ledger.rules(for: project).contains("Read(other.pem)"))
+      #if !os(macOS)
+        throw XCTSkip("QA profiles use macOS paths")
+      #else
+        let profile = DevelopmentProfile(id: UUID())
+        let manager = FileManager.default
+        let project = profile.file("project")
+        try manager.createDirectory(at: project, withIntermediateDirectories: true)
+        defer { try? manager.removeItem(at: profile.directory) }
+        let ledger = GuardRuleLedger(profile: profile)
+        try AgentGuard.protect(
+          projectRoot: project, keyFileNames: ["synthetic.pem"], ledger: ledger)
+        XCTAssertTrue(manager.fileExists(atPath: profile.file("guard-rules.json").path))
+        XCTAssertTrue(
+          GuardRuleLedger(profile: profile).rules(for: project).contains("Read(synthetic.pem)"))
+        let explicit = profile.file("explicit-ledger.json")
+        let override = GuardRuleLedger(fileURL: explicit, profile: profile)
+        override.setRules(["Read(other.pem)"], for: project)
+        XCTAssertTrue(manager.fileExists(atPath: explicit.path))
+        XCTAssertFalse(ledger.rules(for: project).contains("Read(other.pem)"))
+      #endif
     }
 
     func testAppPreferencesUseIsolatedProfileEvenOutsideQABundle() {
