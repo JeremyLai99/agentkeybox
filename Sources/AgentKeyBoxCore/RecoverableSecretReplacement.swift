@@ -14,7 +14,9 @@ struct RecoverableSecretReplacement {
     // This is the commit point. A leftover pending item makes add fail without changing it.
     // Never delete a pending value to make room: it may be the only copy of issued codes.
     try add(.pending, data)
-    try promote(data)
+    // Once committed, report success so callers retain metadata for this new value.
+    // A later load repairs promotion; pending remains authoritative in the meantime.
+    try? promote(data)
   }
 
   func load() throws -> Data? {

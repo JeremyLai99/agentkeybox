@@ -85,6 +85,8 @@ public final class MetadataStore: @unchecked Sendable {
 /// If the metadata cannot be saved, the old secret stays with its old project. If the secret
 /// cannot be saved, the metadata is put back. Saving the secret first could leave a new key
 /// readable by the project it was being moved away from.
+/// `saveSecret` must throw only before committing; recoverable promotion after commit must
+/// report success so metadata remains paired with the authoritative pending secret.
 public enum CredentialEditCommit {
   public enum Outcome: Equatable, Sendable {
     case saved

@@ -53,7 +53,11 @@ final class RecoverableSecretReplacementTests: XCTestCase {
       let store = Storage()
       store.values = [.primary: old]
       store.failBefore = step
-      XCTAssertThrowsError(try store.replacement.save(new))
+      if step == 1 {
+        XCTAssertThrowsError(try store.replacement.save(new))
+      } else {
+        XCTAssertNoThrow(try store.replacement.save(new))
+      }
       XCTAssertTrue(store.values.values.contains(old) || store.values.values.contains(new))
       store.restart()
       XCTAssertEqual(try store.replacement.load(), step == 1 ? old : new)
@@ -66,7 +70,12 @@ final class RecoverableSecretReplacementTests: XCTestCase {
       let store = Storage()
       store.values = [.primary: old]
       store.interruptAfter = step
-      XCTAssertThrowsError(try store.replacement.save(new))
+      // Step 1 models a process interruption after commit, not an ordinary add failure.
+      if step == 1 {
+        XCTAssertThrowsError(try store.replacement.save(new))
+      } else {
+        XCTAssertNoThrow(try store.replacement.save(new))
+      }
       store.restart()
       XCTAssertEqual(try store.replacement.load(), new)
       XCTAssertEqual(store.values, [.primary: new])
@@ -82,9 +91,57 @@ final class RecoverableSecretReplacementTests: XCTestCase {
       store.values = [:]
       store.restart()
       store.interruptAfter = step
-      XCTAssertThrowsError(try store.replacement.save(new))
+      // Step 1 models a process interruption after commit, not an ordinary add failure.
+      if step == 1 {
+        XCTAssertThrowsError(try store.replacement.save(new))
+      } else {
+        XCTAssertNoThrow(try store.replacement.save(new))
+      }
       store.restart()
       XCTAssertEqual(try store.replacement.load(), new)
+    }
+  }
+
+  func testEditCommitRetainsMetadataAfterCommitAndRollsBackBeforeCommit() throws {
+    for failureStep in [1, 3] {
+      let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString)
+      defer { try? FileManager.default.removeItem(at: directory) }
+      let metadata = MetadataStore(fileURL: directory.appendingPathComponent("metadata.json"))
+      let original = CredentialMetadata(
+        label: "Old", service: "Fixture", projectID: UUID(), allowedHosts: ["old.invalid"])
+      var edited = original
+      edited.projectID = UUID()
+      edited.allowedHosts = ["new.invalid"]
+      edited.updatedAt = original.updatedAt.addingTimeInterval(1)
+      try metadata.save(MetadataSnapshot(credentials: [original]))
+      let store = Storage()
+      store.values = [.primary: old]
+      store.failBefore = failureStep
+      let outcome = CredentialEditCommit.perform(
+        saveMetadata: {
+          do {
+            try metadata.save(MetadataSnapshot(credentials: [edited]))
+            return true
+          } catch { return false }
+        },
+        saveSecret: { try store.replacement.save(self.new) },
+        restoreMetadata: {
+          do {
+            try metadata.save(MetadataSnapshot(credentials: [original]))
+          } catch { XCTFail("Metadata rollback failed") }
+        })
+      if failureStep == 1 {
+        guard case .secretFailed = outcome else { return XCTFail("Must fail before commit") }
+        XCTAssertNil(store.values[.pending])
+        XCTAssertEqual(metadata.load().credentials, [original])
+        XCTAssertEqual(try store.replacement.load(), old)
+      } else {
+        XCTAssertEqual(outcome, .saved)
+        XCTAssertEqual(store.values[.pending], new)
+        XCTAssertEqual(metadata.load().credentials, [edited])
+        XCTAssertEqual(try store.replacement.load(), new)
+      }
     }
   }
 
@@ -144,6 +201,30 @@ final class RecoverableSecretReplacementTests: XCTestCase {
   }
 
   @MainActor
+  func testSubmissionReservationKeepsNewRevisionWhenPromotionFails() async throws {
+    let payload = SensitivePayload(
+      recoveryCodes: try RecoveryCodeSet(text: "synthetic-code-001\nsynthetic-code-002"))
+    var item = CredentialMetadata(
+      label: "Fixture", service: "Fixture", kind: .recoveryCodes,
+      submissionURL: "https://fixture.invalid/recovery", payloadRevision: payload.revision)
+    let store = Storage()
+    store.values[.primary] = try payload.encoded()
+    store.failBefore = 3
+    let outcome = try await SensitiveSubmissionExecutor.execute(
+      .init(fields: ["code": "{{recovery.code}}"]), credential: item, payload: payload,
+      persistReservation: { data in
+        try store.replacement.save(data)
+        item.payloadRevision = try SensitivePayload.decode(data, kind: .recoveryCodes).revision
+      },
+      send: { _ in .received })
+    XCTAssertEqual(outcome, .received)
+    let loaded = try SensitivePayload.decode(
+      XCTUnwrap(store.replacement.load()), kind: .recoveryCodes)
+    XCTAssertEqual(item.payloadRevision, loaded.revision)
+    XCTAssertEqual(loaded.recoveryCodes?.entries.map(\.status), [.issued, .available])
+  }
+
+  @MainActor
   func testRecoveredReservationCannotResurrectIssuedCodeAndOldRevisionIsRejected() async throws {
     let original = SensitivePayload(
       recoveryCodes: try RecoveryCodeSet(text: "synthetic-code-001\nsynthetic-code-002"))
@@ -153,13 +234,15 @@ final class RecoverableSecretReplacementTests: XCTestCase {
     let store = Storage()
     store.values[.primary] = try original.encoded()
     store.failBefore = 2
-    XCTAssertThrowsError(
-      try BrowserRecoveryPolicy.reserve(payload: original, credential: item) {
-        try store.replacement.save($0)
-      })
+    let reserved = try BrowserRecoveryPolicy.reserve(payload: original, credential: item) {
+      try store.replacement.save($0)
+      item.payloadRevision = try SensitivePayload.decode($0, kind: .recoveryCodes).revision
+    }
+    XCTAssertEqual(reserved, "synthetic-code-001")
     store.restart()
     let recovered = try SensitivePayload.decode(
       XCTUnwrap(store.replacement.load()), kind: .recoveryCodes)
+    XCTAssertEqual(item.payloadRevision, recovered.revision)
     XCTAssertNotEqual(recovered.revision, original.revision)
     XCTAssertEqual(recovered.recoveryCodes?.entries.map(\.status), [.issued, .available])
     // If metadata survived with the new revision, any older payload must fail both use paths.
