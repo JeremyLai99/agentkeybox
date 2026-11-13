@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Browser sign-in and recovery submission now send their approved form only once, including when a website redirects back to the same address with HTTP 307/308. A blocked retry closes the private session; reserved codes stay unavailable.
+- Saving an edited key now keeps its new project and allowed websites when the new value is safely stored but Keychain cleanup must finish on a later read. A failure before storage still restores the old settings.
+- Synthetic submission and backup checks now accept the optional disposable-project card, both before and after that project is removed, while continuing to reject unknown items.
+- HTTP results no longer expose response Content-Type parameters or network error details. Only a validated, secret-checked MIME type is returned alongside the redacted body.
+- Approved commands, HTTP requests and terminal environments now stop if a key changes, becomes unavailable to the project or access is revoked while Keychain is being read. File cleanup also rechecks its backup and metadata snapshot before removing values.
+- QA project protection and app preferences now use the isolated profile, keeping test guard rules and settings out of the normal installation.
+- Release binaries exclude QA storage paths and labels. A new release check scans the app and both helpers for QA markers before packaging.
+
 - AgentKeyBox no longer reopens through macOS session restoration; explicit launch and the user's login-item setting remain separate.
 - Page body and link labels now share bounded visible-text traversal, excluding blocked descendants and computed `visibility:hidden`/`collapse` content. Real WebKit regression coverage verifies visible text remains available.
 - Removing a project now revokes each removed item's protected access after metadata persistence, before Keychain deletion. Pending requests cancel; late browser read/follow results are revalidated; started endpoint submissions keep their actual outcome. Added the DEBUG project fixture and `remove-project-pending` native driver (native execution pending).

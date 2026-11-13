@@ -1,5 +1,81 @@
 # AgentKeyBox implementation status
 
+## 七項 code review 修復 — 2026-11-13（unreleased）
+
+本次以 `30eef5d` 為基底，於 `feat/protected-items-browser` worktree 完成修復。只執行合成資料的建置、自動化測試與靜態檢查；未啟動或安裝 AgentKeyBox、未存取正式資料／鑰匙圈／broker token、未執行原生驗收、簽署、公證或發布。下方歷史紀錄原樣保留，不能當作這次 binary 的驗收。
+
+### 修復與同筆提交的回歸測試
+
+| 項目 | Commit | 做法與理由 | 測試證據 |
+| --- | --- | --- | --- |
+| 1. POST 重送 | `795507f` | 在 WebKit 放行第一個 POST 前消耗許可；後續 POST 一律固定失敗並關閉工作階段，保留 issued。 | `testSameURLPostRedirectsNeverResubmitLoginOrRecovery`：登入／復原碼 × 307／308，真實 WebKit 四種情況各僅 1 次 POST，固定錯誤且不含合成值與編碼。另有 `4081966` 純換行格式修正。 |
+| 2. pending 提交點 | `cbf10d7` | pending 寫入成功即回報成功；promotion 失敗由 load 修復，避免新機密配舊設定。既有 pending 仍不能覆寫或刪除騰位。 | `testEditCommitRetainsMetadataAfterCommitAndRollsBackBeforeCommit` 使用落盤 metadata 與會拒絕 primary 新增的假儲存層；`testSubmissionReservationKeepsNewRevisionWhenPromotionFails`、`testRecoveredReservationCannotResurrectIssuedCodeAndOldRevisionIsRejected` 涵蓋兩種 reservation 路徑。Replacement 10 + EditCommit 4，共 14 測試通過。 |
+| 3. fixture 白名單 | `0e9902e` | submission／backup 共用白名單：必需 1、2，僅可另有 fixture 3 信用卡，且必屬 fixture 4 專案、目的地為 `/submit/card`。拒絕未知／重複 ID、錯誤種類／專案／目的地。 | `test_submission_allowlist_and_backup_with_optional_project_card` 驗證第三筆存在及已移除，並驗證備份卡片 envelope 數量；離線套件 25 測試通過。 |
+| 4. HTTP 回應洩漏 | `9f08b82` | MIME 轉小寫，只允許 type/subtype token、最多 127 bytes、移除參數，再以 SecretRedactor 候選值檢查。另將 URLSession 原始錯誤替換為固定診斷。 | `HTTPResponseSafetyTests` 三個測試：MIME 語法／長度、loopback 參數與 subtype 反射、斷線錯誤；驗證實際 MCP 共用 formatter 與 BrokerResponse 編碼。加既有 HTTP 重導向測試，共 4 通過。 |
+| 5. 讀取後重驗 | `e2b736c` | 指令／HTTP／環境變數保留核准快照；每次 await readSecret 後比對完整 metadata、專案可見性與撤銷 generation。多機密環境每次讀完重驗整組；清理明文檔案前也重驗快照與備份。 | `CredentialUsePolicyTests` 5 測試涵蓋 timestamp、hosts、移動、刪除、設定、專案失效、撤銷與前一筆環境機密被改；另 10 個 BackupArchiveTests 通過。App UI 競態仍待原生驗收。 |
+| 6. QA 寫入隔離 | `7506191` | GuardRuleLedger 預設選 profile 檔案並保留顯式注入；App 偏好設定統一使用所選 domain，登入預設註冊再加 QA guard。正式模式維持原路徑。 | `testGuardRulesStayInSelectedProfileAndExplicitOverrideWins`、`testAppPreferencesUseIsolatedProfileEvenOutsideQABundle`；Profile 6 + Guard 10 + Localization 5，共 21 通過。 |
+| 7. release QA 字串 | `687a169` | QA directory／service／domain 實作、視窗標題與隔離診斷僅 DEBUG 編譯；release current 恆 nil 且不能建立 profile。新增三執行檔掃描器與用法。 | `ReleaseQAScannerTests` 4 測試，包含每個執行檔各 10 種標記、缺檔、UTF-16 與乾淨檔；實際 arm64 release 的 3 個執行檔均通過。 |
+
+第 1 項提交後才補正一行 lint 換行，因此有一筆額外的純格式 commit；未 amend 或重寫歷史。其餘每項修復及回歸測試各在同一 commit，最後另交文件 commit。
+
+### 完成前的實際驗證
+
+| 檢查 | 實際結果 |
+| --- | --- |
+| `swift build --disable-sandbox --scratch-path .build-debug -Xswiftc -warnings-as-errors` | 通過，3 executables；最後一次 8.55 秒。SwiftPM 對沙盒內不可寫的 user-level configuration/security cache 顯示 2 則環境警告，Swift 編譯成功。 |
+| `swift test --scratch-path .build-test -Xswiftc -warnings-as-errors` | 通過，197 個 XCTest，2 個 LiveBrowserTests 跳過，0 失敗（195 通過）；測試 36.594 秒。Live opt-in 未啟用。 |
+| `swift build --disable-sandbox --scratch-path .build-release -c release -Xswiftc -warnings-as-errors` | 通過，arm64 的 3 executables，40.80 秒；同樣有 2 則 SwiftPM cache 環境警告。 |
+| `AGENTKEYBOX_BIN_DIR=$PWD/.build-release/release Scripts/mcp-smoke-test.sh` | 通過，11 個 JSON-RPC 回應，9 個預期的輸入驗證錯誤；沒有呼叫正式 broker。 |
+| `Scripts/check-release-qa-strings.sh .build-release/release` | 通過，3 executables × 10 標記 × 3 編碼（UTF-8／UTF-16LE／UTF-16BE），0 命中。 |
+| `python3 -B Scripts/test-browser-acceptance-client.py` | 25 測試，0 失敗。 |
+| `python3 -B Scripts/test-release-qa-strings.py` | 4 測試，0 失敗。 |
+| `Scripts/security-static-check.sh` | 通過，exit 0。 |
+| `bash -n Scripts/check-release-qa-strings.sh` | 通過；本次唯一新增／修改的 shell 檔。 |
+| 修改過的 Swift 檔 `xcrun swift-format lint --strict` | 檢查 17 檔，exit 1：新增問題 **0**，既有問題 **3**。與 `30eef5d` 相同原文／規則逐筆比對：AgentGuard.swift:97 的 LineLength，以及 Localization.swift 的兩個 `L` 函式命名（目前 111、120 行）。未把既有問題宣稱為通過，也未重排無關程式。 |
+| `git diff --check 30eef5d..HEAD` | 通過；文件提交後再檢查。 |
+
+完整測試第一次加上 shell 輸出重新導向時，manifest 的 sandbox_apply 回報 Operation not permitted；改用上列原樣、已放行的 swift test 指令後完整通過。之前開發中的測試編譯／新增 lint 問題均已修正；上表是修正後結果。測試群組的數量可能重疊，不可加總成另一個完整測試數字。
+
+### 第 4、5、6 項延伸檢查
+
+**BrokerResponse / HTTP：** `http.statusCode` 與 `bodyTruncated` 是數值／布林；`body` 原有先遮罩再截斷保護；`contentType` 已修。`error` 的 URLSession transport 分支原會輸出原始錯誤文字，這次已改固定訊息。HTTP 不回傳任意 headers、Location、Set-Cookie 或最終 URL。Policy 驗證錯誤來自 agent 原本輸入；其他 HTTP 錯誤為固定訊息。`credentials` 是 metadata，`execution` 是既有遮罩的指令輸出，`submissionOutcome` 是固定 enum，`browserPage` 經既有受控頁面政策，均非 HTTP 原始標頭轉送。`environment` 是已存在、限獲准 CLI 的明文交付模式，MCP HTTP formatter 不讀取它；本次沒有擴大其存取範圍。
+
+**所有 await readSecret（行號依任務原始碼）：**
+
+- 約 570，備份：原本已在所有讀取後、寫出前以 `BackupArchive.snapshotIsCurrent` 比對完整 credential／project 快照；沒有先寫出新值配舊 metadata，沿用且跑既有測試。
+- 約 682，清理專案明文：補上使用前完整 credential／project 快照與 backup coverage 重驗；失效就停止，讀完到刪改檔案間沒有 await。
+- 約 1469，原生 protected editor：讀取後已有完整 metadata contains 與 payload revision 檢查；這是使用者原生編輯，沒有 agent request project，沿用。
+- 約 1597，standalone protected submission：已有完整 metadata/index 與 payload revision 檢查；再補 project visibility、revocation generation。
+- 約 1820，browser login：補 project visibility 與 `ownedBrowser` 檢查；metadata／payload revision 與 lease 原本已檢查。
+- 約 1831，browser recovery：讀後重取 visibleCredential 並與快照相等，再重驗 ownedBrowser；既有 reservation/lease/revision 檢查保留。
+- 約 2162，指令：改傳核准時完整 metadata，讀後重驗；設定也取自同一快照。
+- 約 2218，HTTP：保留讀前檢查，新增讀後完整重驗，才執行送出。
+- 約 2247，環境變數：核准時捕捉整組 selection，每讀完一筆重新比較整組與撤銷狀態，任何失效不回傳已讀部分。
+
+**QA 正式路徑：**
+
+- Application Support：App 的 metadata、access log 與 Keychain service 已注入 profile；broker socket、broker token 原已有 profile 路由。GuardRuleLedger 是漏網項目，這次修正。只讀程式碼與使用合成暫存測試，未開啟正式儲存檔。
+- 偏好設定：Localization 原本選 QA domain，但 App 的 AppleLanguages、backup 日期、login 設定、helper 註冊紀錄直接用 standard；這次全部改走同一 profile-aware defaults。全域 AppleLanguages 僅讀取系統語言，沒有修改。
+- Helper：固定安裝位置由 profile-aware broker 目錄推導；App 的 keepAgentsConnected／connect 已禁止 QA，CLI connect 在安裝前拒絕 QA，沿用。
+- Agent 註冊：自動與手動 App 路徑、CLI connect 已有 QA guard；沒有增加 adapter 寫入。
+- Login item：init 的自動路徑與 setOpensAtLogin 已阻擋 QA；這次在 openAtLoginByDefault 入口再確認。SMAppService status 讀取及開啟系統設定沒有註冊副作用。
+- App 搬移：QA 已禁止 moveToApplications 並隱藏提議，沿用。原生備份與專案設定寫入使用者選擇的位置，沒有另一條硬編碼正式 vault 路徑。
+
+**第 2 項呼叫端：** 原生 protected editor 與一般 key editor 的 `CredentialEditCommit` 現在都會保留已提交 pending 對應的新 metadata。兩條復原碼 reservation closure 都在 save 成功後更新 payloadRevision 與 updatedAt，再持久化 metadata；promotion 失敗不再中止這些步驟。Metadata 本身寫入失敗／程序中斷仍可能留下 revision 不一致，既有拒絕使用規則維持，沒有宣稱跨 Keychain 與 JSON 的原子交易。
+
+### 人工交接與限制
+
+**簽署版鑰匙圈編輯流程必須重新驗收，目前未驗證。** 請 Claude 與使用者依 [MACOS_TEST.md 的 signed replacement 步驟與 native review-fix 步驟](MACOS_TEST.md) 使用專用合成項目：
+
+1. Team-signed、具 entitlement 的測試版確認 data-protection Keychain；一般 key 從舊專案／hosts／值編輯為新設定與新值。分別注入 pending-add 失敗及 pending 成功後 primary-add 失敗。前者必須回報失敗並還原舊設定／舊值；後者必須回報成功，保持新設定，下一次 authenticated load 讀到新值並修復。再測 pending 已存在時拒絕覆寫、各操作點中斷／重啟，以及正常編輯與兩種 recovery reservation。
+2. 使用者自行完成每次 Touch ID／登入密碼驗證；replacement／repair 不得增加額外驗證視窗，兩個 slot 的 user-presence 與 device-only 保護保持不變。已送出的復原碼重啟後仍 issued，無自動重送。
+3. 原生 read-race 測試分別暫停 HTTP／指令／環境變數的 Keychain worker，編輯／移動／刪除／改 hosts／撤銷後繼續；應回固定 changed 錯誤且零送出、零執行、零環境回傳，另做不變更的成功對照。
+4. 新 QA submission profile 內設置測試專案、語言與備份，驗證 ledger/preferences 留在 profile；第三筆移除前後各執行 card-form 與備份檢查，預期精確白名單與卡片數都通過，正式設定不變。
+
+未驗證：本次 binary 的原生 UI/Touch ID、簽署版 Keychain、真實服務 TLS／登入相容性、Intel/universal 產物。QA 或 unit tests 不取代以上驗收。嚴格 lint 的 3 個基底既有問題仍保留。
+
+未建立 DerivedData 或 xcresult，未清除共用 Xcode 產物。依使用者指示保留 `.build-debug`（164,272 KiB）、`.build-test`（275,164 KiB）、`.build-release`（121,220 KiB）供 Claude 收尾；合計 560,656 KiB（約 547.5 MiB），未加入 Git。本次主動清除的 build 路徑：無，釋放 0 bytes。個別合成 fixture 暫存檔由測試自行清理。
+
 ## Agent scope decision — 2026-11-05
 
 dots / ChatGPT Work, Meta Muse (including Muse Code), Grok Bot and Claude Duet cannot be tested here, so they were removed from user-facing documentation and `docs/AGENT_COMPATIBILITY.md` was deleted. The `akb browser` command reference moved to [INTEGRATION.md](INTEGRATION.md). Later sections mentioning these products are historical records, not support claims.

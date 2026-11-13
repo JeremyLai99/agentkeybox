@@ -4,6 +4,18 @@ Updated on 2026-10-26 with native protected JSON import acceptance and QA launch
 
 The selected direction is approved agent use of sensitive data without exposing raw values to the agent. Typed card/recovery-code storage and controlled HTTPS field submission now exist in the working tree; restricted traditional browser login and recovery continuation also exist; real-provider sign-in validation and browser checkout remain open. See [PRODUCT.md](PRODUCT.md) for requirements and exclusions.
 
+## Review fixes — 2026-11-13 (unreleased)
+
+- [x] Consume browser POST permission on first use; real WebKit 307/308 login/recovery regressions require one receipt and fixed failure.
+- [x] Treat durable pending Keychain storage as the commit point; verify edit metadata and both recovery reservation paths with fault injection.
+- [x] Share the exact QA fixture allowlist across submission and backup tools, with optional disposable-project card coverage.
+- [x] Return only bounded, secret-checked MIME tokens and fixed HTTP transport errors.
+- [x] Revalidate complete approved metadata, visibility and revocation after secret reads; recheck the whole terminal environment selection and native cleanup snapshot.
+- [x] Keep guard ledger and app preferences in the selected QA profile; inspect helper/login-item/registration/storage paths.
+- [x] Compile QA implementations only in DEBUG and scan all three release executables for QA markers.
+- [ ] **Repeat signed Keychain editing acceptance on these new binaries**, including pending-add versus primary-add failures, metadata agreement, restart repair and prompt counts. Previous signed normal-path evidence does not validate the changed commit semantics.
+- [ ] Repeat native read-race cancellation and QA settings/submission/backup checks described in [MACOS_TEST.md](MACOS_TEST.md); this pass ran automated synthetic tests only.
+
 ## P0 — public alpha gate
 
 - [x] Swift/SwiftUI macOS app skeleton
