@@ -346,9 +346,9 @@
       didSet {
         Localization.preference = languagePreference
         if languagePreference == .system {
-          UserDefaults.standard.removeObject(forKey: "AppleLanguages")
+          Localization.defaults.removeObject(forKey: "AppleLanguages")
         } else {
-          UserDefaults.standard.set([languagePreference.rawValue], forKey: "AppleLanguages")
+          Localization.defaults.set([languagePreference.rawValue], forKey: "AppleLanguages")
         }
       }
     }
@@ -482,11 +482,12 @@
     /// agents find it running after a restart. A copy in Downloads or a translocated copy is
     /// never registered; after the user turns it off, it stays off.
     private func openAtLoginByDefault() {
+      guard DevelopmentProfile.current == nil else { return }
       let key = "AgentKeyBoxLoginItemConfigured"
-      guard !UserDefaults.standard.bool(forKey: key),
+      guard !Localization.defaults.bool(forKey: key),
         InstallLocation.isInApplications(Bundle.main.bundleURL)
       else { return }
-      UserDefaults.standard.set(true, forKey: key)
+      Localization.defaults.set(true, forKey: key)
       if SMAppService.mainApp.status != .enabled {
         try? SMAppService.mainApp.register()
       }
@@ -495,7 +496,7 @@
 
     func setOpensAtLogin(_ enabled: Bool) {
       guard DevelopmentProfile.current == nil else { return }
-      UserDefaults.standard.set(true, forKey: "AgentKeyBoxLoginItemConfigured")
+      Localization.defaults.set(true, forKey: "AgentKeyBoxLoginItemConfigured")
       do {
         if enabled {
           try SMAppService.mainApp.register()
@@ -542,7 +543,7 @@
     /// When the last encrypted backup was exported; shown in Settings and required before keys
     /// can be removed from project files.
     @Published var lastBackupDate: Date? =
-      UserDefaults.standard.object(forKey: "AgentKeyBoxLastBackup") as? Date
+      Localization.defaults.object(forKey: "AgentKeyBoxLastBackup") as? Date
 
     /// Touch ID, then writes every project, key, and key value to an encrypted disk image that
     /// opens with the password. Returns false (with a status message) on failure.
@@ -595,7 +596,7 @@
         statusMessage = L("Could not write the backup: %@", error.localizedDescription)
         return false
       }
-      UserDefaults.standard.set(snapshotTime, forKey: "AgentKeyBoxLastBackup")
+      Localization.defaults.set(snapshotTime, forKey: "AgentKeyBoxLastBackup")
       lastBackupDate = snapshotTime
       statusMessage = L("Backed up %@ key(s) to %@.", "\(secrets.count)", url.lastPathComponent)
       return true
@@ -1381,12 +1382,12 @@
         else { return }
         for adapter in [ClaudeCodeAdapter() as any AgentAdapter, CodexAdapter()] {
           let key = Self.registeredHelperKey(adapter.id)
-          guard UserDefaults.standard.string(forKey: key) != helper,
+          guard Localization.defaults.string(forKey: key) != helper,
             await adapter.integrationStatus() == .configured
           else { continue }
           do {
             try await adapter.installIntegration(mcpExecutablePath: helper)
-            UserDefaults.standard.set(helper, forKey: key)
+            Localization.defaults.set(helper, forKey: key)
           } catch {
             // The next launch tries again; the existing connection is no worse than before.
           }
@@ -1472,7 +1473,7 @@
       Task {
         do {
           try await adapter.installIntegration(mcpExecutablePath: helper)
-          UserDefaults.standard.set(helper, forKey: Self.registeredHelperKey(adapter.id))
+          Localization.defaults.set(helper, forKey: Self.registeredHelperKey(adapter.id))
           update("Connected")
           self.statusMessage = L(
             "Connected AgentKeyBox to %@. Start a new agent session to load the MCP tools.",

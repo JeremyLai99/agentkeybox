@@ -55,10 +55,20 @@ public enum Localization {
     override.lock.unlock()
   }
 
-  static var defaults: UserDefaults {
+  /// App settings and helper localization share the selected profile's preference domain.
+  public static var defaults: UserDefaults {
+    defaults(profile: DevelopmentProfile.current)
+  }
+
+  static func defaults(profile: DevelopmentProfile?) -> UserDefaults {
+    let domain = profile?.preferencesDomain ?? "dev.agentkeybox.app"
     // Inside the app, its own domain is `.standard`; naming it as a suite is not allowed.
-    Bundle.main.bundleIdentifier == preferencesDomain
-      ? .standard : UserDefaults(suiteName: preferencesDomain) ?? .standard
+    if Bundle.main.bundleIdentifier == domain { return .standard }
+    guard let defaults = UserDefaults(suiteName: domain) else {
+      precondition(profile == nil, "Unable to open isolated preferences")
+      return .standard
+    }
+    return defaults
   }
 
   public static var preference: LanguagePreference {

@@ -156,8 +156,8 @@ public final class GuardRuleLedger: @unchecked Sendable {
   private let fileURL: URL
   private let lock = NSLock()
 
-  public init(fileURL: URL? = nil) {
-    if let fileURL {
+  public init(fileURL: URL? = nil, profile: DevelopmentProfile? = .current) {
+    if let fileURL = fileURL ?? profile?.file("guard-rules.json") {
       self.fileURL = fileURL
     } else {
       let base =
