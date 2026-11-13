@@ -502,12 +502,7 @@ private final class MCPServer: @unchecked Sendable {
         return toolError(
           id: requestID, message: "AgentKeyBox approved the request but returned no response.")
       }
-      var text =
-        "status=\(http.statusCode)\ncontent_type=\(http.contentType ?? "-")\n\n\(http.body)"
-      if http.bodyTruncated {
-        text += "\nAgentKeyBox truncated the response body."
-      }
-      return toolResult(id: requestID, text: text)
+      return toolResult(id: requestID, text: http.agentText)
     } catch {
       return toolError(id: requestID, message: error.localizedDescription)
     }

@@ -682,6 +682,8 @@ enum Translations {
       "登入後，agent 可以讀取頁面文字。開啟連結可能變更網站資料。密碼與 cookie 留在 AgentKeyBox 內，你可以隨時在設定結束瀏覽器存取。",
     "The backup holds all your projects and keys, encrypted with this password. Keep the file and the password somewhere safe, such as a password manager.":
       "備份會包含你所有的專案和金鑰，並用這組密碼加密。請把檔案和密碼存在安全的地方，例如密碼管理器。",
+    "The HTTP request failed. No response is available.":
+      "HTTP 請求失敗，沒有可用的回應。",
     "The browser could not complete this operation. Its private session was closed.":
       "瀏覽器無法完成此次操作，已關閉其私有工作階段。",
     "The browser is handling a protected operation. Try again after it finishes.":

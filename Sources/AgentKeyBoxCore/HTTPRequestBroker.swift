@@ -149,6 +149,13 @@ public struct HTTPExecutionResult: Codable, Hashable, Sendable {
   public var body: String
   public var bodyTruncated: Bool
 
+  /// The exact text returned by the MCP HTTP tool; all response fields are sanitized upstream.
+  public var agentText: String {
+    var text = "status=\(statusCode)\ncontent_type=\(contentType ?? "-")\n\n\(body)"
+    if bodyTruncated { text += "\nAgentKeyBox truncated the response body." }
+    return text
+  }
+
   public init(statusCode: Int, contentType: String?, body: String, bodyTruncated: Bool) {
     self.statusCode = statusCode
     self.contentType = contentType
@@ -159,15 +166,15 @@ public struct HTTPExecutionResult: Codable, Hashable, Sendable {
 
 public enum HTTPRequestExecutorError: Error, LocalizedError, Equatable {
   case secretNotUTF8
-  case transport(String)
+  case transport
   case timedOut
 
   public var errorDescription: String? {
     switch self {
     case .secretNotUTF8:
       return "This credential is not text and cannot be placed in an HTTP header."
-    case .transport(let message):
-      return "The HTTP request failed: \(message)"
+    case .transport:
+      return L("The HTTP request failed. No response is available.")
     case .timedOut:
       return "The HTTP request exceeded AgentKeyBox's timeout."
     }
@@ -175,6 +182,21 @@ public enum HTTPRequestExecutorError: Error, LocalizedError, Equatable {
 }
 
 public enum HTTPRequestExecutor {
+  /// Only bounded MIME tokens cross the agent boundary, never upstream parameters.
+  static func safeContentType(_ raw: String?, secretData: Data) -> String? {
+    guard let raw else { return nil }
+    let mime = raw.split(separator: ";", maxSplits: 1, omittingEmptySubsequences: false)[0]
+      .trimmingCharacters(in: CharacterSet(charactersIn: " \t")).lowercased()
+    let parts = mime.split(separator: "/", omittingEmptySubsequences: false)
+    guard mime.utf8.count <= 127, parts.count == 2,
+      parts.allSatisfy({ HTTPRequestPolicy.isValidHeaderName(String($0)) }),
+      !SecretRedactor.candidates(for: secretData).contains(where: {
+        mime.contains($0.lowercased())
+      })
+    else { return nil }
+    return mime
+  }
+
   public static func execute(
     _ request: ValidatedHTTPRequest,
     secretData: Data,
@@ -204,7 +226,8 @@ public enum HTTPRequestExecutor {
       fetch.data, secretData: secretData, maxBytes: maxResponseBytes,
       captureWasCut: fetch.truncated)
     return HTTPExecutionResult(
-      statusCode: fetch.statusCode, contentType: fetch.contentType, body: body,
+      statusCode: fetch.statusCode,
+      contentType: safeContentType(fetch.contentType, secretData: secretData), body: body,
       bodyTruncated: truncated || fetch.truncated)
   }
 }
@@ -293,9 +316,8 @@ private final class CappedFetch: NSObject, URLSessionDataDelegate, @unchecked Se
     } else if let error = error as? URLError, error.code == .timedOut {
       continuation?.resume(throwing: HTTPRequestExecutorError.timedOut)
     } else {
-      continuation?.resume(
-        throwing: HTTPRequestExecutorError.transport(
-          error?.localizedDescription ?? "No response was received."))
+      // URLSession diagnostics can include upstream URLs or header values.
+      continuation?.resume(throwing: HTTPRequestExecutorError.transport)
     }
   }
 }

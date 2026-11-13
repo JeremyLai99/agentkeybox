@@ -45,14 +45,24 @@
           .dropFirst("authorization:".count).trimmingCharacters(in: .whitespaces) ?? ""
         self.lock.withLock { self.paths.append(path) }
 
+        if path.hasPrefix("/disconnect") {
+          connection.cancel()
+          return
+        }
         let response: String
         if path == "/redirect" {
           response =
             "HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:\(self.port)/echo\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
         } else {
           let body = "you sent: \(authorization)"
+          let contentType: String
+          switch path {
+          case "/mime-parameter": contentType = "Text/Plain; reflected=\(authorization)"
+          case "/mime-subtype": contentType = "text/\(authorization)"
+          default: contentType = "text/plain"
+          }
           response =
-            "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: \(body.utf8.count)\r\nConnection: close\r\n\r\n\(body)"
+            "HTTP/1.1 200 OK\r\nContent-Type: \(contentType)\r\nContent-Length: \(body.utf8.count)\r\nConnection: close\r\n\r\n\(body)"
         }
         connection.send(
           content: Data(response.utf8),
