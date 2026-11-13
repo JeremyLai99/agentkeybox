@@ -221,6 +221,7 @@
       submissionURL = nil
       recoverySubmissionURL = nil
       recoveryCredential = nil
+      allowedPost = nil
       if !didNotifyClose {
         didNotifyClose = true
         onClose?()
@@ -430,6 +431,8 @@
         finishNavigation(.failure(ControlledBrowserError.failed))
         return
       }
+      // Consume before handing control back to WebKit, including same-URL 307/308 redirects.
+      if method == "POST" { allowedPost = nil }
       decisionHandler(.allow)
     }
 

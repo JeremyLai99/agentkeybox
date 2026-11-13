@@ -41,6 +41,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                       "/login-fail": "/fail", "/login-redirect": "/redirect",
                       "/login-reflect": "/reflect", "/login-slow": "/slow",
                       "/login-slow-follow": "/session-slow-follow"}.get(self.path, "/session")
+            if self.path in ("/login-307", "/login-308"):
+                action = self.path.replace("/login-", "/session-", 1)
             if self.path.startswith("/login-recovery"):
                 action = self.path.replace("/login-recovery", "/session-recovery", 1)
             extra = '<input autocomplete="one-time-code" name="otp">' if self.path == "/login-otp" else ""
@@ -127,6 +129,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.send_html("Unexpected fields or duplicate code", 400)
                 return
             self.server.last_recovery_code = submitted
+            if self.path in ("/recover-307", "/recover-308"):
+                self.same_url_redirect(int(self.path.rsplit("-", 1)[1]))
+                return
             if self.path == "/recover-slow":
                 time.sleep(2)
             self.send_response(307 if self.path == "/recover-redirect" else 303)
@@ -137,14 +142,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-Length", "0")
             self.end_headers()
             return
+        self.server.login_posts = getattr(self.server, "login_posts", 0) + 1
         with open(sys.argv[3] + ".post", "w") as output:
-            output.write("POST received")
+            output.write(str(self.server.login_posts))
         fields = urllib.parse.parse_qs(self.rfile.read(int(self.headers.get("Content-Length", 0))).decode())
         if fields != {"user": [USERNAME], "password": [PASSWORD], "csrf": ["fixture-csrf"]}:
             self.send_html(self.form(), 400)
             return
         if self.path == "/fail":
             self.send_html(self.form())
+            return
+        if self.path in ("/session-307", "/session-308"):
+            self.same_url_redirect(int(self.path.rsplit("-", 1)[1]))
             return
         if self.path == "/slow":
             time.sleep(2)
@@ -156,6 +165,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                          else "/account-slow-follow" if self.path == "/session-slow-follow"
                          else "/account")
         self.send_header("Set-Cookie", "session=fixture-session-cookie; Secure; HttpOnly; Path=/; SameSite=Strict")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def same_url_redirect(self, status):
+        self.send_response(status)
+        self.send_header("Location", self.path)
         self.send_header("Content-Length", "0")
         self.end_headers()
 

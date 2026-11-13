@@ -452,6 +452,46 @@ final class BrowserPolicyTests: XCTestCase {
           atPath: fixture.directory.appendingPathComponent("cross-origin-request.recovery").path))
     }
 
+    @MainActor func testSameURLPostRedirectsNeverResubmitLoginOrRecovery() async throws {
+      for status in [307, 308] {
+        for recovery in [false, true] {
+          let fixture = try BrowserFixture()
+          let path = recovery ? "/login-recovery-\(status)" : "/login-\(status)"
+          let (browser, login) = try fixture.browser(path: path)
+          defer { browser.close() }
+          try await browser.prepare()
+          var saved: Data?
+          do {
+            if recovery {
+              _ = try await browser.signIn(payload: login)
+              let (item, payload) = try recoveryItem(fixture, suffix: "-\(status)")
+              _ = try browser.prepareRecovery(credential: item)
+              _ = try await browser.recover(credential: item, payload: payload) { saved = $0 }
+            } else {
+              _ = try await browser.signIn(payload: login)
+            }
+            XCTFail("A repeated POST must fail")
+          } catch {
+            XCTAssertEqual(error as? ControlledBrowserError, .failed)
+            for value in ["fixture-user", "synthetic-password-42!", "fixture-recovery-001"] {
+              for variant in SecretRedactor.candidates(for: Data(value.utf8)) {
+                XCTAssertFalse(error.localizedDescription.contains(variant))
+              }
+            }
+          }
+          XCTAssertEqual(browser.lease.phase, .closed)
+          let marker = "cross-origin-request" + (recovery ? ".recovery" : ".post")
+          XCTAssertEqual(
+            try String(contentsOf: fixture.directory.appendingPathComponent(marker), encoding: .utf8),
+            "1")
+          if recovery {
+            let payload = try SensitivePayload.decode(XCTUnwrap(saved), kind: .recoveryCodes)
+            XCTAssertEqual(payload.recoveryCodes?.entries.map(\.status), [.issued, .available])
+          }
+        }
+      }
+    }
+
     @MainActor func testFailedRecoveryAndCrossOriginRedirectKeepReservationWithoutRetry()
       async throws
     {
