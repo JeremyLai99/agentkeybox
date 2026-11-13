@@ -162,6 +162,8 @@
     var body: some View {
       if let title = model.pendingPromptTitle {
         Button(L("Review: %@", title)) { model.bringPromptToFront() }
+      } else if let message = model.approvalActivity.statusText ?? model.lastApprovalMessage {
+        Text(message).lineLimit(1)
       } else {
         Text(L("No pending requests"))
       }
@@ -332,6 +334,11 @@
     @Published var pendingRequest: AgentRequest? {
       didSet { updatePromptPanel() }
     }
+    /// Presentation only; pendingRequest and the broker slot remain owned until finishPrompt.
+    @Published private var executingApprovalRequestID: UUID? {
+      didSet { updatePromptPanel() }
+    }
+    @Published private(set) var lastApprovalMessage: String?
     @Published var pendingCredentialRequest: CredentialRequestPrompt? {
       didSet { updatePromptPanel() }
     }
@@ -392,7 +399,7 @@
     private var pendingBrokerContinuation: CheckedContinuation<BrokerResponse, Never>?
     private var pendingBrokerRequest: BrokerRequest?
     private var pendingApprovalTimeoutTask: Task<Void, Never>?
-    private var decisionInProgress = false
+    @Published private var decisionInProgress = false
     /// Editing cancels an approval/authentication wait, but cannot undo an already-started POST.
     private var executingSubmissionID: UUID?
     private var executingBrowserRequestID: UUID?
@@ -1319,28 +1326,37 @@
           return
         }
 
+        // Called synchronously after each operation's initial checks and before its first read
+        // or execution. Authentication has finished; closing the panel must not cancel it.
+        let onReady = {
+          if self.pendingRequest?.id == requestID {
+            self.executingApprovalRequestID = requestID
+          }
+        }
         let response: BrokerResponse
         switch brokerRequest.action {
         case .executeWithSecret:
           response = await executeApprovedCommand(
             brokerRequest, credential: approvedCredential!, decision: decision, grant: grant,
-            generation: generation)
+            generation: generation, onReady: onReady)
         case .httpRequest:
           response = await executeApprovedHTTPRequest(
             brokerRequest, credential: approvedCredential!, decision: decision, grant: grant,
-            generation: generation)
+            generation: generation, onReady: onReady)
         case .submitSensitiveFields:
           executingSubmissionID = requestID
           response = await executeSensitiveSubmission(
-            brokerRequest, expectedVersion: request.credentialVersion, grant: grant)
+            brokerRequest, expectedVersion: request.credentialVersion, grant: grant,
+            onReady: onReady)
           if executingSubmissionID == requestID { executingSubmissionID = nil }
         case .browserLogin, .browserFollow, .browserRecover:
           response = await executeBrowserRequest(
-            brokerRequest, expectedVersion: request.credentialVersion, grant: grant)
+            brokerRequest, expectedVersion: request.credentialVersion, grant: grant,
+            onReady: onReady)
         case .revealEnvironment:
           response = await revealApprovedEnvironment(
             request.environmentVariables, projectPath: request.projectPath, decision: decision,
-            grant: grant, selected: approvedEnvironment, generation: generation)
+            grant: grant, selected: approvedEnvironment, generation: generation, onReady: onReady)
         case .listCredentials, .requestCredential, .browserRead, .browserClose:
           response = BrokerResponse(ok: false, error: "Unexpected approval type.")
         }
@@ -1648,7 +1664,8 @@
     }
 
     private func executeSensitiveSubmission(
-      _ brokerRequest: BrokerRequest, expectedVersion: Date?, grant: AuthenticationGrant?
+      _ brokerRequest: BrokerRequest, expectedVersion: Date?, grant: AuthenticationGrant?,
+      onReady: () -> Void
     ) async -> BrokerResponse {
       guard let credential = visibleCredential(for: brokerRequest),
         credential.kind.requiresControlledUse, credential.updatedAt == expectedVersion,
@@ -1658,6 +1675,7 @@
       }
       do {
         let generation = accessGeneration
+        onReady()
         guard let data = try await readSecret(credential.id, grant: grant),
           credentialUseIsCurrent(
             [credential], projectPath: brokerRequest.projectPath, generation: generation),
@@ -1880,7 +1898,7 @@
 
     private func executeBrowserRequest(
       _ request: BrokerRequest,
-      expectedVersion: Date?, grant: AuthenticationGrant?
+      expectedVersion: Date?, grant: AuthenticationGrant?, onReady: () -> Void
     ) async -> BrokerResponse {
       let requestID = pendingRequest?.id
       var executionStarted = false
@@ -1900,6 +1918,7 @@
         }
         let page: BrowserPage
         if request.action == .browserLogin {
+          onReady()
           guard let data = try await readSecret(browser.credential.id, grant: grant),
             credentials.contains(browser.credential),
             credentialIsVisible(browser.credential, for: request.projectPath)
@@ -1913,8 +1932,10 @@
           page = try await browser.signIn(payload: payload)
         } else if request.action == .browserRecover {
           guard let recovery = visibleCredential(for: request), recovery.kind == .recoveryCodes,
-            recovery.updatedAt == expectedVersion,
-            let data = try await readSecret(recovery.id, grant: grant),
+            recovery.updatedAt == expectedVersion
+          else { throw ControlledBrowserError.unavailable }
+          onReady()
+          guard let data = try await readSecret(recovery.id, grant: grant),
             visibleCredential(for: request) == recovery
           else { throw ControlledBrowserError.unavailable }
           _ = try ownedBrowser(request)
@@ -1941,6 +1962,7 @@
           guard let link = request.browser?.linkID, let raw = request.url,
             let target = URL(string: raw)
           else { throw ControlledBrowserError.invalidLink }
+          onReady()
           beginExecution()
           page = try await browser.follow(linkID: link, approvedURL: target)
         }
@@ -2258,7 +2280,8 @@
       credential: CredentialMetadata,
       decision: ApprovalDecision,
       grant: AuthenticationGrant?,
-      generation: UUID
+      generation: UUID,
+      onReady: () -> Void = {}
     ) async -> BrokerResponse {
       guard
         credentialUseIsCurrent(
@@ -2273,6 +2296,7 @@
         return BrokerResponse(ok: false, error: "Invalid approved execution request.")
       }
 
+      onReady()
       let secret: Data
       do {
         let value = try await readSecret(credential.id, grant: grant)
@@ -2323,7 +2347,8 @@
       credential: CredentialMetadata,
       decision: ApprovalDecision,
       grant: AuthenticationGrant?,
-      generation: UUID
+      generation: UUID,
+      onReady: () -> Void = {}
     ) async -> BrokerResponse {
       guard
         credentialUseIsCurrent(
@@ -2341,6 +2366,7 @@
           headers: brokerRequest.headers ?? [:],
           body: brokerRequest.body,
           allowedHosts: credential.allowedHosts)
+        onReady()
         let value = try await readSecret(credential.id, grant: grant)
         guard
           credentialUseIsCurrent(
@@ -2382,7 +2408,8 @@
       decision: ApprovalDecision,
       grant: AuthenticationGrant?,
       selected: [String: CredentialMetadata],
-      generation: UUID
+      generation: UUID,
+      onReady: () -> Void
     ) async -> BrokerResponse {
       func selectionIsCurrent() -> Bool {
         selected == environmentCredentials(projectPath: projectPath, only: variables)
@@ -2390,6 +2417,7 @@
             Array(selected.values), projectPath: projectPath, generation: generation)
       }
       guard selectionIsCurrent() else { return credentialChangedResponse }
+      onReady()
       var environment: [String: String] = [:]
       var skipped: [String] = []
       for name in variables {
@@ -2462,10 +2490,13 @@
       pendingApprovalTimeoutTask?.cancel()
       pendingApprovalTimeoutTask = nil
       statusMessage = message
+      lastApprovalMessage = message
       let continuation = pendingBrokerContinuation
       pendingBrokerContinuation = nil
       continuation?.resume(returning: response)
       pendingRequest = nil
+      // Clear after pendingRequest so observers cannot briefly re-open the completed prompt.
+      executingApprovalRequestID = nil
       pendingCredentialRequest = nil
       pendingBrokerRequest = nil
     }
@@ -2647,14 +2678,20 @@
       persistMetadata()
     }
 
+    var approvalActivity: ApprovalActivityPresentation {
+      ApprovalActivityPresentation(
+        pendingRequest: pendingRequest, executingRequestID: executingApprovalRequestID,
+        decisionInProgress: decisionInProgress,
+        credentialLabel: pendingRequest.flatMap { credentialSummary(for: $0)?.label })
+    }
+
     var hasPendingPrompt: Bool {
-      pendingRequest != nil || pendingCredentialRequest != nil
+      approvalActivity.showsApprovalPrompt || pendingCredentialRequest != nil
     }
 
     var pendingPromptTitle: String? {
-      if let request = pendingRequest {
-        return L(
-          "%@ wants access", ApprovalPresentation.agentText(request.agentDisplayName, limit: 40))
+      if approvalActivity.showsApprovalPrompt {
+        return approvalActivity.statusText
       }
       if let prompt = pendingCredentialRequest {
         return L(
@@ -2672,7 +2709,7 @@
     /// Approval and credential prompts live in their own floating panel, so they appear even
     /// when the main window has been closed.
     private func updatePromptPanel() {
-      if let request = pendingRequest {
+      if approvalActivity.showsApprovalPrompt, let request = pendingRequest {
         promptPanel.show(
           ApprovalView(request: request, presentation: approvalPresentation(for: request))
             .environmentObject(self).tint(.agentKeyBlue),

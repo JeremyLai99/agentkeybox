@@ -622,6 +622,10 @@ enum Translations {
     "Use the controlled browser from a local agent": "讓本機 agent 使用受控瀏覽器",
     "Run a command with this project's secrets after approval":
       "核准後，用這個專案的金鑰執行指令",
+    "Running: %@ using %@ key(s)…":
+      "正在執行：%1$@ 使用 %2$@ 把金鑰…",
+    "Running: %@ using %@…":
+      "正在執行：%1$@ 使用 %2$@…",
     "Same as macOS":
       "跟隨 macOS",
     "Save":

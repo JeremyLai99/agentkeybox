@@ -74,6 +74,15 @@
           if model.offersMoveToApplications {
             MoveToApplicationsBanner()
           }
+          if let message = model.approvalActivity.statusText ?? model.statusMessage {
+            Text(message)
+              .font(.callout)
+              .foregroundStyle(.secondary)
+              .lineLimit(model.approvalActivity.statusText == nil ? nil : 1)
+              .frame(maxWidth: .infinity, alignment: .leading)
+              .padding(.horizontal, 20)
+              .padding(.vertical, 10)
+          }
           detail.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
       }
@@ -343,9 +352,6 @@
         Button(L("Choose Folder…"), action: chooseFolder)
           .buttonStyle(.borderedProminent)
           .controlSize(.large)
-        if let message = model.statusMessage {
-          Text(message).font(.callout).foregroundStyle(.secondary)
-        }
       }
       .padding(40)
       .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -408,12 +414,6 @@
               Label(L("Add Item"), systemImage: "plus")
             }
             .buttonStyle(.borderedProminent)
-          }
-
-          if let message = model.statusMessage {
-            Text(message)
-              .font(.callout)
-              .foregroundStyle(.secondary)
           }
 
           if keys.isEmpty {
