@@ -4,6 +4,8 @@ AgentKeyBox uses a local **stdio MCP server**, with automatic setup for Claude C
 
 The MCP interface is designed to exchange credential references and results instead of raw values. It asks the AgentKeyBox macOS app to perform an approved operation locally. Generic command output still has the disclosure limits described below.
 
+After updating AgentKeyBox, agents that were already running need to reconnect the `agentkeybox` MCP server (in Claude Code: `/mcp` → `agentkeybox` → **Reconnect**), or restart the agent, before trying again. The helper reports localized reconnect guidance when the broker rejects its signature and its executable has changed since startup; `akb` asks to rerun the command. Broker signature checks are unchanged. Helpers from versions predating this diagnostic still show the original rejection until reconnected.
+
 ## Build
 
 ```bash
@@ -232,7 +234,7 @@ akb browser close --session CLIENT_SESSION_UUID --browser BROWSER_UUID --project
 - `ITEM_UUID` comes from `logins[].id` in `list`, and `RECOVERY_ITEM_UUID` from `recoveryCodeSets[].id`. `CLIENT_SESSION_UUID` comes from the login result's `clientSessionID`, `BROWSER_UUID` from `page.sessionID`, and link IDs from the latest `page.links[].id`.
 - Every `read` invalidates earlier link IDs. `pageReady` only means a page can be read; it does not prove sign-in succeeded.
 - The native prompt shows `Local agent (akb browser)`. This names the AgentKeyBox entry point and is not an authenticated vendor identity. Session IDs bind separate CLI processes to their project; they are not isolation against other processes of the same macOS user, so do not paste them into public conversations.
-- Pending-approval and approval-timeout errors are fixed messages. A dropped connection or client timeout means the outcome is unknown, so do not assume the operation did not run.
+- Pending-approval, approval-timeout and locally detected executable-update errors use fixed messages. Update guidance asks to rerun the command. Other broker diagnostics remain hidden. A dropped connection or client timeout means the outcome is unknown, so do not assume the operation did not run.
 
 Rules for agents:
 

@@ -53,6 +53,8 @@ To check the download, compare `shasum -a 256 AgentKeyBox-<version>-macOS.zip` w
 
 Download the new version, open it, and click **Move to Applications**. The older copy goes to the Trash. Your projects, keys, and agent connections are kept: keys live in your Keychain, and agents use a helper at a fixed path that each version refreshes when it starts.
 
+After updating AgentKeyBox, agents that were already running need to reconnect the `agentkeybox` MCP server (in Claude Code: `/mcp` → `agentkeybox` → **Reconnect**), or restart the agent, before trying again.
+
 ### Uninstall
 
 1. In AgentKeyBox, right-click each project and choose **Remove Project…**. This deletes its keys from your Keychain. Delete any **Global keys** the same way (right-click a key › **Delete…**). Deleting only the app would leave the keys in your Keychain.

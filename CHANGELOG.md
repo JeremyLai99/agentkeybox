@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Agents still using a replaced helper after an AgentKeyBox update now receive localized MCP reconnect/restart guidance; `akb` asks to rerun the command. Broker signature checks remain unchanged.
 - You can now create a new project folder directly in the Add Project folder picker.
 - Browser sign-in and recovery submission now send their approved form only once, including when a website redirects back to the same address with HTTP 307/308. A blocked retry closes the private session; reserved codes stay unavailable.
 - Saving an edited key now keeps its new project and allowed websites when the new value is safely stored but Keychain cleanup must finish on a later read. A failure before storage still restores the old settings.
