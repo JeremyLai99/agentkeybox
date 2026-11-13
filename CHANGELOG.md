@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- You can now create a new project folder directly in the Add Project folder picker.
 - Browser sign-in and recovery submission now send their approved form only once, including when a website redirects back to the same address with HTTP 307/308. A blocked retry closes the private session; reserved codes stay unavailable.
 - Saving an edited key now keeps its new project and allowed websites when the new value is safely stored but Keychain cleanup must finish on a later read. A failure before storage still restores the old settings.
 - Synthetic submission and backup checks now accept the optional disposable-project card, both before and after that project is removed, while continuing to reject unknown items.
