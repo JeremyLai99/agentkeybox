@@ -1,5 +1,16 @@
 # AgentKeyBox implementation status
 
+## Signed retest of the seven review fixes — 2026-11-13 (unreleased)
+
+Developer ID signed arm64 build of `725d6ff` installed in `/Applications`; the user completed every Touch ID prompt.
+
+- **Keychain pending replacement, normal path: passed.** Adding a six-code synthetic recovery item needed no Touch ID. Unlock took one Touch ID and read back all codes. Saving a rename took one Touch ID; a second unlock showed the new name and all six codes. The item was deleted afterwards.
+- **HTTP after-read recheck, normal path: passed.** An approved `http_request` through the newly installed signed helper returned `status=200` and `content_type=application/json` (MIME type only).
+- **Test-procedure incident.** The driver for that HTTP check chose its credential with a loose pattern over `list_credentials` text and selected a real global App Store Connect key instead of the synthetic one. After approval, the real key was sent to a public echo service. The user revoked and rotated it. For live tests, select the credential by exact label and kind from structured output, verify it before sending, tell the user exactly what the native prompt will show, and prefer a loopback endpoint.
+- **MCP processes started before an install are rejected** (`Requests must come from the AgentKeyBox helper or akb.`) once the fixed-path helper is replaced. Reconnect them after every install.
+- Not covered natively: fault injection between the pending and primary writes (unit tests only), and a reflected secret in `Content-Type` against a live server (loopback unit test only).
+
+
 ## 七項 code review 修復 — 2026-11-13（unreleased）
 
 本次以 `30eef5d` 為基底，於 `feat/protected-items-browser` worktree 完成修復。只執行合成資料的建置、自動化測試與靜態檢查；未啟動或安裝 AgentKeyBox、未存取正式資料／鑰匙圈／broker token、未執行原生驗收、簽署、公證或發布。下方歷史紀錄原樣保留，不能當作這次 binary 的驗收。
