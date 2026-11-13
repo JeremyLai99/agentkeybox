@@ -65,7 +65,9 @@ public enum Localization {
     // Inside the app, its own domain is `.standard`; naming it as a suite is not allowed.
     if Bundle.main.bundleIdentifier == domain { return .standard }
     guard let defaults = UserDefaults(suiteName: domain) else {
-      precondition(profile == nil, "Unable to open isolated preferences")
+      #if DEBUG
+        precondition(profile == nil, "Unable to open isolated preferences")
+      #endif
       return .standard
     }
     return defaults

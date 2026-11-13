@@ -95,6 +95,20 @@ Trigger an approval and leave it unanswered. Confirm the agent receives an appro
 
 ## 9. Release packaging
 
+Before packaging, scan the directory containing all three release executables (no app launch,
+Keychain access or signing is required):
+
+```bash
+swift build --disable-sandbox --scratch-path .build-release -c release -Xswiftc -warnings-as-errors
+Scripts/check-release-qa-strings.sh .build-release/release
+python3 -B Scripts/test-release-qa-strings.py
+```
+
+The scanner requires `AgentKeyBox`, `agentkeybox-mcp`, and `akb`; a missing executable or a
+QA marker in UTF-8/UTF-16 exits nonzero. It covers the profile selector/path/domain, both
+fixture configuration names, pinned browser class, interruption hook and QA window/label
+strings. Run it again on each architecture's binaries when producing a universal release.
+
 ```bash
 ./Scripts/build-release-macos.sh
 ```

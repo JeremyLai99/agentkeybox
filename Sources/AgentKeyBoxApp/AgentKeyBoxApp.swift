@@ -10,11 +10,19 @@
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var model = AppModel()
 
+    private var windowTitle: String {
+      #if DEBUG
+        return DevelopmentProfile.current == nil ? "AgentKeyBox" : L("AgentKeyBox QA")
+      #else
+        return "AgentKeyBox"
+      #endif
+    }
+
     var body: some Scene {
       // A single main window, so the menu bar's "Open AgentKeyBox" brings it back instead of
       // opening duplicates.
       // `.id` rebuilds each window when the language changes, so every `L(_:)` is read again.
-      Window(DevelopmentProfile.current == nil ? "AgentKeyBox" : "AgentKeyBox QA", id: "main") {
+      Window(windowTitle, id: "main") {
         ContentView()
           .environmentObject(model)
           .frame(minWidth: 860, minHeight: 560)

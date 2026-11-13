@@ -4,13 +4,23 @@ import Foundation
 /// Storage is isolated. The optional DEBUG recovery fixture pins its own loopback certificate;
 /// native authentication and production browser policy are unchanged.
 public struct DevelopmentProfile: Sendable {
-  public let id: UUID
-  public var directory: URL {
-    URL(fileURLWithPath: "/private/tmp/akb-qa-\(id.uuidString)", isDirectory: true)
-  }
-  public var keychainService: String { "dev.agentkeybox.qa.\(id.uuidString)" }
-  public var preferencesDomain: String { "dev.agentkeybox.qa.\(id.uuidString)" }
-  public func file(_ name: String) -> URL { directory.appendingPathComponent(name) }
+  #if DEBUG
+    public let id: UUID
+    public var directory: URL {
+      URL(fileURLWithPath: "/private/tmp/akb-qa-\(id.uuidString)", isDirectory: true)
+    }
+    public var keychainService: String { "dev.agentkeybox.qa.\(id.uuidString)" }
+    public var preferencesDomain: String { "dev.agentkeybox.qa.\(id.uuidString)" }
+    public func file(_ name: String) -> URL { directory.appendingPathComponent(name) }
+  #else
+    // No profile can be constructed in release. Keep accessors source-compatible for
+    // optional chaining at storage call sites, without compiling any QA implementation.
+    private init() {}
+    public var directory: URL { preconditionFailure() }
+    public var keychainService: String { preconditionFailure() }
+    public var preferencesDomain: String { preconditionFailure() }
+    public func file(_ name: String) -> URL { preconditionFailure() }
+  #endif
 
   /// Must run before helper installation or any agent adapter action.
   public static func requireAgentRegistrationAllowed(profile: DevelopmentProfile? = current) throws
