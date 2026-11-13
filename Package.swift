@@ -28,7 +28,7 @@ let package = Package(
     ),
     .testTarget(
       name: "AgentKeyBoxCoreTests",
-      dependencies: ["AgentKeyBoxCore", "AgentKeyBoxMCP", "AgentKeyBoxCLI"],
+      dependencies: ["AgentKeyBoxCore"],
       resources: [.copy("Fixtures/browser_fixture.py"), .copy("Fixtures/submission_fixture.py")]
     ),
   ]

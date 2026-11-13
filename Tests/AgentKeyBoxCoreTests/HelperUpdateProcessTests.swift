@@ -38,14 +38,14 @@ import XCTest
       _ name: String, arguments: [String] = [], input: Data = Data(),
       replace: Bool, message: String, expectedCalls: Int
     ) async throws -> (output: Data, error: String, status: Int32) {
+      let source = try TestProducts.executable(
+        name, bundleURL: Bundle(for: Self.self).bundleURL)
       let profile = DevelopmentProfile(id: UUID())
       let root = profile.directory
       defer { try? FileManager.default.removeItem(at: root) }
       let token = try BrokerTokenStore(fileURL: profile.file("broker-token")).loadOrCreate()
       let executable = profile.file(name)
-      let binaryDirectory = Bundle(for: Self.self).bundleURL.deletingLastPathComponent()
-      try FileManager.default.copyItem(
-        at: binaryDirectory.appendingPathComponent(name), to: executable)
+      try FileManager.default.copyItem(at: source, to: executable)
       let replacement = replace ? profile.file(name + ".new") : nil
       if let replacement {
         // Identical contents still represent a different on-disk executable identity.

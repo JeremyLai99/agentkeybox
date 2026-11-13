@@ -13,6 +13,8 @@ echo "==> Build (warnings as errors)"
 swift build -Xswiftc -warnings-as-errors
 
 echo "==> Unit tests"
+# On macOS DEBUG this must exercise the built helper/CLI, never silently skip missing products.
+export AGENTKEYBOX_REQUIRE_PROCESS_TESTS=1
 swift test
 
 echo "==> MCP smoke test"

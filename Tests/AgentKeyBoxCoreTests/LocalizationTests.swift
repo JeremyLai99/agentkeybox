@@ -4,6 +4,59 @@ import XCTest
 @testable import AgentKeyBoxCore
 
 final class LocalizationTests: XCTestCase {
+  /// Keep scanning all platform branches, but omit DEBUG-only strings from release checks.
+  /// The QA translations deliberately do not exist in release binaries.
+  private func sourceForScan(_ text: String, includeDebug: Bool) -> String {
+    var branches: [(parent: Bool, debugOnly: Bool)] = []
+    var included = true
+    return text.components(separatedBy: .newlines).compactMap { line -> String? in
+      let directive = line.trimmingCharacters(in: .whitespaces)
+      if directive.hasPrefix("#if ") {
+        let debugOnly = ["#if DEBUG", "#if DEBUG && os(macOS)", "#if os(macOS) && DEBUG"]
+          .contains(directive)
+        branches.append((included, debugOnly))
+        included = included && (!debugOnly || includeDebug)
+      } else if directive == "#else", let branch = branches.last {
+        included = branch.parent && (!branch.debugOnly || !includeDebug)
+      } else if directive == "#endif", let branch = branches.popLast() {
+        included = branch.parent
+      }
+      return included ? line : nil
+    }.joined(separator: "\n")
+  }
+
+  func testReleaseLocalizationScanExcludesOnlyDebugBranchesIncludingNestedCode() {
+    let source = """
+      common
+      #if os(macOS)
+      platform
+      #if DEBUG
+      debug
+      #if os(macOS)
+      nested
+      #endif
+      #else
+      release
+      #endif
+      #else
+      otherPlatform
+      #endif
+      after
+      """
+    let release = sourceForScan(source, includeDebug: false).components(separatedBy: .newlines)
+    let debug = sourceForScan(source, includeDebug: true).components(separatedBy: .newlines)
+    for value in ["common", "platform", "otherPlatform", "after"] {
+      XCTAssertTrue(release.contains(value))
+      XCTAssertTrue(debug.contains(value))
+    }
+    XCTAssertTrue(release.contains("release"))
+    XCTAssertFalse(debug.contains("release"))
+    for value in ["debug", "nested"] {
+      XCTAssertFalse(release.contains(value))
+      XCTAssertTrue(debug.contains(value))
+    }
+  }
+
   override func tearDown() {
     Localization.setOverride(nil)
     super.tearDown()
@@ -21,7 +74,13 @@ final class LocalizationTests: XCTestCase {
       guard file.pathExtension == "swift", file.lastPathComponent != "Translations.swift" else {
         continue
       }
-      let text = try String(contentsOf: file, encoding: .utf8)
+      #if DEBUG
+        let includeDebug = true
+      #else
+        let includeDebug = false
+      #endif
+      let text = sourceForScan(
+        try String(contentsOf: file, encoding: .utf8), includeDebug: includeDebug)
       let range = NSRange(text.startIndex..., in: text)
       for match in pattern.matches(in: text, range: range) {
         guard let literal = Range(match.range(at: 1), in: text).map({ String(text[$0]) }) else {

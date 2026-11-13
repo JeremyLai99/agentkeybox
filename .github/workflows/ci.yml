@@ -17,8 +17,14 @@ jobs:
         run: swift --version
       - name: Build with warnings as errors
         run: swift build -Xswiftc -warnings-as-errors
-      - name: Test
+      - name: Test (including required helper and CLI process tests)
+        env:
+          AGENTKEYBOX_REQUIRE_PROCESS_TESTS: "1"
         run: swift test
+      - name: Release test runner
+        run: |
+          swift build -c release -Xswiftc -warnings-as-errors
+          swift test -c release -Xswiftc -warnings-as-errors
       - name: MCP smoke test
         run: ./Scripts/mcp-smoke-test.sh
       - name: CLI smoke test
@@ -43,6 +49,7 @@ jobs:
         run: swift --version
       - name: Build core with warnings as errors
         run: swift build -Xswiftc -warnings-as-errors
+      # Helper replacement tests require macOS DEBUG QA isolation; macos runs them above.
       - name: Test core and MCP protocol
         run: |
           swift test
