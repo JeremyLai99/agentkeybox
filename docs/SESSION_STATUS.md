@@ -4,6 +4,19 @@
 
 dots / ChatGPT Work, Meta Muse (including Muse Code), Grok Bot and Claude Duet cannot be tested here, so they were removed from user-facing documentation and `docs/AGENT_COMPATIBILITY.md` was deleted. The `akb browser` command reference moved to [INTEGRATION.md](INTEGRATION.md). Later sections mentioning these products are historical records, not support claims.
 
+## Native and signed acceptance of the merge-blocker fixes — 2026-11-13 (unreleased)
+
+Branch `feat/protected-items-browser` at `991c831`. The user completed every Touch ID prompt; only synthetic data was used.
+
+| Check | Environment | Result |
+| --- | --- | --- |
+| `remove-project-pending` | Ad-hoc QA `--submission`, profile `C5DF69D5-42DD-4AA1-9E74-65BB45B332D6` | **Passed.** Removing **QA — 可移除測試專案** while its card request waited closed the prompt; exact result/history, zero POST or reservation change, responsive broker. |
+| `code-received` | Same profile | **Passed** on the second run: one `allowOnce`, one exact-fields POST, durable reservation before POST, rotated payload revision and matching metadata, no reflected secrets or cookies. The first run's transport also passed, but the driver failed its history match because the app records `/tmp/...` while the driver compared `Path.cwd().resolve()` (`/private/tmp/...`). Run the drivers from a directory without a symlinked prefix. |
+| Browser recovery, MCP allowed | Ad-hoc QA `--recovery`, profile `5BA46A7E-1508-402B-AD5F-D2063556D300` | **Passed.** Approved login returned only the fixed challenge; the separate approval made one durable reservation before one POST; no synthetic secret in output/history; session closed. |
+| Signed Keychain normal path | Developer ID signed arm64 build of `991c831` installed in `/Applications`, data-protection Keychain | **Passed.** Adding a six-code synthetic item needed no Touch ID. Unlock: one Touch ID, all codes read back. Saving a rename: one Touch ID (edit authentication), then readback after a second unlock showed the new name and all six codes. Deleting it restored `metadata.json` and `access-log.json` byte-identically. The fixed-path MCP helper matches the installed bundle. |
+
+Not covered natively: interruption and failure injection between the pending and primary Keychain writes (release builds have no hooks; unit tests only) and QA `akb connect` refusal. Both QA runners removed their profiles (173,224 KiB for the submission profile). The previous 0.4.5 app is kept at `dist/local-protected-items/previous-AgentKeyBox.app` for rollback.
+
 ## Merge-blocker fixes — 2026-11-05 (unreleased)
 
 Implemented in the `feat/protected-items-browser` verification worktree, based on `aab7b5d`. No App launch/installation, production vault/Keychain/token access, native acceptance, signing, notarization or publication was performed in this pass. Historical native results below remain historical evidence; they do not validate these new binaries.
