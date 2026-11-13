@@ -369,6 +369,7 @@
     private let secretStore = KeychainSecretStore(
       service: DevelopmentProfile.current?.keychainService ?? "dev.agentkeybox.secrets")
     private let approvalEngine = ApprovalEngine()
+    private var accessGeneration = UUID()
     private let metadataStore = MetadataStore(
       fileURL: DevelopmentProfile.current?.file("metadata.json"))
     private let brokerTokenStore = BrokerTokenStore()
@@ -684,6 +685,14 @@
           return
         }
         stored[key.id] = value
+      }
+
+      guard backupCovers(project),
+        BackupArchive.snapshotIsCurrent(
+          keys, projects: [project], currentCredentials: credentials, currentProjects: projects)
+      else {
+        statusMessage = L("Credential changed. Request approval again.")
+        return
       }
 
       var emptied = 0
@@ -1174,6 +1183,9 @@
     ) {
       guard !decisionInProgress, let request = pendingRequest else { return }
       let credential = credentialSummary(for: request)
+      let generation = accessGeneration
+      let approvedEnvironment = environmentCredentials(
+        projectPath: request.projectPath, only: request.environmentVariables)
       if request.kind != .environment, credential == nil {
         finishPrompt(
           BrokerResponse(ok: false, error: "Credential was not found."),
@@ -1221,8 +1233,19 @@
         self.pendingApprovalTimeoutTask?.cancel()
         self.pendingApprovalTimeoutTask = nil
 
+        var approvedCredential = credential
         if decision != .deny, rememberHost, let credential {
+          guard
+            credentialUseIsCurrent(
+              [credential], projectPath: request.projectPath, generation: generation)
+          else {
+            finishPrompt(
+              credentialChangedResponse, message: L("Credential changed. Request approval again."))
+            return
+          }
           self.rememberAllowedHost(for: request, credentialID: credential.id)
+          // This synchronous allowlist change was explicitly included in the user's approval.
+          approvedCredential = credentialSummary(for: request)
         }
         // "Don't ask again this session": keep this authentication for identical requests.
         let recordedDecision: ApprovalDecision
@@ -1262,10 +1285,12 @@
         switch brokerRequest.action {
         case .executeWithSecret:
           response = await executeApprovedCommand(
-            brokerRequest, credentialID: credential!.id, decision: decision, grant: grant)
+            brokerRequest, credential: approvedCredential!, decision: decision, grant: grant,
+            generation: generation)
         case .httpRequest:
           response = await executeApprovedHTTPRequest(
-            brokerRequest, credential: credential!, decision: decision, grant: grant)
+            brokerRequest, credential: approvedCredential!, decision: decision, grant: grant,
+            generation: generation)
         case .submitSensitiveFields:
           executingSubmissionID = requestID
           response = await executeSensitiveSubmission(
@@ -1277,7 +1302,7 @@
         case .revealEnvironment:
           response = await revealApprovedEnvironment(
             request.environmentVariables, projectPath: request.projectPath, decision: decision,
-            grant: grant)
+            grant: grant, selected: approvedEnvironment, generation: generation)
         case .listCredentials, .requestCredential, .browserRead, .browserClose:
           response = BrokerResponse(ok: false, error: "Unexpected approval type.")
         }
@@ -1594,7 +1619,10 @@
         return BrokerResponse(ok: false, error: "Protected item changed. Request approval again.")
       }
       do {
+        let generation = accessGeneration
         guard let data = try await readSecret(credential.id, grant: grant),
+          credentialUseIsCurrent(
+            [credential], projectPath: brokerRequest.projectPath, generation: generation),
           let index = credentials.firstIndex(of: credential)
         else {
           return BrokerResponse(ok: false, error: "Protected item changed. Request approval again.")
@@ -1818,19 +1846,22 @@
         let page: BrowserPage
         if request.action == .browserLogin {
           guard let data = try await readSecret(browser.credential.id, grant: grant),
-            credentials.contains(browser.credential)
+            credentials.contains(browser.credential),
+            credentialIsVisible(browser.credential, for: request.projectPath)
           else {
             browser.close()
             throw ControlledBrowserError.unavailable
           }
+          _ = try ownedBrowser(request)
           let payload = try SensitivePayload.decode(data, kind: .login)
           page = try await browser.signIn(payload: payload)
         } else if request.action == .browserRecover {
           guard let recovery = visibleCredential(for: request), recovery.kind == .recoveryCodes,
             recovery.updatedAt == expectedVersion,
             let data = try await readSecret(recovery.id, grant: grant),
-            credentials.contains(recovery)
+            visibleCredential(for: request) == recovery
           else { throw ControlledBrowserError.unavailable }
+          _ = try ownedBrowser(request)
           let payload = try SensitivePayload.decode(data, kind: .recoveryCodes)
           page = try await browser.recover(credential: recovery, payload: payload) { data in
             guard let index = credentials.firstIndex(of: recovery) else {
@@ -1941,11 +1972,12 @@
         sessionID: brokerRequest.sessionID
       )
 
+      let generation = accessGeneration
       if let approval = await approvalEngine.sessionApproval(for: request) {
         await recordSessionUse(request, credential: credential)
         return await executeApprovedCommand(
-          brokerRequest, credentialID: credential.id, decision: .allowSession,
-          grant: approval.authentication)
+          brokerRequest, credential: credential, decision: .allowSession,
+          grant: approval.authentication, generation: generation)
       }
       return await presentForApproval(request, brokerRequest: brokerRequest)
     }
@@ -1986,11 +2018,12 @@
       request.bodyPreview = validated.body.map { String($0.prefix(400)) }
       request.hostStatus = validated.hostStatus
       request.sessionID = brokerRequest.sessionID
+      let generation = accessGeneration
       if let approval = await approvalEngine.sessionApproval(for: request) {
         await recordSessionUse(request, credential: credential)
         return await executeApprovedHTTPRequest(
           brokerRequest, credential: credential, decision: .allowSession,
-          grant: approval.authentication)
+          grant: approval.authentication, generation: generation)
       }
       return await presentForApproval(request, brokerRequest: brokerRequest)
     }
@@ -2139,17 +2172,31 @@
       }.value
     }
 
+    private var credentialChangedResponse: BrokerResponse {
+      BrokerResponse(ok: false, error: L("Credential changed. Request approval again."))
+    }
+
+    private func credentialUseIsCurrent(
+      _ approved: [CredentialMetadata], projectPath: String, generation: UUID
+    ) -> Bool {
+      CredentialUsePolicy.isCurrent(
+        approved: approved, current: credentials, projects: projects, projectPath: projectPath,
+        isRevoked: generation != accessGeneration || Task.isCancelled)
+    }
+
     private func executeApprovedCommand(
       _ brokerRequest: BrokerRequest,
-      credentialID: UUID,
+      credential: CredentialMetadata,
       decision: ApprovalDecision,
-      grant: AuthenticationGrant?
+      grant: AuthenticationGrant?,
+      generation: UUID
     ) async -> BrokerResponse {
-      guard let credential = visibleCredential(for: brokerRequest),
-        credential.id == credentialID, !credential.kind.requiresControlledUse
+      guard
+        credentialUseIsCurrent(
+          [credential], projectPath: brokerRequest.projectPath, generation: generation),
+        !credential.kind.requiresControlledUse
       else {
-        return BrokerResponse(
-          ok: false, error: "Credential is not available for command execution.")
+        return credentialChangedResponse
       }
       guard let executablePath = brokerRequest.executablePath,
         let environmentVariable = brokerRequest.environmentVariable
@@ -2159,7 +2206,12 @@
 
       let secret: Data
       do {
-        guard let stored = try await readSecret(credentialID, grant: grant) else {
+        let value = try await readSecret(credential.id, grant: grant)
+        guard
+          credentialUseIsCurrent(
+            [credential], projectPath: brokerRequest.projectPath, generation: generation)
+        else { return credentialChangedResponse }
+        guard let stored = value else {
           return BrokerResponse(ok: false, error: "Credential value is missing from Keychain.")
         }
         guard SensitivePayload.importedKind(stored) == nil else {
@@ -2168,15 +2220,16 @@
         }
         secret = stored
       } catch {
+        guard
+          credentialUseIsCurrent(
+            [credential], projectPath: brokerRequest.projectPath, generation: generation)
+        else { return credentialChangedResponse }
         return BrokerResponse(ok: false, error: "Could not read credential from Keychain.")
       }
 
       let workingDirectory = normalize(brokerRequest.projectPath)
       let arguments = brokerRequest.arguments ?? []
-      let settings =
-        credentials.first(where: { $0.id == credentialID }).map {
-          ProviderBundles.environment(for: $0, excluding: environmentVariable)
-        } ?? [:]
+      let settings = ProviderBundles.environment(for: credential, excluding: environmentVariable)
 
       do {
         let execution = try await Task.detached(priority: .userInitiated) {
@@ -2200,12 +2253,15 @@
       _ brokerRequest: BrokerRequest,
       credential: CredentialMetadata,
       decision: ApprovalDecision,
-      grant: AuthenticationGrant?
+      grant: AuthenticationGrant?,
+      generation: UUID
     ) async -> BrokerResponse {
-      guard let current = visibleCredential(for: brokerRequest),
-        !current.kind.requiresControlledUse, current == credential
+      guard
+        credentialUseIsCurrent(
+          [credential], projectPath: brokerRequest.projectPath, generation: generation),
+        !credential.kind.requiresControlledUse
       else {
-        return BrokerResponse(ok: false, error: "Credential changed. Request approval again.")
+        return credentialChangedResponse
       }
       do {
         // Re-validate against the current allowlist in case it changed while the prompt was open.
@@ -2215,7 +2271,12 @@
           headers: brokerRequest.headers ?? [:],
           body: brokerRequest.body,
           allowedHosts: credential.allowedHosts)
-        guard let secret = try await readSecret(credential.id, grant: grant) else {
+        let value = try await readSecret(credential.id, grant: grant)
+        guard
+          credentialUseIsCurrent(
+            [credential], projectPath: brokerRequest.projectPath, generation: generation)
+        else { return credentialChangedResponse }
+        guard let secret = value else {
           return BrokerResponse(ok: false, error: "Credential value is missing from Keychain.")
         }
         guard SensitivePayload.importedKind(secret) == nil else {
@@ -2225,6 +2286,10 @@
         let result = try await HTTPRequestExecutor.execute(validated, secretData: secret)
         return BrokerResponse(ok: true, decision: decision, http: result)
       } catch {
+        guard
+          credentialUseIsCurrent(
+            [credential], projectPath: brokerRequest.projectPath, generation: generation)
+        else { return credentialChangedResponse }
         return BrokerResponse(ok: false, error: error.localizedDescription)
       }
     }
@@ -2233,9 +2298,16 @@
       _ variables: [String],
       projectPath: String,
       decision: ApprovalDecision,
-      grant: AuthenticationGrant?
+      grant: AuthenticationGrant?,
+      selected: [String: CredentialMetadata],
+      generation: UUID
     ) async -> BrokerResponse {
-      let selected = environmentCredentials(projectPath: projectPath, only: variables)
+      func selectionIsCurrent() -> Bool {
+        selected == environmentCredentials(projectPath: projectPath, only: variables)
+          && credentialUseIsCurrent(
+            Array(selected.values), projectPath: projectPath, generation: generation)
+      }
+      guard selectionIsCurrent() else { return credentialChangedResponse }
       var environment: [String: String] = [:]
       var skipped: [String] = []
       for name in variables {
@@ -2244,7 +2316,9 @@
           continue
         }
         do {
-          guard let data = try await readSecret(credential.id, grant: grant),
+          let stored = try await readSecret(credential.id, grant: grant)
+          guard selectionIsCurrent() else { return credentialChangedResponse }
+          guard let data = stored,
             SensitivePayload.importedKind(data) == nil,
             let value = String(data: data, encoding: .utf8)
           else {
@@ -2253,6 +2327,7 @@
           }
           environment[name] = value
         } catch {
+          guard selectionIsCurrent() else { return credentialChangedResponse }
           return BrokerResponse(ok: false, error: "Could not read \(name) from Keychain.")
         }
       }
@@ -2433,6 +2508,7 @@
 
     /// "Ask every time": ends all session grants.
     func revokeSessionApprovals() {
+      accessGeneration = UUID()
       closeAllBrowsers()
       Task {
         await approvalEngine.revokeAllSessions()

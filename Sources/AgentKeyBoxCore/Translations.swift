@@ -311,6 +311,8 @@ enum Translations {
       "已刪除金鑰。",
     "Credential metadata was removed, but Keychain cleanup failed: %@":
       "金鑰資料已移除，但清理鑰匙圈時失敗：%@",
+    "Credential changed. Request approval again.":
+      "憑證已變更，請重新要求核准。",
     "Credential request declined.":
       "已拒絕提供金鑰。",
     "Credential was not found.":
