@@ -93,6 +93,40 @@ Deny the request; no real credential or network destination is needed.
 
 Trigger an approval and leave it unanswered. Confirm the agent receives an approval-timeout error rather than hanging indefinitely.
 
+## 8a. Approved work runs with the panel closed
+
+**Native acceptance pending.** Claude and the user should run this in their approved isolated native test setup, using a disposable project and synthetic key. The implementation/testing session did not launch or install the app, sign/package it, or read the user's Keychain or normal AgentKeyBox profile.
+
+1. Select **Ask Every Time** so the request requires an interactive approval. From an already connected agent, call `run_with_secret` with the synthetic key's `credential_id`, `env_var: "DEMO_API_KEY"`, `command: "/bin/sleep"`, and `args: ["30"]`. This introduces a visible delay without sending data or printing the key.
+2. Before approval, confirm the panel is visible, the menu offers **Review**, and the main status row identifies the request as awaiting access. Choose **Allow Once** and leave Touch ID/password authentication pending briefly: the approval panel must remain visible and the request must not start.
+3. Complete authentication. After initial checks pass, the panel must disappear promptly, without waiting for the 30-second command. The agent must still be waiting for its result. The menu bar menu and main status row must show **Running: <agent> using <item>…** / **正在執行：<agent> 使用 <項目>…**, with no Review action or pending badge for that request.
+4. Switch projects, close/reopen the main window, and open the menu during execution. Progress must remain available, and none of these actions may reopen the approval panel. Check that progress contains no secret, command/arguments, URL/query string or output.
+5. While the first command is running, submit a second protected request from another connected helper/session. It must receive `Another AgentKeyBox approval is already pending.` or the equivalent localized busy result, without displaying another approval panel. The first request must remain unaffected.
+6. After the command exits, confirm the agent receives the ordinary command result (exit code 0, empty output), only once. Both UI surfaces replace progress with the existing **Approved request completed.** message. A new protected request must now be able to show an approval panel.
+7. Repeat with `args: ["65"]` to exceed the runner's current 60-second execution timeout. The panel must still close after approval; the agent receives the existing execution-timeout error and the UI shows the existing failure message. This must not be reported as an approval timeout.
+8. Separately deny a request, cancel Touch ID, and leave an unanswered approval for its 120-second timeout. Each must close through its existing terminal path, show no running status afterward, and allow the next request. Cancelling authentication must not run the command.
+
+Repeat the successful transition for a synthetic slow HTTP request, protected endpoint submission, browser login/follow/recovery and an environment request where available. An environment request is complete when AgentKeyBox returns the approved environment; the app does not track the lifetime of the caller's terminal process. The UI execution ID does not change that boundary.
+
+For revocation regression checks, use separate disposable fixtures for each case:
+
+- During approval/authentication or a deliberately delayed secret read, edit/delete the selected item or remove its project. Existing cancellation/version checks must prevent an operation that has not started. Do not interpret disappearance of the panel as proof that a POST or command has started.
+- After a command, HTTP operation or protected submission actually starts, edit/delete the item, remove its project, or select **Ask Every Time**. Preserve the existing actual outcome instead of suggesting a retry for an already-started side effect. For recovery codes, retain the existing issued/reserved state.
+- During browser login/follow/recovery, use **End Browser Access** and repeat with item/project removal. A matching pending approval must cancel; an already-started operation must retain the existing operation-failure handling, discard stale page results and never suggest re-signing in as a harmless retry. Progress must clear and the panel must not reappear.
+
+Record the build commit, language, operation, before/after-authentication timing, both UI statuses, first and concurrent request outcomes, and whether the next approval works. Do not capture real credentials or response content as evidence.
+
+Automated verification for implementation commit `9363d25` (2026-11-13):
+
+- `swift test --scratch-path .build-test -Xswiftc -warnings-as-errors`: 231 tests, 2 opt-in live tests skipped, 0 failures.
+- `swift test --scratch-path .build-rtest -c release -Xswiftc -warnings-as-errors`: 220 tests, the same 2 live tests skipped, 0 failures. Both configurations pass all 10 new presentation tests.
+- `swift build --disable-sandbox --scratch-path .build-release -c release -Xswiftc -warnings-as-errors`: passed. SwiftPM reported inaccessible user cache configuration/security directories; no Swift compiler warnings or errors remained.
+- `AGENTKEYBOX_BIN_DIR=$PWD/.build-release/release Scripts/mcp-smoke-test.sh`: passed (11 responses, including 9 expected validation errors; no native app request).
+- `Scripts/check-release-qa-strings.sh .build-release/release`: passed for all three executables. `python3 -B Scripts/test-browser-acceptance-client.py`: 25 tests passed. `Scripts/security-static-check.sh`: passed.
+- Strict `swift-format` lint on the five changed Swift files: passed, with zero new issues. The three existing files also have zero baseline issues at `dfd167c`; no unrelated formatting was changed.
+
+The two skipped tests require `AGENTKEYBOX_LIVE_BROWSER_TESTS=1` and contact the public demo/GitHub. Automated presentation and existing revocation tests do not verify native Touch ID dismissal timing or the app's floating panel; the native steps above remain required. Build directories `.build-test`, `.build-rtest`, and `.build-release` are intentionally left untracked for Claude to remove after handoff; no shared DerivedData or `.xcresult` was created.
+
 ## 9. Release packaging
 
 Before packaging, scan the directory containing all three release executables (no app launch,

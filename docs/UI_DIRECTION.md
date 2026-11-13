@@ -247,6 +247,14 @@ The current default view answers:
 
 HTTP prompts also show the destination. Agent-provided purpose text is labeled **Agent's reason** and quoted. Eligible unflagged requests offer **Don't ask again during this session**; for HTTP this currently covers a listed host, not a single API action. The unreleased card/recovery-code prompt shows an exact POST destination and complete field map, defaults to Deny, and offers no session grant. Browser sign-in and restricted recovery continuation now have separate native prompts; payment semantics remain future work.
 
+### Approval panel lifetime
+
+The panel remains visible while awaiting a decision and during Touch ID/password authentication. Once authentication and the operation's initial checks succeed, it closes before Keychain reads or execution. The work continues through the existing asynchronous operation, and the agent receives its existing response only when that request finishes. Denial, authentication cancellation/failure, approval timeout and access revocation retain their existing behavior.
+
+While an interactively approved request runs, the menu bar menu and the main window's status row show **Running: <agent> using <item>…** (繁中：**正在執行：<agent> 使用 <項目>…**). Environment requests show the number of keys. Names are bounded and flattened to one line; progress does not include commands, arguments, URLs, query strings, variable names, secret values or response content. The main status row remains visible when changing projects or when no project is selected. Completion replaces progress with the existing completion/failure message; the menu retains the latest approval result.
+
+The execution ID is presentation state only. The pending request, broker continuation and approval slot remain held until normal completion or existing cancellation handling. A second protected request still receives the existing busy response. Hiding the panel does not call authentication cancellation, and does not replace the separate submission/browser execution markers used to preserve actual outcomes. See [native acceptance steps](MACOS_TEST.md#8a-approved-work-runs-with-the-panel-closed).
+
 ### Technical details
 
 Technical information should be collapsed by default:
@@ -356,7 +364,7 @@ The product should represent the thing the user recognizes ("App Store Connect c
 
 ## 8. Menu bar direction
 
-The lightweight menu bar is implemented. It shows pending requests, recent decisions, active-session count and **Ask Every Time**, plus Open and Quit actions.
+The lightweight menu bar is implemented. It shows pending requests, running approved work or the latest approval result, recent decisions, active-session count and **Ask Every Time**, plus Open and Quit actions.
 
 Illustrative current menu:
 
@@ -374,7 +382,7 @@ Ask Every Time (when session grants exist)
 Quit AgentKeyBox
 ```
 
-Pending requests can be reopened from the menu, and approval panels work with the main window closed. **Lock Vault** from the old sketch is not an implemented action.
+Requests still awaiting approval can be reopened from the menu, and approval panels work with the main window closed. Approved work shows a running status instead of a Review action or pending badge; opening the main window does not reopen its approval panel. **Lock Vault** from the old sketch is not an implemented action.
 
 ---
 

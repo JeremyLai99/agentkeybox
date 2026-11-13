@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Approval panels now close after authentication and initial execution checks while approved work continues in the background. The menu bar and main window show a short running status, then the existing result; the broker keeps its approval slot until the request finishes.
+
 - “Ask Every Time” now stays effective when an earlier Touch ID approval finishes later. Editing a key (including its value, project or allowed websites), deleting it, or removing its project clears its remembered approvals and saved authentication.
 - A failed HTTP request that has already started no longer asks for approval again just because the key changed meanwhile. Browser operations interrupted after starting also return an operation failure instead of suggesting another sign-in, helping avoid duplicate actions.
 - Release-mode tests now finish normally instead of accidentally starting the command-line app. Helper and CLI process checks use built executables, and macOS CI fails if those required test programs are missing.
