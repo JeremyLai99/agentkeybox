@@ -1,5 +1,15 @@
 # AgentKeyBox implementation status
 
+## Native check: approval panel closes before the approved work finishes — 2026-11-15
+
+Ad-hoc QA build of `01b20e1`, isolated profile, synthetic `QA_SLOW_COMMAND_KEY`; the user approved with Touch ID.
+
+- `run_with_secret` with `/bin/sleep 30`: the decision was recorded at 00:01:51 and the approval panel was gone by 00:01:55 while `sleep 30` was still running and the agent was still waiting.
+- The main window showed `正在執行：Local Agent 使用 QA_SLOW_COMMAND_KEY…` during execution and `已完成核准的請求。` afterwards.
+- A second `run_with_secret` sent during execution returned `Another AgentKeyBox approval is already pending.` in 0.0 s; no second panel appeared.
+- The first request returned `exit_code=0` once, at 00:02:21 (30 s after approval).
+- Not run natively: denial, Touch ID cancellation, approval timeout, 65-second execution timeout, and edit/delete/revoke during execution (MACOS_TEST §8a steps 7–8 and the revocation list). The QA runner removed its profile afterwards.
+
 ## 第二輪 code review 修復 — 2026-11-13（unreleased）
 
 本次基底為 `9b98eb7`，分支 `fix/helper-updated-message`。三項修復各自與回歸測試同筆提交，文件最後獨立提交。下方歷史完整保留。本次僅使用合成資料及測試建立的暫存環境，未啟動／安裝 App、未存取正式機密或正式 broker token、未執行原生驗收、簽署、公證或發布。
