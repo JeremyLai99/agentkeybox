@@ -6,7 +6,7 @@
 
 Store API keys in your macOS Keychain, organize them by project, and approve access requests from Claude Code or Codex through MCP.
 
-The product goal is to let agents complete approved tasks using sensitive data while keeping raw values out of the agent/model's readable context. Today's alpha supports developer credentials with the execution limits described below. The working tree also includes an unreleased, experimental credit-card/recovery-code path: locally configured HTTPS field submission with per-use approval and fixed results. A second unreleased path adds website-login items and an app-owned browser for traditional same-origin HTML sign-in, constrained page text, and individually approved links. A restricted traditional recovery-code form can continue after a second approval, with its code saved as issued before private submission. JavaScript sign-in, SSO, TOTP and browser checkout remain unsupported; isolated ad-hoc native MCP/CLI recovery success has passed; the signed build has passed public-demo login/read/close with the data-protection Keychain; signed card/recovery-code submission, browser recovery continuation, GitHub recovery and other unaccepted workflows still require validation; see [controlled browser use](docs/INTEGRATION.md#controlled-browser--unreleased), [the integration contract](docs/INTEGRATION.md#protected-field-submission--unreleased), [product requirements](docs/PRODUCT.md), and [roadmap](docs/ROADMAP.md).
+The product goal is to let agents complete approved tasks using sensitive data while keeping raw values out of the agent/model's readable context. The current release (0.4.0) supports developer credentials such as API keys and key files, with the execution limits described below. Newer features on `main` are listed in [What's new](#whats-new-on-main-not-yet-released).
 
 > **AI asks. You approve.**
 
@@ -24,6 +24,19 @@ AgentKeyBox is an experimental macOS utility for vibe coders, indie developers, 
 https://github.com/user-attachments/assets/9486ce5d-6f2d-4965-8226-f6cb88d1a5ad
 
 </details>
+
+## What's new on `main` (not yet released)
+
+The latest download is still **0.4.0**. The changes below are on `main` and will ship in the next release. Until then you get them only by [building from source](#build-from-source).
+
+- **More kinds of sensitive items.** Besides API keys, you can store credit cards, website logins and recovery-code sets. Agents never receive the raw values: after you approve, AgentKeyBox sends only the selected fields to the exact HTTPS address you set, and returns a fixed result.
+- **A private browser for website sign-in.** An agent can ask AgentKeyBox to sign in to a website for it. The sign-in happens in AgentKeyBox's own browser after your approval. The agent sees only limited page text, and every link it follows needs another approval. A recovery-code challenge can be completed the same way; each code is marked as used before it is sent. Only traditional sign-in forms work: no JavaScript sign-in, SSO, one-time codes or checkout yet.
+- **The approval window closes as soon as you approve.** The work continues in the background, with a short "Running…" status in the menu bar and main window until it finishes.
+- **A clear message after updating.** An agent that was already running is told to reconnect, instead of getting a confusing rejection.
+- **New Folder in Add Project.** You can create a project folder right in the folder picker.
+- **Security fixes from two code reviews.** For example, turning off "don't ask again" can no longer be undone by an approval that was still in progress, and a network failure after a request was sent is no longer reported as "approve again". See the [CHANGELOG](CHANGELOG.md) for the full list.
+
+Tested so far: the signed app with Touch ID and the Keychain, website sign-in on a public demo site, and every new approval path in an isolated test setup with made-up data. Real accounts, such as GitHub or payment pages, have not been tested yet.
 
 ## Install
 
