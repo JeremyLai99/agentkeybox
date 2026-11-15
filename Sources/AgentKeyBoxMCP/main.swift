@@ -401,7 +401,7 @@ private final class MCPServer: @unchecked Sendable {
       return toolResult(
         id: requestID,
         text:
-          "outcome=\(outcome.rawValue)\nOnly a transport outcome is available; it does not confirm payment or sign-in success. No response content is returned. A reserved recovery code stays unavailable until reviewed by the user. Do not automatically retry."
+          SensitiveSubmissionResultText.success(outcome: outcome, fields: fields)
       )
     } catch {
       // A disconnect may occur after submission. Never expose raw diagnostics or advise retrying.

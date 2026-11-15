@@ -8,6 +8,26 @@ import XCTest
 #endif
 
 final class SensitiveItemTests: XCTestCase, @unchecked Sendable {
+  func testSuccessTextMentionsReservedCodesOnlyForCompleteRecoveryPlaceholder() {
+    Localization.setOverride(.english)
+    defer { Localization.setOverride(nil) }
+    for outcome in [SensitiveSubmissionOutcome.received, .rejected, .redirectBlocked, .unknown] {
+      let card = SensitiveSubmissionResultText.success(
+        outcome: outcome, fields: ["card": "{{card.number}}", "note": "private-task-data"])
+      XCTAssertTrue(card.hasPrefix("outcome=\(outcome.rawValue)\n"))
+      XCTAssertFalse(card.contains("recovery code"))
+      XCTAssertFalse(card.contains("private-task-data"))
+      XCTAssertTrue(card.contains("Do not automatically retry."))
+      let recovery = SensitiveSubmissionResultText.success(
+        outcome: outcome, fields: ["code": "{{recovery.code}}"])
+      XCTAssertTrue(
+        recovery.contains("A reserved recovery code stays unavailable until reviewed by the user."))
+      let partial = SensitiveSubmissionResultText.success(
+        outcome: outcome, fields: ["note": "prefix{{recovery.code}}"])
+      XCTAssertFalse(partial.contains("recovery code"))
+    }
+  }
+
   private func card() throws -> SensitivePayload {
     SensitivePayload(
       card: try StoredCard(

@@ -97,6 +97,8 @@ enum Translations {
       "--only 後面要接要傳入的金鑰名稱，例如 --only STRIPE_SECRET_KEY。",
     "1 key":
       "1 把金鑰",
+    "A reserved recovery code stays unavailable until reviewed by the user.":
+      "保留的復原碼會維持不可用，直到使用者確認狀態。",
     "Access approved.":
       "已允許存取。",
     "Access denied.":
@@ -351,6 +353,8 @@ enum Translations {
       "將 .env 或金鑰檔案拖到這裡，或使用「新增項目」。",
     "Drop a .env or key file here, or use Add Key.":
       "把 .env 或金鑰檔拖到這裡，或按「加入金鑰」。",
+    "Do not automatically retry.":
+      "請勿自動重試。",
     "Drop files or another project folder anywhere in this window.":
       "可以把檔案或其他專案資料夾拖到這個視窗的任何地方。",
     "Drop your project folder here":
@@ -537,6 +541,8 @@ enum Translations {
       "請先確認復原碼尚未用過，再標記為「可使用」。AgentKeyBox 無法向服務查詢此狀態。",
     "Only the result is returned to the agent. Submission can have effects at the destination. Recovery codes stay unavailable until you review their status.":
       "Agent 只會收到固定格式的結果。送出後可能在目的網站產生實際操作；已送出的復原碼會保持不可用，直到你確認其狀態。",
+    "Only a transport outcome is available; it does not confirm payment or sign-in success. No response content is returned.":
+      "只提供傳輸結果，不代表付款或登入成功。不會回傳回應內容。",
     "Open":
       "打開",
     "Open AgentKeyBox":

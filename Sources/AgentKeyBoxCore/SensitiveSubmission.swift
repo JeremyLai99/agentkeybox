@@ -20,6 +20,24 @@ public enum SensitiveSubmissionOutcome: String, Codable, Sendable {
   case received, rejected, redirectBlocked, unknown
 }
 
+public enum SensitiveSubmissionResultText {
+  /// Fixed prose only. Never echo field names, literal values, or secret material.
+  public static func success(
+    outcome: SensitiveSubmissionOutcome, fields: [String: String]
+  ) -> String {
+    var notes = [
+      L(
+        "Only a transport outcome is available; it does not confirm payment or sign-in success. No response content is returned."
+      )
+    ]
+    if fields.values.contains(SensitiveSubmissionPolicy.recoveryField) {
+      notes.append(L("A reserved recovery code stays unavailable until reviewed by the user."))
+    }
+    notes.append(L("Do not automatically retry."))
+    return "outcome=\(outcome.rawValue)\n" + notes.joined(separator: " ")
+  }
+}
+
 public enum SensitiveSubmissionPolicy {
   public static let cardFields = [
     "{{card.number}}", "{{card.cardholder}}", "{{card.expiration_month}}",
