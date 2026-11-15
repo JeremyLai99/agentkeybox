@@ -89,6 +89,7 @@
       guard let target = recoverySubmissionURL else { throw ControlledBrowserError.unavailable }
       try BrowserRecoveryPolicy.validate(
         credential, target: target, origin: origin, login: self.credential)
+      try BrowserRecoveryPolicy.requireAvailable(credential)
       try lease.transition(from: .recoveryRequired, to: .awaitingRecoveryApproval)
       recoveryCredential = credential
       return target

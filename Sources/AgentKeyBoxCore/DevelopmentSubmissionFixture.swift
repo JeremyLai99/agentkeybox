@@ -47,7 +47,9 @@
         let codeItem = CredentialMetadata(
           id: profile.fixtureID(2), label: "QA — Local submission codes",
           service: "Synthetic submission fixture", kind: .recoveryCodes,
-          submissionURL: origin + "/submit/recovery", payloadRevision: codes.revision)
+          submissionURL: origin + "/submit/recovery",
+          recoveryCodeCounts: codes.recoveryCodes.map(RecoveryCodeCounts.init(codes:)),
+          payloadRevision: codes.revision)
         let project = Project(
           id: profile.fixtureID(4), name: L("QA — Disposable removal project"),
           rootPath: profile.file("removal-project").path)

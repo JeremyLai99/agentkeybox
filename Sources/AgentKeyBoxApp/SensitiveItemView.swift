@@ -20,6 +20,7 @@
     @State private var destination: String
     @State private var linkedLoginID: UUID?
     @State private var initializedLink = false
+    @State private var loadedMetadata: CredentialMetadata?
     @State private var number = ""
     @State private var cardholder = ""
     @State private var month = ""
@@ -260,7 +261,9 @@
       working = true
       defer { working = false }
       do {
-        let payload = try await model.loadSensitiveItem(original)
+        let snapshot = try await model.loadSensitiveItem(original)
+        let payload = snapshot.payload
+        loadedMetadata = snapshot.metadata
         if let card = payload.card {
           number = card.number
           cardholder = card.cardholder
@@ -305,7 +308,7 @@
         errorMessage = nil
         Task {
           let saved = await model.saveSensitiveItem(
-            original: original, label: name,
+            original: loadedMetadata ?? original, label: name,
             projectID: projectID, destination: endpoint, payload: payload,
             linkedLoginID: linkedLoginID)
           working = false

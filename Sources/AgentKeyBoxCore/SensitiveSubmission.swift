@@ -47,6 +47,9 @@ public enum SensitiveSubmissionPolicy {
     guard credential.kind == .creditCard || credential.kind == .recoveryCodes else {
       throw SensitiveDataError.controlledUseRequired
     }
+    guard credential.recoveryCodePendingRevision == nil else {
+      throw SensitiveDataError.invalidPayload
+    }
     if credential.kind == .recoveryCodes, credential.linkedLoginID != nil,
       credential.submissionURL == nil || credential.submissionURL == ""
     {

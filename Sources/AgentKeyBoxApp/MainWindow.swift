@@ -470,6 +470,10 @@
               .lineLimit(1)
           }
         }
+        if key.kind == .recoveryCodes, let counts = key.recoveryCodeCounts {
+          Text(L("%@ codes available", "\(counts.available)"))
+            .font(.callout).foregroundStyle(.secondary)
+        }
         if key.kind == .recoveryCodes, let loginID = key.linkedLoginID,
           let login = model.credentials.first(where: { $0.id == loginID && $0.kind == .login })
         {

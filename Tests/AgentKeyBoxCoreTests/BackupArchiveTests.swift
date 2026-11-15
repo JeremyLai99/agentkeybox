@@ -202,7 +202,7 @@ final class BackupArchiveTests: XCTestCase {
         payloadRevision: card.revision)
       let codeItem = CredentialMetadata(
         label: "Codes", service: "QA", kind: .recoveryCodes,
-        linkedLoginID: UUID(),
+        linkedLoginID: UUID(), recoveryCodeCounts: RecoveryCodeCounts(codes: set),
         payloadRevision: codes.revision)
       let contents = BackupContents(
         projects: [], credentials: [cardItem, codeItem],

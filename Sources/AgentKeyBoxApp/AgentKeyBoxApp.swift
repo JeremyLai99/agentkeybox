@@ -442,6 +442,8 @@
                 id: profile.fixtureID(2), label: "QA — Synthetic recovery codes (refusal only)",
                 service: "QA fixture", kind: .recoveryCodes,
                 submissionURL: "https://akb-acceptance.invalid/recovery",
+                recoveryCodeCounts: recoveryPayload.recoveryCodes.map(
+                  RecoveryCodeCounts.init(codes:)),
                 payloadRevision: recoveryPayload.revision)
               do {
                 try secretStore.save(secret: payload.encoded(), id: item.id)
@@ -642,7 +644,12 @@
             credential.kind.requiresControlledUse
             ? try SensitivePayload.restored(secret, kind: credential.kind) : secret
           try secretStore.save(secret: value, id: credential.id)
-          added.append(credential)
+          var imported = credential
+          if imported.kind == .recoveryCodes {
+            let payload = try SensitivePayload.decode(value, kind: .recoveryCodes)
+            imported = try RecoveryCodeMetadataCommit.reconciled(imported, payload: payload)
+          }
+          added.append(imported)
         } catch {
           statusMessage = L("Could not save %@: %@", credential.label, error.localizedDescription)
         }
@@ -850,6 +857,7 @@
         submissionURL: submissionURL,
         loginURL: loginURL,
         linkedLoginID: linkedLoginID,
+        recoveryCodeCounts: payload?.recoveryCodes.map(RecoveryCodeCounts.init(codes:)),
         payloadRevision: payload?.revision
       )
       do {
@@ -1547,7 +1555,9 @@
 
     // MARK: - Protected items
 
-    func loadSensitiveItem(_ credential: CredentialMetadata) async throws -> SensitivePayload {
+    func loadSensitiveItem(_ credential: CredentialMetadata) async throws -> (
+      payload: SensitivePayload, metadata: CredentialMetadata
+    ) {
       let editorAuthenticator = LocalAuthenticator()
       let grant = try await editorAuthenticator.authenticate(
         reason: L("Review this protected item in AgentKeyBox?"))
@@ -1556,10 +1566,21 @@
         credentials.contains(credential)
       else { throw SensitiveDataError.invalidPayload }
       let payload = try SensitivePayload.decode(data, kind: credential.kind)
+      if credential.kind == .recoveryCodes {
+        let repaired = try RecoveryCodeMetadataCommit.reconciled(credential, payload: payload)
+        if repaired != credential {
+          guard let index = credentials.firstIndex(of: credential) else {
+            throw SensitiveDataError.invalidPayload
+          }
+          try saveRecoveryMetadata(repaired, at: index)
+          invalidateProtectedAccess(for: credential.id)
+        }
+        return (payload, repaired)
+      }
       guard payload.revision == credential.payloadRevision else {
         throw SensitiveDataError.invalidPayload
       }
-      return payload
+      return (payload, credential)
     }
 
     /// Native editor only. There is no broker operation to change a destination or code state.
@@ -1592,7 +1613,9 @@
         var payload = payload
         payload.revision = UUID()
         if let original {
-          let previous = try await loadSensitiveItem(original)
+          let loaded = try await loadSensitiveItem(original)
+          let previous = loaded.payload
+          let original = loaded.metadata
           try validateLink()
           guard let index = credentials.firstIndex(of: original), previous.kind == payload.kind
           else {
@@ -1614,6 +1637,9 @@
           credentials[index].loginURL = payload.kind == .login && !endpoint.isEmpty ? endpoint : nil
           credentials[index].linkedLoginID = linkedLoginID
           credentials[index].payloadRevision = payload.revision
+          credentials[index].recoveryCodePendingRevision = nil
+          let counts = payload.recoveryCodes.map(RecoveryCodeCounts.init(codes:))
+          credentials[index].recoveryCodeCounts = counts?.staged(over: original.recoveryCodeCounts)
           credentials[index].environmentVariableName = nil
           credentials[index].allowedHosts = nil
           credentials[index].settings = nil
@@ -1634,6 +1660,11 @@
             statusMessage = L("Could not save this protected item. Try again.")
             return false
           }
+          if payload.kind == .recoveryCodes {
+            let completed = try RecoveryCodeMetadataCommit.reconciled(
+              credentials[index], payload: payload)
+            try saveRecoveryMetadata(completed, at: index)
+          }
         } else {
           guard
             addCredential(
@@ -1652,6 +1683,16 @@
       } catch {
         statusMessage = L("Could not save this protected item. Check its fields and try again.")
         return false
+      }
+    }
+
+    /// Keep the in-memory snapshot at the last successful disk commit, including on failures.
+    private func saveRecoveryMetadata(_ metadata: CredentialMetadata, at index: Int) throws {
+      let previous = credentials[index]
+      credentials[index] = metadata
+      guard persistMetadata() else {
+        credentials[index] = previous
+        throw SensitiveDataError.invalidPayload
       }
     }
 
@@ -1711,13 +1752,10 @@
           persistReservation: { data in
             // Synchronous on the main actor, before sending: no request can reuse this code.
             // A save error stops execution; a crash/unknown response leaves the code issued.
-            let reservation = try SensitivePayload.decode(data, kind: .recoveryCodes)
-            try secretStore.save(secret: data, id: credential.id)
-            credentials[index].payloadRevision = reservation.revision
-            credentials[index].updatedAt = Date()
-            guard persistMetadata() else {
-              throw SensitiveDataError.invalidPayload
-            }
+            try RecoveryCodeMetadataCommit.reserve(
+              data, credential: credential,
+              saveMetadata: { try self.saveRecoveryMetadata($0, at: index) },
+              saveSecret: { try self.secretStore.save(secret: $0, id: credential.id) })
             #if DEBUG
               if let profile = DevelopmentProfile.current,
                 let fixture = try DevelopmentSubmissionFixture.load(profile: profile)
@@ -1979,11 +2017,10 @@
             guard let index = credentials.firstIndex(of: recovery) else {
               throw SensitiveDataError.invalidPayload
             }
-            let reservation = try SensitivePayload.decode(data, kind: .recoveryCodes)
-            try secretStore.save(secret: data, id: recovery.id)
-            credentials[index].payloadRevision = reservation.revision
-            credentials[index].updatedAt = Date()
-            guard persistMetadata() else { throw SensitiveDataError.invalidPayload }
+            try RecoveryCodeMetadataCommit.reserve(
+              data, credential: recovery,
+              saveMetadata: { try self.saveRecoveryMetadata($0, at: index) },
+              saveSecret: { try self.secretStore.save(secret: $0, id: recovery.id) })
             #if DEBUG
               if let profile = DevelopmentProfile.current,
                 let fixture = try DevelopmentRecoveryFixture.load(profile: profile)

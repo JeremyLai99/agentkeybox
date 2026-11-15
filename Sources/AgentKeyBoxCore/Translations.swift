@@ -17,6 +17,8 @@ enum Translations {
       "%@ 個字元",
     "%@ hr ago":
       "%@ 小時前",
+    "%@ codes available":
+      "可用 %@ 組",
     "%@ is connected":
       "%@ 已連接",
     "%@ is not installed or could not be found.":
@@ -633,6 +635,8 @@ enum Translations {
       "查看：%@",
     "Run a command from your terminal with this project's secrets":
       "在終端機用這個專案的金鑰執行指令",
+    "These recovery codes are used up. Import new recovery codes in AgentKeyBox.":
+      "這組復原碼已用完，請在 AgentKeyBox 匯入新的復原碼",
     "These recovery codes can only be used with browser_recover for their linked website login.":
       "這組復原碼只能透過 browser_recover 在搭配的網站登入中使用。",
     "Use AgentKeyBox when a task needs sensitive data. Call list_credentials first. For developer credentials, prefer http_request with {{secret}} in a header, or run_with_secret for a local tool. Website login items ONLY support browser_login, then browser_read/browser_follow/browser_close in the private controlled browser. Credit cards support submit_sensitive_fields. For browser_recover after recoveryCodeRequired, choose the recovery-code set whose for_login equals the current login item ID. Linked sets use the detected same-site form automatically. Unlinked sets require an exact submission_url match. submit_sensitive_fields always requires a user-configured exact destination. If no set matches, ask the user to add recovery codes in AgentKeyBox and link them to this website login. Never retry a code automatically. Protected items cannot be used in commands or generic HTTP. If a developer credential is missing, use request_credential. New protected items must be added in the app. Never ask the user to paste raw secrets into chat.":

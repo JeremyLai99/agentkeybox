@@ -53,6 +53,7 @@ public struct CredentialSummary: Codable, Hashable, Sendable {
   public var submissionURL: String?
   public var loginURL: String?
   public var linkedLoginID: UUID?
+  public var recoveryCodeCounts: RecoveryCodeCounts?
 
   public init(metadata: CredentialMetadata) {
     self.id = metadata.id
@@ -66,6 +67,7 @@ public struct CredentialSummary: Codable, Hashable, Sendable {
     self.submissionURL = metadata.kind.requiresControlledUse ? metadata.submissionURL : nil
     self.loginURL = metadata.kind == .login ? metadata.loginURL : nil
     self.linkedLoginID = metadata.kind == .recoveryCodes ? metadata.linkedLoginID : nil
+    self.recoveryCodeCounts = metadata.kind == .recoveryCodes ? metadata.recoveryCodeCounts : nil
   }
 
   public var recoveryListingFields: [String] {
@@ -73,6 +75,7 @@ public struct CredentialSummary: Codable, Hashable, Sendable {
       linkedLoginID != nil && submissionURL == nil
         ? "use=browser_recover" : "use=submit_sensitive_fields,browser_recover",
       "for_login=\(linkedLoginID?.uuidString ?? "-")",
+      recoveryCodeCounts?.listing ?? "codes=unknown",
       "submission_url=\(submissionURL ?? (linkedLoginID != nil ? L("automatic (browser_recover only)") : L("not configured")))",
     ]
   }

@@ -3,6 +3,7 @@ import Foundation
 /// Fixed diagnostics only. WebKit errors, scripts, cookies and response URLs never cross MCP.
 public enum ControlledBrowserError: Error, LocalizedError, Equatable {
   case invalidWebsite, unsupportedForm, unavailable, busy, failed, expired, invalidLink
+  case recoveryCodesExhausted
 
   /// Session closure after navigation/submission started must not suggest another sign-in.
   public static func forOperation(_ error: Error, executionStarted: Bool) -> Self {
@@ -11,6 +12,8 @@ public enum ControlledBrowserError: Error, LocalizedError, Equatable {
 
   public var errorDescription: String? {
     switch self {
+    case .recoveryCodesExhausted:
+      return L("These recovery codes are used up. Import new recovery codes in AgentKeyBox.")
     case .invalidWebsite: return L("Set an HTTPS sign-in page without a query or fragment.")
     case .unsupportedForm:
       return L("This page needs a sign-in method that the controlled browser does not support yet.")

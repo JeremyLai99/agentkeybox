@@ -399,6 +399,23 @@ final class BrowserPolicyTests: XCTestCase {
       XCTAssertTrue(read.text.contains("Recovery verified"))
     }
 
+    @MainActor func testExhaustedCodesDoNotEnterApprovalPhase() async throws {
+      let fixture = try BrowserFixture()
+      let (browser, login) = try fixture.browser(path: "/login-recovery")
+      defer { browser.close() }
+      let (manual, payload) = try recoveryItem(fixture)
+      var exhausted = manual
+      var codes = try XCTUnwrap(payload.recoveryCodes)
+      codes.requireReviewAfterRestore()
+      exhausted.recoveryCodeCounts = RecoveryCodeCounts(codes: codes)
+      try await browser.prepare()
+      _ = try await browser.signIn(payload: login)
+      XCTAssertThrowsError(try browser.prepareRecovery(credential: exhausted)) {
+        XCTAssertEqual($0 as? ControlledBrowserError, .recoveryCodesExhausted)
+      }
+      XCTAssertEqual(browser.lease.phase, .recoveryRequired)
+    }
+
     @MainActor func testLinkedRecoveryNeedsNoConfiguredDestination() async throws {
       let fixture = try BrowserFixture()
       let (browser, login) = try fixture.browser(path: "/login-recovery")

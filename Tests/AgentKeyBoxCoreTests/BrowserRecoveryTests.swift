@@ -81,9 +81,15 @@ final class BrowserRecoveryTests: XCTestCase {
     var object = try XCTUnwrap(
       JSONSerialization.jsonObject(with: JSONEncoder().encode(old)) as? [String: Any])
     object.removeValue(forKey: "linkedLoginID")
+    object.removeValue(forKey: "recoveryCodeCounts")
+    object.removeValue(forKey: "recoveryCodePendingRevision")
     let decoded = try JSONDecoder().decode(
       CredentialMetadata.self, from: JSONSerialization.data(withJSONObject: object))
     XCTAssertNil(decoded.linkedLoginID)
+    XCTAssertNil(decoded.recoveryCodeCounts)
+    XCTAssertNil(decoded.recoveryCodePendingRevision)
+    XCTAssertTrue(
+      CredentialSummary(metadata: decoded).recoveryListingFields.contains("codes=unknown"))
     var linked = decoded
     linked.linkedLoginID = UUID()
     let summary = CredentialSummary(metadata: linked)

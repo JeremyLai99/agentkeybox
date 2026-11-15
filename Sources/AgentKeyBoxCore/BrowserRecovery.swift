@@ -2,6 +2,16 @@ import Foundation
 
 /// Only the native user selects the login or exact endpoint. The agent cannot supply a URL.
 public enum BrowserRecoveryPolicy {
+  /// Called before presenting approval; this uses metadata only, never a secret read.
+  public static func requireAvailable(_ credential: CredentialMetadata) throws {
+    if let counts = credential.recoveryCodeCounts, counts.available <= 0 {
+      throw ControlledBrowserError.recoveryCodesExhausted
+    }
+    guard credential.recoveryCodePendingRevision == nil else {
+      throw ControlledBrowserError.unavailable
+    }
+  }
+
   public static func validate(
     _ credential: CredentialMetadata, target: URL, origin: String,
     login: CredentialMetadata? = nil
@@ -38,6 +48,7 @@ public enum BrowserRecoveryPolicy {
   ) -> BrowserPage {
     let hasMatch = candidates.contains {
       (try? validate($0, target: target, origin: origin, login: login)) != nil
+        && (try? requireAvailable($0)) != nil
     }
     return BrowserPage(
       sessionID: sessionID, status: "recoveryCodeRequired", origin: origin,
@@ -60,6 +71,7 @@ public enum BrowserRecoveryPolicy {
   ) throws -> String {
     var validated = try SensitivePayload.decode(payload.encoded(), kind: .recoveryCodes)
     guard credential.kind == .recoveryCodes, validated.revision == credential.payloadRevision,
+      credential.recoveryCodePendingRevision == nil,
       var codes = validated.recoveryCodes
     else { throw SensitiveDataError.invalidPayload }
     let code = try codes.reserveNext()
