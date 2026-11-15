@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Recovery codes can now be linked to a website login without entering a submission address; the native approval still shows the actual same-site destination, and deleting the login unlinks its codes.
+- Recovery-code cards and agent listings show cached available/used/review counts without unlocking Keychain; issued codes count as needing review, and known-empty sets are refused before approval.
+- Credit-card submission results no longer show the recovery-code reservation reminder.
+
 - Approval panels now close after authentication and initial execution checks while approved work continues in the background. The menu bar and main window show a short running status, then the existing result; the broker keeps its approval slot until the request finishes.
 
 - “Ask Every Time” now stays effective when an earlier Touch ID approval finishes later. Editing a key (including its value, project or allowed websites), deleting it, or removing its project clears its remembered approvals and saved authentication.
