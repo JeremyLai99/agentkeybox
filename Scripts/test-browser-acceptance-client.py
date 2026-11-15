@@ -75,6 +75,9 @@ class AcceptanceResultTests(unittest.TestCase):
     def advance_reservation(self, root, before):
         current = acceptance.json.loads(acceptance.json.dumps(before))
         current["credentials"][0].update(updatedAt=2, payloadRevision=str(acceptance.uuid.uuid4()))
+        counts = current["credentials"][0]["recoveryCodeCounts"]
+        counts["available"] -= 1
+        counts["needsReview"] += 1
         (root / "metadata.json").write_text(acceptance.json.dumps(current))
         return current
 
@@ -131,16 +134,43 @@ class AcceptanceResultTests(unittest.TestCase):
     def test_submission_results_are_exact_fixed_outcomes_including_unknown(self):
         for mode in ("received", "rejected", "redirect", "unknown"):
             outcome = "redirectBlocked" if mode == "redirect" else mode
-            result = {"content": [{"text": "outcome=" + outcome + submission.FIXED_SUFFIX}]}
+            result = {"content": [{"text": "outcome=" + outcome + submission.fixed_suffix("recovery")}]}
             submission.verify_result(result, mode)
             for wrong in [dict(result, isError=True), {"content": [{"text": "outcome=" + outcome}]},
-                          {"content": [{"text": "outcome=" + outcome + submission.FIXED_SUFFIX + " extra"}]}]:
+                          {"content": [{"text": "outcome=" + outcome + submission.fixed_suffix("recovery") + " extra"}]}]:
                 with self.assertRaises(RuntimeError):
                     submission.verify_result(wrong, mode)
         interrupted = {"isError": True, "content": [{"text": submission.UNKNOWN_ERROR}]}
         submission.verify_result(interrupted, "hold")
         with self.assertRaises(RuntimeError):
             submission.verify_result({"isError": True, "content": [{"text": "Approval timed out."}]}, "hold")
+
+    def test_card_results_never_accept_recovery_guidance_in_either_language(self):
+        for chinese in (False, True):
+            for kind in ("card", "recovery"):
+                result = {"content": [{"text": "outcome=received" + submission.fixed_suffix(kind, chinese)}]}
+                submission.verify_result(result, "received", kind)
+                with self.assertRaises(RuntimeError):
+                    submission.verify_result(result, "received", "recovery" if kind == "card" else "card")
+
+    def test_recovery_listing_must_bind_counts_and_login_to_the_same_item(self):
+        line = "codes | QA | recoveryCodes | for_login=login | codes=available:3,used:0,needs_review:1 | submission_url=automatic (browser_recover only)"
+        result = lambda text: {"content": [{"text": text}]}
+        recovery.verify_listing(result(line), "login", "codes", 1)
+        for wrong in [line.replace("for_login=login", "for_login=other"),
+                      line.replace("available:3", "available:4"),
+                      line.replace("codes | QA", "other | QA"), line + "\n" + line,
+                      line.replace("submission_url=automatic (browser_recover only)", "submission_url=https://example.com/recover")]:
+            with self.assertRaises(RuntimeError):
+                recovery.verify_listing(result(wrong), "login", "codes", 1)
+
+    def test_recovery_fixture_requires_link_without_manual_destination(self):
+        login = {"id": "login", "kind": "login", "loginURL": "https://127.0.0.1:45678/login-recovery"}
+        codes = {"id": "codes", "kind": "recoveryCodes", "linkedLoginID": "login"}
+        recovery.validate_linked_fixture({"login": login, "codes": codes}, "login", "codes", "https://127.0.0.1:45678")
+        for changed in [dict(codes, linkedLoginID="other"), dict(codes, submissionURL="https://127.0.0.1:45678/recover")]:
+            with self.assertRaises(RuntimeError):
+                recovery.validate_linked_fixture({"login": login, "codes": changed}, "login", "codes", "https://127.0.0.1:45678")
 
     def test_submission_receipt_requires_exact_fields_headers_and_single_post(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -168,6 +198,7 @@ class AcceptanceResultTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             before = {"credentials": [{"id": "code", "kind": "recoveryCodes", "updatedAt": 1,
+                                       "recoveryCodeCounts": {"available": 8, "used": 0, "needsReview": 0},
                                        "payloadRevision": str(acceptance.uuid.uuid4())}]}
             config = {"caseID": "case", "kind": "recovery", "encoding": "json"}
             entry = dict(config, exactFields=True, expectedContentType=True, noCredentialsOrCookies=True,
@@ -201,8 +232,9 @@ class AcceptanceResultTests(unittest.TestCase):
         browser = str(acceptance.uuid.uuid4())
         page = {"sessionID": browser, "status": "recoveryCodeRequired", "origin": "https://127.0.0.1:45678",
                 "title": "Recovery code required", "links": [],
-                "text": "Request browser_recover with a stored recovery-code item. A separate native approval "
-                        "is required. No page content is available until verification completes."}
+                "text": "Request browser_recover with a recovery-code item whose for_login matches this login, or whose "
+                        "submission URL exactly matches. A separate native approval is required. "
+                        "No page content is available until verification completes."}
         result = lambda p: {"content": [{"text": acceptance.json.dumps(p)}]}
         self.assertEqual(recovery.challenge_result(result(page), page["origin"], browser), page)
         for changed in [dict(page, text="Website content"), dict(page, status="pageReady"),
@@ -215,6 +247,7 @@ class AcceptanceResultTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             before = {"credentials": [{"id": "codes", "kind": "recoveryCodes", "updatedAt": 1,
+                                       "recoveryCodeCounts": recovery.expected_counts(0),
                                        "payloadRevision": str(acceptance.uuid.uuid4())}]}
             (root / "metadata.json").write_text(acceptance.json.dumps(before))
             (root / "recovery-statuses.json").write_text(acceptance.json.dumps(recovery.expected_statuses(0)))
@@ -226,6 +259,13 @@ class AcceptanceResultTests(unittest.TestCase):
                 {"codeIndex": 0, "persistedBeforePost": True, "duplicate": False}]))
             after = self.advance_reservation(root, before)
             recovery.verify_reservation(root, before, True)
+            for change in ({"recoveryCodeCounts": recovery.expected_counts(0)},
+                           {"recoveryCodePendingRevision": str(acceptance.uuid.uuid4())},
+                           {"linkedLoginID": "unexpected-login"}):
+                corrupted = {"credentials": [dict(after["credentials"][0], **change)]}
+                (root / "metadata.json").write_text(acceptance.json.dumps(corrupted))
+                with self.assertRaises(RuntimeError):
+                    recovery.verify_reservation(root, before, True)
             (root / "metadata.json").write_text(acceptance.json.dumps(before))
             with self.assertRaises(RuntimeError):
                 recovery.verify_reservation(root, before, True)
@@ -250,6 +290,7 @@ class AcceptanceResultTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             before = {"credentials": [{"id": "codes", "kind": "recoveryCodes", "updatedAt": 1,
+                                       "recoveryCodeCounts": recovery.expected_counts(1),
                                        "payloadRevision": str(acceptance.uuid.uuid4())}]}
             (root / "metadata.json").write_text(acceptance.json.dumps(before))
             (root / "recovery-statuses.json").write_text(acceptance.json.dumps(recovery.expected_statuses(2)))
@@ -271,6 +312,7 @@ class AcceptanceResultTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             item = {"id": "codes", "kind": "recoveryCodes", "updatedAt": 1, "label": "QA",
+                    "recoveryCodeCounts": recovery.expected_counts(0),
                     "payloadRevision": str(acceptance.uuid.uuid4()), "submissionURL": "https://127.0.0.1/recover"}
             before = {"credentials": [item]}
             changed = dict(item, label="QA (edited)", updatedAt=2, payloadRevision=str(acceptance.uuid.uuid4()))

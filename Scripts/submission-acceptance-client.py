@@ -27,9 +27,16 @@ CASES = {
     "code-restart": ("recovery", "form", "code", "hold"),
 }
 NOTE = "QA order + & 中文"
-FIXED_SUFFIX = ("\nOnly a transport outcome is available; it does not confirm payment or sign-in success. "
-                "No response content is returned. A reserved recovery code stays unavailable until "
-                "reviewed by the user. Do not automatically retry.")
+
+def fixed_suffix(kind, chinese=False):
+    if chinese:
+        note = "保留的復原碼會維持不可用，直到使用者確認狀態。 " if kind == "recovery" else ""
+        return "\n只提供傳輸結果，不代表付款或登入成功。不會回傳回應內容。 " + note + "請勿自動重試。"
+    note = "A reserved recovery code stays unavailable until reviewed by the user. " if kind == "recovery" else ""
+    return ("\nOnly a transport outcome is available; it does not confirm payment or sign-in success. "
+            "No response content is returned. " + note + "Do not automatically retry.")
+
+
 UNKNOWN_ERROR = ("Submission outcome is unknown. Check the destination before retrying; "
                  "a recovery code may already have been reserved or consumed.")
 
@@ -56,14 +63,15 @@ def code_count(ledger):
     return len(codes)
 
 
-def verify_result(result, mode):
+def verify_result(result, mode, kind="recovery"):
     base.check_output(result)
     if mode == "hold":
         require(result.get("isError") is True and base.result_text(result) == UNKNOWN_ERROR,
                 "Interrupted submission was not reported as the exact unknown outcome")
     else:
         outcome = "redirectBlocked" if mode == "redirect" else mode
-        require(not result.get("isError") and base.result_text(result) == "outcome=" + outcome + FIXED_SUFFIX,
+        require(not result.get("isError") and base.result_text(result) in
+                {"outcome=" + outcome + fixed_suffix(kind, chinese) for chinese in (False, True)},
                 "Submission did not return only its expected fixed transport outcome")
 
 
@@ -96,6 +104,11 @@ def verify_receipt(root, before, previous, config):
                 require(item["payloadRevision"] != previous_item["payloadRevision"], "Reservation revision did not change")
                 uuid.UUID(item["payloadRevision"])
                 require(item["updatedAt"] > previous_item["updatedAt"], "Reservation timestamp did not advance")
+                require(item.get("recoveryCodeCounts") ==
+                        {"available": 8 - count - 1, "used": 0, "needsReview": count + 1},
+                        "Submission metadata counts do not match durable statuses")
+                require(item.get("recoveryCodePendingRevision") is None, "Reservation metadata is incomplete")
+                item["recoveryCodeCounts"] = previous_item["recoveryCodeCounts"]
                 item["payloadRevision"] = previous_item["payloadRevision"]
                 item["updatedAt"] = previous_item["updatedAt"]
     require(current == before, "Submission unexpectedly changed metadata or item revision")
@@ -190,7 +203,7 @@ def run_case(args):
               flush=True)
         result = (crash_during_post(client, root, arguments, previous) if mode == "hold"
                   else client.call("submit_sensitive_fields", arguments))
-        verify_result(result, mode)
+        verify_result(result, mode, kind)
         events = base.matching_events(base.read_history(root), events_before, client.agent_name, identity, project)
         require(len(events) == 1 and events[0]["decision"] == "allowOnce", "Exact separate native approval missing")
         verify_receipt(root, before, previous, config)

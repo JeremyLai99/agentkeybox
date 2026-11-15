@@ -8,6 +8,17 @@ import XCTest
 #endif
 
 final class SensitiveItemTests: XCTestCase, @unchecked Sendable {
+  func testLinkedOnlyFailureSurvivesMCPPresentationWithoutArbitraryDiagnostics() {
+    let allowed = SensitiveDataError.browserRecoveryOnly.localizedDescription
+    XCTAssertEqual(SensitiveSubmissionResultText.failure(brokerError: allowed), allowed)
+    let fallback = SensitiveSubmissionResultText.failure(brokerError: nil)
+    XCTAssertNotEqual(fallback, allowed)
+    XCTAssertEqual(
+      SensitiveSubmissionResultText.failure(brokerError: "private-code-fragment"), fallback)
+    XCTAssertEqual(
+      SensitiveSubmissionResultText.failure(brokerError: allowed + " private"), fallback)
+  }
+
   func testSuccessTextMentionsReservedCodesOnlyForCompleteRecoveryPlaceholder() {
     Localization.setOverride(.english)
     defer { Localization.setOverride(nil) }

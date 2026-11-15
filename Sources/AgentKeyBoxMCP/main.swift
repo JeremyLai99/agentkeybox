@@ -395,7 +395,7 @@ private final class MCPServer: @unchecked Sendable {
         return toolError(
           id: requestID,
           message:
-            "Protected submission was denied or could not be prepared. Review the item and its destination in AgentKeyBox."
+            SensitiveSubmissionResultText.failure(brokerError: response.error)
         )
       }
       return toolResult(

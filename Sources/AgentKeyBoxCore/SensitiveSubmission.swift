@@ -21,6 +21,14 @@ public enum SensitiveSubmissionOutcome: String, Codable, Sendable {
 }
 
 public enum SensitiveSubmissionResultText {
+  public static func failure(brokerError: String?) -> String {
+    let browserOnly = SensitiveDataError.browserRecoveryOnly.localizedDescription
+    if brokerError == browserOnly { return browserOnly }
+    return L(
+      "Protected submission was denied or could not be prepared. Review the item and its destination in AgentKeyBox."
+    )
+  }
+
   /// Fixed prose only. Never echo field names, literal values, or secret material.
   public static func success(
     outcome: SensitiveSubmissionOutcome, fields: [String: String]

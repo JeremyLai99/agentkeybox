@@ -587,6 +587,8 @@ enum Translations {
       "已加入專案。",
     "Projects":
       "專案",
+    "Protected submission was denied or could not be prepared. Review the item and its destination in AgentKeyBox.":
+      "受保護欄位的提交遭拒或無法準備。請在 AgentKeyBox 檢查項目與目的網址。",
     "Protected item changed. Request approval again.":
       "受保護項目已變更，請重新要求核准。",
     "Purpose":

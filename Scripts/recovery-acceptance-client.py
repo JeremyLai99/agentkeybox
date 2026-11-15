@@ -23,6 +23,35 @@ def expected_statuses(posts):
     return ["issued"] * posts + ["available"] * (CODE_COUNT - posts)
 
 
+def expected_counts(posts):
+    expected_statuses(posts)
+    return {"available": CODE_COUNT - posts, "used": 0, "needsReview": posts}
+
+
+def validate_linked_fixture(items, login_id, recovery_id, origin):
+    require(set(items) == {login_id, recovery_id}, "Unexpected fixture items")
+    require(items[login_id]["kind"] == "login" and
+            items[login_id].get("loginURL") == origin + "/login-recovery" and
+            items[recovery_id]["kind"] == "recoveryCodes" and
+            items[recovery_id].get("linkedLoginID") == login_id and
+            items[recovery_id].get("submissionURL") is None,
+            "Fixture recovery codes must link to the local login without a destination")
+
+
+def verify_listing(result, login_id, recovery_id, posts):
+    require(not result.get("isError"), "Recovery listing failed")
+    lines = base.result_text(result).splitlines()
+    matches = [line for line in lines if line.startswith(recovery_id + " | ")]
+    require(len(matches) == 1, "Recovery listing item is missing or duplicated")
+    fields = matches[0].split(" | ")
+    counts = expected_counts(posts)
+    require("for_login=" + login_id in fields and
+            f"codes=available:{counts['available']},used:0,needs_review:{counts['needsReview']}" in fields and
+            any(field in fields for field in ("submission_url=automatic (browser_recover only)",
+                                              "submission_url=自動判斷（僅限 browser_recover）")),
+            "Recovery listing is missing its linked login, counts or automatic destination")
+
+
 def verify_ledger(root, posts):
     path = root / "server-event.ledger"
     ledger = json.loads(path.read_text()) if path.exists() else []
@@ -43,11 +72,14 @@ def challenge_result(result, origin, browser_id=None):
     expected = {
         "sessionID": page.get("sessionID"), "status": "recoveryCodeRequired", "origin": origin,
         "title": "Recovery code required",
-        "text": "Request browser_recover with a stored recovery-code item. A separate native approval "
-                "is required. No page content is available until verification completes.",
+        "text": "Request browser_recover with a recovery-code item whose for_login matches this login, or whose "
+                "submission URL exactly matches. A separate native approval is required. "
+                "No page content is available until verification completes.",
         "links": [],
     }
-    require(page == expected, "Challenge exposed non-fixed content or wrong state/origin")
+    chinese = dict(expected, title="需要復原碼",
+                   text="請用 for_login 符合這個登入項目，或目的網址完全相符的復原碼項目呼叫 browser_recover，並取得另一次原生核准。驗證完成前不會提供頁面內容。")
+    require(page in (expected, chinese), "Challenge exposed non-fixed content or wrong state/origin")
     uuid.UUID(page["sessionID"])
     require(browser_id is None or browser_id == page["sessionID"], "Browser identity changed")
     return page
@@ -72,6 +104,11 @@ def verify_reservation(root, before, expect_post, initial_statuses=None, initial
     if posts:
         evidence = json.loads((root / "server-event.reservation").read_text())
         require(evidence == {"persistedBeforePost": True}, "Reservation was not durable before POST")
+    for item in current["credentials"]:
+        if item["kind"] == "recoveryCodes":
+            require(item.get("recoveryCodeCounts") == expected_counts(expected_posts),
+                    "Recovery metadata counts do not match durable statuses")
+            require(item.get("recoveryCodePendingRevision") is None, "Reservation metadata is incomplete")
     if expect_post or edited:
         # A reservation advances revision and timestamp; an edit may also change its label.
         previous_items = {item["id"]: item for item in before["credentials"]}
@@ -82,6 +119,7 @@ def verify_reservation(root, before, expect_post, initial_statuses=None, initial
                 require(item["payloadRevision"] != previous["payloadRevision"], "Revision did not change")
                 uuid.UUID(item["payloadRevision"])
                 require(item["updatedAt"] > previous["updatedAt"], "Timestamp did not advance")
+                item["recoveryCodeCounts"] = previous["recoveryCodeCounts"]
                 item["payloadRevision"] = previous["payloadRevision"]
                 if edited:
                     require(item["label"] == previous["label"] + " (edited)", "Expected native edit missing")
@@ -205,12 +243,7 @@ def run(args):
     base.check_output(before)
     items = {item["id"]: item for item in before["credentials"]}
     recovery_id = base.fixture_id(args.profile, 2)
-    require(set(items) == {profile, recovery_id}, "Unexpected fixture items")
-    require(items[profile]["kind"] == "login" and
-            items[profile].get("loginURL") == origin + "/login-recovery" and
-            items[recovery_id]["kind"] == "recoveryCodes" and
-            items[recovery_id].get("submissionURL") == origin + "/recover",
-            "Fixture metadata does not match exact local destinations")
+    validate_linked_fixture(items, profile, recovery_id, origin)
     initial_statuses = json.loads((root / "recovery-statuses.json").read_text())
     marker = root / "server-event.recovery"
     initial_posts = int(marker.read_text()) if marker.exists() else 0
@@ -227,6 +260,8 @@ def run(args):
     browser_id = None
     try:
         client.initialize()
+        if args.transport == "mcp":
+            verify_listing(client.call("list_credentials", {}), profile, recovery_id, initial_posts)
         previous = {e["id"] for e in base.read_history(root)}
         print(f"READY: {args.transport} recovery/{args.expect}; first approve QA local login "
               "and complete normal local authentication.", flush=True)
