@@ -399,6 +399,29 @@ final class BrowserPolicyTests: XCTestCase {
       XCTAssertTrue(read.text.contains("Recovery verified"))
     }
 
+    @MainActor func testLinkedRecoveryNeedsNoConfiguredDestination() async throws {
+      let fixture = try BrowserFixture()
+      let (browser, login) = try fixture.browser(path: "/login-recovery")
+      defer { browser.close() }
+      let (manual, payload) = try recoveryItem(fixture)
+      var linked = manual
+      linked.submissionURL = nil
+      linked.linkedLoginID = browser.credential.id
+      try await browser.prepare()
+      _ = try await browser.signIn(payload: login)
+      var wrong = linked
+      wrong.linkedLoginID = UUID()
+      XCTAssertThrowsError(try browser.prepareRecovery(credential: wrong))
+      XCTAssertEqual(browser.lease.phase, .recoveryRequired)
+      let target = try browser.prepareRecovery(credential: linked)
+      XCTAssertEqual(target.absoluteString, manual.submissionURL)
+      var saved = false
+      let page = try await browser.recover(credential: linked, payload: payload) { _ in saved = true
+      }
+      XCTAssertTrue(saved)
+      XCTAssertTrue(page.text.contains("Recovery verified"))
+    }
+
     @MainActor func testRecoverySaveFailureStaleRevisionAndRevocationPreventAnyPost() async throws {
       let fixture = try BrowserFixture()
       for mode in ["save", "stale", "close", "swap"] {

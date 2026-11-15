@@ -470,6 +470,12 @@
               .lineLimit(1)
           }
         }
+        if key.kind == .recoveryCodes, let loginID = key.linkedLoginID,
+          let login = model.credentials.first(where: { $0.id == loginID && $0.kind == .login })
+        {
+          Text(L("Linked to: %@", login.label))
+            .font(.callout).foregroundStyle(.secondary)
+        }
         if let includes = ProviderBundles.includes(for: key) {
           Text(includes)
             .font(.caption)

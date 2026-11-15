@@ -47,7 +47,7 @@
         let codeItem = CredentialMetadata(
           id: profile.fixtureID(2), label: "QA — Local recovery codes",
           service: "Synthetic loopback fixture", kind: .recoveryCodes,
-          submissionURL: recoveryURL, payloadRevision: codes.revision)
+          linkedLoginID: loginItem.id, payloadRevision: codes.revision)
         try store.save(secret: login.encoded(), id: loginItem.id)
         try store.save(secret: codes.encoded(), id: codeItem.id)
         try metadata.save(MetadataSnapshot(credentials: [loginItem, codeItem]))

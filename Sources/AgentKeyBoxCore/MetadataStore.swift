@@ -8,6 +8,15 @@ public struct MetadataSnapshot: Codable, Sendable {
     self.projects = projects
     self.credentials = credentials
   }
+
+  /// Remove the item and its links together in the same metadata commit.
+  public mutating func removeCredential(id: UUID) {
+    credentials.removeAll { $0.id == id }
+    for index in credentials.indices where credentials[index].linkedLoginID == id {
+      credentials[index].linkedLoginID = nil
+      credentials[index].updatedAt = Date()
+    }
+  }
 }
 
 public final class MetadataStore: @unchecked Sendable {

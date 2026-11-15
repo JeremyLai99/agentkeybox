@@ -52,6 +52,7 @@ public struct CredentialSummary: Codable, Hashable, Sendable {
   public var settings: [String: String]?
   public var submissionURL: String?
   public var loginURL: String?
+  public var linkedLoginID: UUID?
 
   public init(metadata: CredentialMetadata) {
     self.id = metadata.id
@@ -64,6 +65,16 @@ public struct CredentialSummary: Codable, Hashable, Sendable {
     self.settings = metadata.kind.requiresControlledUse ? nil : metadata.settings
     self.submissionURL = metadata.kind.requiresControlledUse ? metadata.submissionURL : nil
     self.loginURL = metadata.kind == .login ? metadata.loginURL : nil
+    self.linkedLoginID = metadata.kind == .recoveryCodes ? metadata.linkedLoginID : nil
+  }
+
+  public var recoveryListingFields: [String] {
+    [
+      linkedLoginID != nil && submissionURL == nil
+        ? "use=browser_recover" : "use=submit_sensitive_fields,browser_recover",
+      "for_login=\(linkedLoginID?.uuidString ?? "-")",
+      "submission_url=\(submissionURL ?? (linkedLoginID != nil ? L("automatic (browser_recover only)") : L("not configured")))",
+    ]
   }
 }
 

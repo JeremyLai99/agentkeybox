@@ -193,6 +193,8 @@ enum Translations {
       "核准的請求執行失敗：%@",
     "Ask Every Time":
       "每次都詢問",
+    "Ask the user to add recovery codes in AgentKeyBox and link them to this website login. No page content is available until verification completes.":
+      "請使用者在 AgentKeyBox 新增一組復原碼並搭配這個網站登入。驗證完成前不會提供頁面內容。",
     "At least %@ characters.":
       "至少 %@ 個字元。",
     "Available":
@@ -353,6 +355,8 @@ enum Translations {
       "把專案資料夾拖到這裡",
     "Each folder is one project. Its .env file holds the project's keys; key files (.p8, .pem, .json) are the original files.":
       "每個資料夾是一個專案。.env 檔裡是這個專案的金鑰；金鑰檔（.p8、.pem、.json）就是原本的檔案。",
+    "Each use requires approval and marks one code Issued before sending. Failures never automatically restore availability.":
+      "每次使用都需要核准，並在送出前把一組碼標記為「已發出」。失敗也不會自動恢復為可用。",
     "Each use requires approval. AgentKeyBox sends selected fields directly to this exact destination and returns only a fixed result. Browser sessions and checkout automation are not supported yet.":
       "每次使用都需要核准。AgentKeyBox 會直接將所選欄位送到此指定網址，只回傳固定格式的結果。目前尚未支援瀏覽器登入狀態與自動結帳。",
     "Edit…":
@@ -465,6 +469,10 @@ enum Translations {
       "%@ 和 AgentKeyBox 存的金鑰不同，所以保留沒動。",
     "Limit to one website…":
       "限制只能送到一個網站…",
+    "Linked to: %@":
+      "搭配：%@",
+    "Linked website login":
+      "搭配的網站登入",
     "Local authentication cancelled or failed.":
       "本機驗證已取消或失敗。",
     "Local authentication was not completed.":
@@ -513,6 +521,8 @@ enum Translations {
       "有 1 個代理工作階段不再詢問",
     "Not installed":
       "未安裝",
+    "Not linked":
+      "不搭配",
     "Not used yet":
       "尚未使用",
     "Nothing was imported.":
@@ -579,6 +589,8 @@ enum Translations {
       "最近",
     "Recent access":
       "最近的存取",
+    "Recovery code required":
+      "需要復原碼",
     "Recovery codes":
       "復原碼",
     "Remove %@":
@@ -605,6 +617,8 @@ enum Translations {
       "已移除 %@。專案裡的檔案沒有變動。",
     "Request":
       "請求",
+    "Request browser_recover with a recovery-code item whose for_login matches this login, or whose submission URL exactly matches. A separate native approval is required. No page content is available until verification completes.":
+      "請用 for_login 符合這個登入項目，或目的網址完全相符的復原碼項目呼叫 browser_recover，並取得另一次原生核准。驗證完成前不會提供頁面內容。",
     "Review this browser access":
       "確認此次瀏覽器存取",
     "Review this command":
@@ -619,6 +633,12 @@ enum Translations {
       "查看：%@",
     "Run a command from your terminal with this project's secrets":
       "在終端機用這個專案的金鑰執行指令",
+    "These recovery codes can only be used with browser_recover for their linked website login.":
+      "這組復原碼只能透過 browser_recover 在搭配的網站登入中使用。",
+    "Use AgentKeyBox when a task needs sensitive data. Call list_credentials first. For developer credentials, prefer http_request with {{secret}} in a header, or run_with_secret for a local tool. Website login items ONLY support browser_login, then browser_read/browser_follow/browser_close in the private controlled browser. Credit cards support submit_sensitive_fields. For browser_recover after recoveryCodeRequired, choose the recovery-code set whose for_login equals the current login item ID. Linked sets use the detected same-site form automatically. Unlinked sets require an exact submission_url match. submit_sensitive_fields always requires a user-configured exact destination. If no set matches, ask the user to add recovery codes in AgentKeyBox and link them to this website login. Never retry a code automatically. Protected items cannot be used in commands or generic HTTP. If a developer credential is missing, use request_credential. New protected items must be added in the app. Never ask the user to paste raw secrets into chat.":
+      "任務需要機密資料時請使用 AgentKeyBox，先呼叫 list_credentials。開發用憑證優先使用 http_request（標頭內的 {{secret}}）或 run_with_secret。網站登入只能用 browser_login，再以 browser_read、browser_follow、browser_close 操作私密瀏覽器。信用卡使用 submit_sensitive_fields。收到 recoveryCodeRequired 後，browser_recover 應選 for_login 等於目前登入項目 ID 的復原碼，搭配後會自動使用同網站的表單。未搭配的項目須完全符合 submission_url。submit_sensitive_fields 一律需要使用者設定完整目的網址。沒有適合的項目時，請使用者在 AgentKeyBox 新增復原碼並搭配這個網站登入。不得自動重試復原碼。受保護項目不可用於指令或通用 HTTP。缺少開發用憑證時使用 request_credential；受保護項目必須在 App 新增。不要要求使用者把機密貼進聊天。",
+    "Use one stored recovery code in a browser that returned recoveryCodeRequired. Choose the item whose for_login equals this session's login item ID; its same-site form destination is automatic. Unlinked items require an exact match to their user-configured submission_url. Requires a new native approval showing the full actual destination. Only traditional recovery_code/recovery-code POST forms are supported. The code is persisted as issued before filling; no automatic retry or reset after failure. Returns a constrained page after submission, never the code, hidden fields or cookies.":
+      "在回傳 recoveryCodeRequired 的瀏覽器使用一組已儲存的復原碼。選擇 for_login 等於此工作階段登入項目 ID 的項目，會自動使用同網站表單的目的網址；未搭配的項目須完全符合使用者設定的 submission_url。每次需要新的原生核准，並顯示實際完整目的網址。只支援傳統 recovery_code／recovery-code POST 表單。填入前先儲存為已發出；失敗後不得自動重試或重設狀態。送出後只回傳受限頁面，不回傳復原碼、隱藏欄位或 Cookie。",
     "Use the controlled browser from a local agent": "讓本機 agent 使用受控瀏覽器",
     "Run a command with this project's secrets after approval":
       "核准後，用這個專案的金鑰執行指令",
@@ -806,6 +826,8 @@ enum Translations {
       "網站登入",
     "When AgentKeyBox is closed, Claude Code, Codex, and akb open it in the menu bar instead of failing.":
       "AgentKeyBox 沒開的時候，Claude Code、Codex 和 akb 會自動在選單列打開它，而不是直接失敗。",
+    "When this website asks for a recovery code during sign-in, this set will be used automatically.":
+      "登入這個網站時遇到要輸入復原碼的頁面，會自動使用這組復原碼。",
     "Where do I find these?":
       "去哪裡找？",
     "Where do I find this?":
@@ -830,6 +852,8 @@ enum Translations {
       "找不到 agentkeybox-mcp。請先建置或安裝 AgentKeyBox，或用 --helper 指定路徑。",
     "an unknown website":
       "不明網站",
+    "automatic (browser_recover only)":
+      "自動判斷（僅限 browser_recover）",
     "coding agents told not to read your key files":
       "已要求程式代理不要讀取你的金鑰檔",
     "command not found: %@":
@@ -854,6 +878,8 @@ enum Translations {
       "macOS 無法建立或打開磁碟映像檔：%@",
     "macOS needs your OK in System Settings › Login Items.":
       "需要在「系統設定 › 登入項目」裡允許。",
+    "not configured":
+      "尚未設定",
     "project":
       "專案",
     "skipped %@ (not text)":

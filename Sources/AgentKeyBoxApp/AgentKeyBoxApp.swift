@@ -784,7 +784,9 @@
       let originalProjects = projects
       let originalCredentials = credentials
       projects.removeAll { $0.id == project.id }
-      credentials.removeAll { $0.projectID == project.id }
+      var snapshot = MetadataSnapshot(credentials: credentials)
+      for key in keys { snapshot.removeCredential(id: key.id) }
+      credentials = snapshot.credentials
       guard persistMetadata() else {
         projects = originalProjects
         credentials = originalCredentials
@@ -819,7 +821,8 @@
       allowedHosts: [String]? = nil,
       settings: [String: String]? = nil,
       submissionURL: String? = nil,
-      loginURL: String? = nil
+      loginURL: String? = nil,
+      linkedLoginID: UUID? = nil
     ) -> CredentialMetadata? {
       let payload: SensitivePayload?
       do {
@@ -846,6 +849,7 @@
         settings: kind.requiresControlledUse ? nil : settings?.isEmpty == false ? settings : nil,
         submissionURL: submissionURL,
         loginURL: loginURL,
+        linkedLoginID: linkedLoginID,
         payloadRevision: payload?.revision
       )
       do {
@@ -870,10 +874,13 @@
     }
 
     func deleteCredential(_ credential: CredentialMetadata) {
-      guard let index = credentials.firstIndex(where: { $0.id == credential.id }) else { return }
-      credentials.remove(at: index)
+      guard credentials.contains(where: { $0.id == credential.id }) else { return }
+      let previous = credentials
+      var snapshot = MetadataSnapshot(credentials: credentials)
+      snapshot.removeCredential(id: credential.id)
+      credentials = snapshot.credentials
       guard persistMetadata() else {
-        credentials.insert(credential, at: min(index, credentials.count))
+        credentials = previous
         return
       }
       invalidateProtectedAccess(for: credential.id)
@@ -1558,11 +1565,23 @@
     /// Native editor only. There is no broker operation to change a destination or code state.
     func saveSensitiveItem(
       original: CredentialMetadata?, label: String, projectID: UUID?,
-      destination: String, payload: SensitivePayload
+      destination: String, payload: SensitivePayload, linkedLoginID: UUID? = nil
     ) async -> Bool {
       do {
         guard !label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
-        let endpoint = destination.trimmingCharacters(in: .whitespacesAndNewlines)
+        let linkedLoginID = payload.kind == .recoveryCodes ? linkedLoginID : nil
+        let endpoint =
+          linkedLoginID == nil
+          ? destination.trimmingCharacters(in: .whitespacesAndNewlines) : ""
+        func validateLink() throws {
+          if let linkedLoginID,
+            !BrowserRecoveryPolicy.logins(in: credentials, projectID: projectID)
+              .contains(where: { $0.id == linkedLoginID })
+          {
+            throw SensitiveDataError.invalidPayload
+          }
+        }
+        try validateLink()
         if !endpoint.isEmpty {
           if payload.kind == .login {
             _ = try BrowserPolicy.loginURL(endpoint)
@@ -1574,6 +1593,7 @@
         payload.revision = UUID()
         if let original {
           let previous = try await loadSensitiveItem(original)
+          try validateLink()
           guard let index = credentials.firstIndex(of: original), previous.kind == payload.kind
           else {
             throw SensitiveDataError.invalidPayload
@@ -1592,6 +1612,7 @@
           credentials[index].submissionURL =
             payload.kind == .login || endpoint.isEmpty ? nil : endpoint
           credentials[index].loginURL = payload.kind == .login && !endpoint.isEmpty ? endpoint : nil
+          credentials[index].linkedLoginID = linkedLoginID
           credentials[index].payloadRevision = payload.revision
           credentials[index].environmentVariableName = nil
           credentials[index].allowedHosts = nil
@@ -1619,7 +1640,8 @@
               label: label, service: payload.kind.protectedTitle,
               secret: try payload.encoded(), projectID: projectID, kind: payload.kind,
               submissionURL: payload.kind == .login || endpoint.isEmpty ? nil : endpoint,
-              loginURL: payload.kind == .login && !endpoint.isEmpty ? endpoint : nil) != nil
+              loginURL: payload.kind == .login && !endpoint.isEmpty ? endpoint : nil,
+              linkedLoginID: linkedLoginID) != nil
           else { return false }
         }
         #if DEBUG
@@ -1845,7 +1867,8 @@
         case .browserRead:
           let page = try await browser.read()
           _ = try ownedBrowser(request)
-          return BrokerResponse(ok: true, browserPage: page)
+          return BrokerResponse(
+            ok: true, browserPage: recoveryGuidance(page, browser: browser, request: request))
         case .browserRecover:
           guard let recovery = visibleCredential(for: request), recovery.kind == .recoveryCodes
           else {
@@ -1879,6 +1902,17 @@
           ok: false,
           error: ((error as? ControlledBrowserError) ?? .failed).localizedDescription)
       }
+    }
+
+    private func recoveryGuidance(
+      _ page: BrowserPage, browser: ControlledBrowserSession, request: BrokerRequest
+    ) -> BrowserPage {
+      guard page.status == "recoveryCodeRequired", let target = browser.recoverySubmissionURL else {
+        return page
+      }
+      return BrowserRecoveryPolicy.recoveryPage(
+        sessionID: browser.id, origin: browser.origin, target: target, login: browser.credential,
+        candidates: credentials.filter { credentialIsVisible($0, for: request.projectPath) })
     }
 
     private func presentBrowserApproval(
@@ -1968,7 +2002,9 @@
         }
         // A completed WebKit result can resume after removal on the main actor.
         _ = try ownedBrowser(request)
-        return BrokerResponse(ok: true, decision: .allowOnce, browserPage: page)
+        return BrokerResponse(
+          ok: true, decision: .allowOnce,
+          browserPage: recoveryGuidance(page, browser: browser, request: request))
       } catch {
         return BrokerResponse(
           ok: false,

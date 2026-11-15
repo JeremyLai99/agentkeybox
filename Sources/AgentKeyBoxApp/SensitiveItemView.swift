@@ -18,6 +18,8 @@
     @State private var name: String
     @State private var projectID: UUID?
     @State private var destination: String
+    @State private var linkedLoginID: UUID?
+    @State private var initializedLink = false
     @State private var number = ""
     @State private var cardholder = ""
     @State private var month = ""
@@ -38,6 +40,7 @@
       _projectID = State(initialValue: projectID)
       _destination = State(
         initialValue: kind == .login ? original?.loginURL ?? "" : original?.submissionURL ?? "")
+      _linkedLoginID = State(initialValue: original?.linkedLoginID)
       _loaded = State(initialValue: original == nil)
     }
 
@@ -60,17 +63,29 @@
                   }
                   Text(L("Every project")).tag(UUID?.none)
                 }
-                TextField(
-                  kind == .login ? L("Sign-in page") : L("Submission destination"),
-                  text: $destination,
-                  prompt: Text(
-                    verbatim: kind == .login
-                      ? "https://example.com/login" : "https://example.com/submit"))
+                if kind == .recoveryCodes {
+                  Picker(L("Linked website login"), selection: $linkedLoginID) {
+                    Text(L("Not linked")).tag(UUID?.none)
+                    ForEach(availableLogins) { login in
+                      Text(login.label).tag(Optional(login.id))
+                    }
+                  }
+                }
+                if linkedLoginID == nil {
+                  TextField(
+                    kind == .login ? L("Sign-in page") : L("Submission destination"),
+                    text: $destination,
+                    prompt: Text(
+                      verbatim: kind == .login
+                        ? "https://example.com/login" : "https://example.com/submit"))
+                }
               }
               .formStyle(.columns)
               Text(
                 L(
-                  "The name and website are visible to agents. Leave the website empty to keep this item unavailable for use."
+                  linkedLoginID != nil
+                    ? "When this website asks for a recovery code during sign-in, this set will be used automatically."
+                    : "The name and website are visible to agents. Leave the website empty to keep this item unavailable for use."
                 )
               )
               .font(.caption).foregroundStyle(.secondary)
@@ -97,7 +112,9 @@
                   kind == .login
                     ? "Approve sign-in in AgentKeyBox. The agent can read page text and request same-site links for up to 15 minutes. Supported recovery-code pages require a separate approval. JavaScript sign-in, SSO and TOTP are not supported."
                     : kind == .recoveryCodes
-                      ? "For browser use, this exact URL must match the recovery form submission destination. Each use requires approval and marks one code Issued before sending. Failures never automatically restore availability. No GitHub compatibility has been verified."
+                      ? linkedLoginID != nil
+                        ? "Each use requires approval and marks one code Issued before sending. Failures never automatically restore availability."
+                        : "For browser use, this exact URL must match the recovery form submission destination. Each use requires approval and marks one code Issued before sending. Failures never automatically restore availability. No GitHub compatibility has been verified."
                       : "Each use requires approval. AgentKeyBox sends selected fields directly to this exact destination and returns only a fixed result. Browser sessions and checkout automation are not supported yet."
                 )
               )
@@ -131,6 +148,16 @@
       .padding(24)
       .frame(width: 560)
       .interactiveDismissDisabled(working)
+      .onAppear {
+        guard !initializedLink else { return }
+        initializedLink = true
+        if original == nil, kind == .recoveryCodes, availableLogins.count == 1 {
+          linkedLoginID = availableLogins.first?.id
+        }
+      }
+      .onChange(of: availableLogins.map(\.id)) { _, ids in
+        if let linkedLoginID, !ids.contains(linkedLoginID) { self.linkedLoginID = nil }
+      }
       .confirmationDialog(
         L("Save recovery-code status changes?"), isPresented: $confirmingStatuses,
         titleVisibility: .visible
@@ -143,6 +170,10 @@
             "Only mark a code Available after verifying that it was not consumed. AgentKeyBox cannot check this with the service."
           ))
       }
+    }
+
+    private var availableLogins: [CredentialMetadata] {
+      BrowserRecoveryPolicy.logins(in: model.credentials, projectID: projectID)
     }
 
     private var recoveryFields: some View {
@@ -248,7 +279,9 @@
 
     private func save() {
       do {
-        let endpoint = destination.trimmingCharacters(in: .whitespacesAndNewlines)
+        let endpoint =
+          linkedLoginID == nil
+          ? destination.trimmingCharacters(in: .whitespacesAndNewlines) : ""
         if !endpoint.isEmpty {
           if kind == .login {
             _ = try BrowserPolicy.loginURL(endpoint)
@@ -273,7 +306,8 @@
         Task {
           let saved = await model.saveSensitiveItem(
             original: original, label: name,
-            projectID: projectID, destination: endpoint, payload: payload)
+            projectID: projectID, destination: endpoint, payload: payload,
+            linkedLoginID: linkedLoginID)
           working = false
           if saved {
             dismiss()

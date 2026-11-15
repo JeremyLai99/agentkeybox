@@ -5,9 +5,14 @@ public enum SensitiveDataError: Error, LocalizedError, Equatable {
   case invalidCard, invalidCodes, invalidPayload, unsupportedVersion
   case noAvailableCode, invalidDestination, invalidFields, controlledUseRequired
   case invalidLogin
+  case browserRecoveryOnly
 
   public var errorDescription: String? {
     switch self {
+    case .browserRecoveryOnly:
+      return L(
+        "These recovery codes can only be used with browser_recover for their linked website login."
+      )
     case .invalidLogin:
       return L("Enter a username and password for this website login.")
     case .invalidCard:

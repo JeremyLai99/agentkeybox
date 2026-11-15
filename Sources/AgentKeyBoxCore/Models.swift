@@ -57,6 +57,8 @@ public struct CredentialMetadata: Identifiable, Codable, Hashable, Sendable {
   public var submissionURL: String?
   /// Native-user configured sign-in page. Login values themselves stay in Keychain.
   public var loginURL: String?
+  /// Native-user selected login whose same-origin recovery form may receive these codes.
+  public var linkedLoginID: UUID?
   /// Binds protected metadata to its Keychain payload; a partial edit must fail closed.
   public var payloadRevision: UUID?
   public var createdAt: Date
@@ -74,6 +76,7 @@ public struct CredentialMetadata: Identifiable, Codable, Hashable, Sendable {
     settings: [String: String]? = nil,
     submissionURL: String? = nil,
     loginURL: String? = nil,
+    linkedLoginID: UUID? = nil,
     payloadRevision: UUID? = nil,
     createdAt: Date = Date(),
     updatedAt: Date = Date()
@@ -89,6 +92,7 @@ public struct CredentialMetadata: Identifiable, Codable, Hashable, Sendable {
     self.settings = settings
     self.submissionURL = submissionURL
     self.loginURL = loginURL
+    self.linkedLoginID = linkedLoginID
     self.payloadRevision = payloadRevision
     self.createdAt = createdAt
     self.updatedAt = updatedAt

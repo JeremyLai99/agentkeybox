@@ -64,6 +64,8 @@ final class CredentialUsePolicyTests: XCTestCase {
       { $0.settings = ["FIXTURE_URL": "https://different.invalid"] },
       { $0.environmentVariableName = "OTHER_KEY" },
       { $0.payloadRevision = UUID() },
+      { $0.loginURL = "https://different.invalid/login" },
+      { $0.linkedLoginID = UUID() },
       { $0.kind = .login },
     ]
     for mutate in mutations {

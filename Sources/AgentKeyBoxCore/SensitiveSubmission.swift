@@ -47,6 +47,11 @@ public enum SensitiveSubmissionPolicy {
     guard credential.kind == .creditCard || credential.kind == .recoveryCodes else {
       throw SensitiveDataError.controlledUseRequired
     }
+    if credential.kind == .recoveryCodes, credential.linkedLoginID != nil,
+      credential.submissionURL == nil || credential.submissionURL == ""
+    {
+      throw SensitiveDataError.browserRecoveryOnly
+    }
     let url = try destination(credential.submissionURL)
     let placeholders = credential.kind == .creditCard ? cardFields : [recoveryField]
     let names = Set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-.[]")

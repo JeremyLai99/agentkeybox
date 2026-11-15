@@ -87,7 +87,8 @@
     /// The actual POST URL is shown only in native approval, never copied from agent input.
     public func prepareRecovery(credential: CredentialMetadata) throws -> URL {
       guard let target = recoverySubmissionURL else { throw ControlledBrowserError.unavailable }
-      try BrowserRecoveryPolicy.validate(credential, target: target, origin: origin)
+      try BrowserRecoveryPolicy.validate(
+        credential, target: target, origin: origin, login: self.credential)
       try lease.transition(from: .recoveryRequired, to: .awaitingRecoveryApproval)
       recoveryCredential = credential
       return target
@@ -102,7 +103,8 @@
         guard let target = recoverySubmissionURL, recoveryCredential == credential else {
           throw ControlledBrowserError.unavailable
         }
-        try BrowserRecoveryPolicy.validate(credential, target: target, origin: origin)
+        try BrowserRecoveryPolicy.validate(
+          credential, target: target, origin: origin, login: self.credential)
         // No suspension between reservation and persistence. Failure never fills the form.
         let code = try BrowserRecoveryPolicy.reserve(
           payload: payload, credential: credential, persist: persistReservation)
