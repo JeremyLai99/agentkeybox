@@ -36,7 +36,7 @@ The latest download is still **0.4.0**. The changes below are on `main` and will
 - **New Folder in Add Project.** You can create a project folder right in the folder picker.
 - **Security fixes from two code reviews.** For example, turning off "don't ask again" can no longer be undone by an approval that was still in progress, and a network failure after a request was sent is no longer reported as "approve again". See the [CHANGELOG](CHANGELOG.md) for the full list.
 
-Tested so far: the signed app with Touch ID and the Keychain, website sign-in on a public demo site, and every new approval path in an isolated test setup with made-up data. Real accounts, such as GitHub or payment pages, have not been tested yet.
+Tested so far: the signed app with Touch ID and the Keychain; website sign-in, recovery codes and card submission over real HTTPS against a test site with made-up data; and every new approval path in an isolated test setup. Real third-party accounts, such as GitHub or payment pages, have not been tested yet.
 
 ## Install
 

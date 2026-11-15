@@ -1,5 +1,22 @@
 # AgentKeyBox implementation status
 
+## Live check: sign-in, recovery codes and card submission over real HTTPS — 2026-11-15
+
+Signed arm64 build of `92938f2` (Developer ID, not notarized) installed in `/Applications`. Test site: a synthetic Python site on loopback, published through a Cloudflare quick tunnel, so the controlled browser and the submission transport used the real network and normal system TLS. All data was made up: a generated account, eight generated recovery codes, and the public Stripe test card 4242 4242 4242 4242. The user added the three items (`AKB 實測 — 網站登入`, `— 復原碼`, `— 測試信用卡`) in the app and approved each request with Touch ID; a separate Claude session drove the MCP tools. The site logged outcomes only, never submitted values.
+
+| Check | Result | Site log |
+| --- | --- | --- |
+| `browser_login`: hidden CSRF field, cookie set on GET, 303 redirect | `recoveryCodeRequired` | `login_ok`, no rejected sign-in, no extra fields |
+| `browser_recover` | account page | `recovery_ok`, code 1, not reused |
+| `browser_read`, then `browser_follow` to the orders page | both pages read | `read_account`, `read_orders` |
+| Second sign-in and recovery | account page | `recovery_ok`, code 2 (the next code, not a resend) |
+| `submit_sensitive_fields`, card, JSON | `outcome=received` | one POST; number, cardholder, month and year all matched; last four 4242 |
+| Redaction rerun: the site printed the raw username (in page text and link text) and the password | all three shown as `[protected]` | `recovery_ok`, code 3 |
+
+No step was retried, and no other item was used. In the first run the username appeared as `[email protected]` because Cloudflare's email obfuscation rewrote it before it reached the browser (confirmed by fetching the same page directly and through the tunnel). The rerun excluded it from that rewrite.
+
+Not covered: real third-party sites (GitHub and similar), payment pages, and a real account's recovery codes.
+
 ## Native check: approval panel closes before the approved work finishes — 2026-11-15
 
 Ad-hoc QA build of `01b20e1`, isolated profile, synthetic `QA_SLOW_COMMAND_KEY`; the user approved with Touch ID.
