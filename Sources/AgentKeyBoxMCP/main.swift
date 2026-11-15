@@ -119,9 +119,7 @@ private final class MCPServer: @unchecked Sendable {
             "version": .string(AgentKeyBoxVersion.current),
           ]),
           "instructions": .string(
-            L(
-              "Use AgentKeyBox when a task needs sensitive data. Call list_credentials first. For developer credentials, prefer http_request with {{secret}} in a header, or run_with_secret for a local tool. Website login items ONLY support browser_login, then browser_read/browser_follow/browser_close in the private controlled browser. Credit cards support submit_sensitive_fields. For browser_recover after recoveryCodeRequired, choose the recovery-code set whose for_login equals the current login item ID. Linked sets use the detected same-site form automatically. Unlinked sets require an exact submission_url match. submit_sensitive_fields always requires a user-configured exact destination. If no set matches, ask the user to add recovery codes in AgentKeyBox and link them to this website login. Never retry a code automatically. Protected items cannot be used in commands or generic HTTP. If a developer credential is missing, use request_credential. New protected items must be added in the app. Never ask the user to paste raw secrets into chat."
-            )
+            "Use AgentKeyBox when a task needs sensitive data. Call list_credentials first. For developer credentials, prefer http_request with {{secret}} in a header, or run_with_secret for a local tool. Website login items ONLY support browser_login, then browser_read/browser_follow/browser_close in the private controlled browser. Credit cards support submit_sensitive_fields. For browser_recover after recoveryCodeRequired, choose the recovery-code set whose for_login equals the current login item ID. Linked sets use the detected same-site form automatically. Unlinked sets require an exact submission_url match. submit_sensitive_fields always requires a user-configured exact destination. If no set matches, ask the user to add recovery codes in AgentKeyBox and link them to this website login. Never retry a code automatically. Protected items cannot be used in commands or generic HTTP. If a developer credential is missing, use request_credential. New protected items must be added in the app. Never ask the user to paste raw secrets into chat."
           ),
         ]))
 
@@ -317,9 +315,7 @@ private final class MCPServer: @unchecked Sendable {
         "Read constrained text and same-site link IDs from your controlled browser session. No screenshots, form values, raw DOM, scripts, URLs, storage or cookies. Invalidates previous link IDs. Unavailable during protected operations."
     case "browser_recover":
       description =
-        L(
-          "Use one stored recovery code in a browser that returned recoveryCodeRequired. Choose the item whose for_login equals this session's login item ID; its same-site form destination is automatic. Unlinked items require an exact match to their user-configured submission_url. Requires a new native approval showing the full actual destination. Only traditional recovery_code/recovery-code POST forms are supported. The code is persisted as issued before filling; no automatic retry or reset after failure. Returns a constrained page after submission, never the code, hidden fields or cookies."
-        )
+        "Use one stored recovery code in a browser that returned recoveryCodeRequired. Choose the item whose for_login equals this session's login item ID; its same-site form destination is automatic. Unlinked items require an exact match to their user-configured submission_url. Requires a new native approval showing the full actual destination. Only traditional recovery_code/recovery-code POST forms are supported. The code is persisted as issued before filling; no automatic retry or reset after failure. Returns a constrained page after submission, never the code, hidden fields or cookies."
     case "browser_follow":
       description =
         "Ask the user to approve opening one current same-site link in your controlled browser session. Even GET links may change account data. Use an opaque link ID from the latest page; no arbitrary URLs or JavaScript."

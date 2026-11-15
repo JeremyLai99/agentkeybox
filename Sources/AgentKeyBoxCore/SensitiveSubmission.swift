@@ -24,9 +24,8 @@ public enum SensitiveSubmissionResultText {
   public static func failure(brokerError: String?) -> String {
     let browserOnly = SensitiveDataError.browserRecoveryOnly.localizedDescription
     if brokerError == browserOnly { return browserOnly }
-    return L(
+    return
       "Protected submission was denied or could not be prepared. Review the item and its destination in AgentKeyBox."
-    )
   }
 
   /// Fixed prose only. Never echo field names, literal values, or secret material.
@@ -34,14 +33,12 @@ public enum SensitiveSubmissionResultText {
     outcome: SensitiveSubmissionOutcome, fields: [String: String]
   ) -> String {
     var notes = [
-      L(
-        "Only a transport outcome is available; it does not confirm payment or sign-in success. No response content is returned."
-      )
+      "Only a transport outcome is available; it does not confirm payment or sign-in success. No response content is returned."
     ]
     if fields.values.contains(SensitiveSubmissionPolicy.recoveryField) {
-      notes.append(L("A reserved recovery code stays unavailable until reviewed by the user."))
+      notes.append("A reserved recovery code stays unavailable until reviewed by the user.")
     }
-    notes.append(L("Do not automatically retry."))
+    notes.append("Do not automatically retry.")
     return "outcome=\(outcome.rawValue)\n" + notes.joined(separator: " ")
   }
 }

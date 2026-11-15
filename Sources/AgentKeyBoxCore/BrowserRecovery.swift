@@ -52,14 +52,10 @@ public enum BrowserRecoveryPolicy {
     }
     return BrowserPage(
       sessionID: sessionID, status: "recoveryCodeRequired", origin: origin,
-      title: L("Recovery code required"),
+      title: "Recovery code required",
       text: hasMatch
-        ? L(
-          "Request browser_recover with a recovery-code item whose for_login matches this login, or whose submission URL exactly matches. A separate native approval is required. No page content is available until verification completes."
-        )
-        : L(
-          "Ask the user to add recovery codes in AgentKeyBox and link them to this website login. No page content is available until verification completes."
-        ),
+        ? "Request browser_recover with a recovery-code item whose for_login matches this login, or whose submission URL exactly matches. A separate native approval is required. No page content is available until verification completes."
+        : "Ask the user to add recovery codes in AgentKeyBox and link them to this website login. No page content is available until verification completes.",
       links: [])
   }
 

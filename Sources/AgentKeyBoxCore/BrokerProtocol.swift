@@ -76,7 +76,7 @@ public struct CredentialSummary: Codable, Hashable, Sendable {
         ? "use=browser_recover" : "use=submit_sensitive_fields,browser_recover",
       "for_login=\(linkedLoginID?.uuidString ?? "-")",
       recoveryCodeCounts?.listing ?? "codes=unknown",
-      "submission_url=\(submissionURL ?? (linkedLoginID != nil ? L("automatic (browser_recover only)") : L("not configured")))",
+      "submission_url=\(submissionURL ?? (linkedLoginID != nil ? "automatic (browser_recover only)" : "not configured"))",
     ]
   }
 }

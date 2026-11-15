@@ -97,8 +97,6 @@ enum Translations {
       "--only 後面要接要傳入的金鑰名稱，例如 --only STRIPE_SECRET_KEY。",
     "1 key":
       "1 把金鑰",
-    "A reserved recovery code stays unavailable until reviewed by the user.":
-      "保留的復原碼會維持不可用，直到使用者確認狀態。",
     "Access approved.":
       "已允許存取。",
     "Access denied.":
@@ -197,8 +195,6 @@ enum Translations {
       "核准的請求執行失敗：%@",
     "Ask Every Time":
       "每次都詢問",
-    "Ask the user to add recovery codes in AgentKeyBox and link them to this website login. No page content is available until verification completes.":
-      "請使用者在 AgentKeyBox 新增一組復原碼並搭配這個網站登入。驗證完成前不會提供頁面內容。",
     "At least %@ characters.":
       "至少 %@ 個字元。",
     "Available":
@@ -353,8 +349,6 @@ enum Translations {
       "將 .env 或金鑰檔案拖到這裡，或使用「新增項目」。",
     "Drop a .env or key file here, or use Add Key.":
       "把 .env 或金鑰檔拖到這裡，或按「加入金鑰」。",
-    "Do not automatically retry.":
-      "請勿自動重試。",
     "Drop files or another project folder anywhere in this window.":
       "可以把檔案或其他專案資料夾拖到這個視窗的任何地方。",
     "Drop your project folder here":
@@ -541,8 +535,6 @@ enum Translations {
       "請先確認復原碼尚未用過，再標記為「可使用」。AgentKeyBox 無法向服務查詢此狀態。",
     "Only the result is returned to the agent. Submission can have effects at the destination. Recovery codes stay unavailable until you review their status.":
       "Agent 只會收到固定格式的結果。送出後可能在目的網站產生實際操作；已送出的復原碼會保持不可用，直到你確認其狀態。",
-    "Only a transport outcome is available; it does not confirm payment or sign-in success. No response content is returned.":
-      "只提供傳輸結果，不代表付款或登入成功。不會回傳回應內容。",
     "Open":
       "打開",
     "Open AgentKeyBox":
@@ -587,8 +579,6 @@ enum Translations {
       "已加入專案。",
     "Projects":
       "專案",
-    "Protected submission was denied or could not be prepared. Review the item and its destination in AgentKeyBox.":
-      "受保護欄位的提交遭拒或無法準備。請在 AgentKeyBox 檢查項目與目的網址。",
     "Protected item changed. Request approval again.":
       "受保護項目已變更，請重新要求核准。",
     "Purpose":
@@ -599,8 +589,6 @@ enum Translations {
       "最近",
     "Recent access":
       "最近的存取",
-    "Recovery code required":
-      "需要復原碼",
     "Recovery codes":
       "復原碼",
     "Remove %@":
@@ -627,8 +615,6 @@ enum Translations {
       "已移除 %@。專案裡的檔案沒有變動。",
     "Request":
       "請求",
-    "Request browser_recover with a recovery-code item whose for_login matches this login, or whose submission URL exactly matches. A separate native approval is required. No page content is available until verification completes.":
-      "請用 for_login 符合這個登入項目，或目的網址完全相符的復原碼項目呼叫 browser_recover，並取得另一次原生核准。驗證完成前不會提供頁面內容。",
     "Review this browser access":
       "確認此次瀏覽器存取",
     "Review this command":
@@ -647,10 +633,6 @@ enum Translations {
       "這組復原碼已用完，請在 AgentKeyBox 匯入新的復原碼",
     "These recovery codes can only be used with browser_recover for their linked website login.":
       "這組復原碼只能透過 browser_recover 在搭配的網站登入中使用。",
-    "Use AgentKeyBox when a task needs sensitive data. Call list_credentials first. For developer credentials, prefer http_request with {{secret}} in a header, or run_with_secret for a local tool. Website login items ONLY support browser_login, then browser_read/browser_follow/browser_close in the private controlled browser. Credit cards support submit_sensitive_fields. For browser_recover after recoveryCodeRequired, choose the recovery-code set whose for_login equals the current login item ID. Linked sets use the detected same-site form automatically. Unlinked sets require an exact submission_url match. submit_sensitive_fields always requires a user-configured exact destination. If no set matches, ask the user to add recovery codes in AgentKeyBox and link them to this website login. Never retry a code automatically. Protected items cannot be used in commands or generic HTTP. If a developer credential is missing, use request_credential. New protected items must be added in the app. Never ask the user to paste raw secrets into chat.":
-      "任務需要機密資料時請使用 AgentKeyBox，先呼叫 list_credentials。開發用憑證優先使用 http_request（標頭內的 {{secret}}）或 run_with_secret。網站登入只能用 browser_login，再以 browser_read、browser_follow、browser_close 操作私密瀏覽器。信用卡使用 submit_sensitive_fields。收到 recoveryCodeRequired 後，browser_recover 應選 for_login 等於目前登入項目 ID 的復原碼，搭配後會自動使用同網站的表單。未搭配的項目須完全符合 submission_url。submit_sensitive_fields 一律需要使用者設定完整目的網址。沒有適合的項目時，請使用者在 AgentKeyBox 新增復原碼並搭配這個網站登入。不得自動重試復原碼。受保護項目不可用於指令或通用 HTTP。缺少開發用憑證時使用 request_credential；受保護項目必須在 App 新增。不要要求使用者把機密貼進聊天。",
-    "Use one stored recovery code in a browser that returned recoveryCodeRequired. Choose the item whose for_login equals this session's login item ID; its same-site form destination is automatic. Unlinked items require an exact match to their user-configured submission_url. Requires a new native approval showing the full actual destination. Only traditional recovery_code/recovery-code POST forms are supported. The code is persisted as issued before filling; no automatic retry or reset after failure. Returns a constrained page after submission, never the code, hidden fields or cookies.":
-      "在回傳 recoveryCodeRequired 的瀏覽器使用一組已儲存的復原碼。選擇 for_login 等於此工作階段登入項目 ID 的項目，會自動使用同網站表單的目的網址；未搭配的項目須完全符合使用者設定的 submission_url。每次需要新的原生核准，並顯示實際完整目的網址。只支援傳統 recovery_code／recovery-code POST 表單。填入前先儲存為已發出；失敗後不得自動重試或重設狀態。送出後只回傳受限頁面，不回傳復原碼、隱藏欄位或 Cookie。",
     "Use the controlled browser from a local agent": "讓本機 agent 使用受控瀏覽器",
     "Run a command with this project's secrets after approval":
       "核准後，用這個專案的金鑰執行指令",
@@ -864,8 +846,6 @@ enum Translations {
       "找不到 agentkeybox-mcp。請先建置或安裝 AgentKeyBox，或用 --helper 指定路徑。",
     "an unknown website":
       "不明網站",
-    "automatic (browser_recover only)":
-      "自動判斷（僅限 browser_recover）",
     "coding agents told not to read your key files":
       "已要求程式代理不要讀取你的金鑰檔",
     "command not found: %@":
@@ -890,8 +870,6 @@ enum Translations {
       "macOS 無法建立或打開磁碟映像檔：%@",
     "macOS needs your OK in System Settings › Login Items.":
       "需要在「系統設定 › 登入項目」裡允許。",
-    "not configured":
-      "尚未設定",
     "project":
       "專案",
     "skipped %@ (not text)":
