@@ -3,15 +3,34 @@ import Foundation
 /// Fixed diagnostics only. WebKit errors, scripts, cookies and response URLs never cross MCP.
 public enum ControlledBrowserError: Error, LocalizedError, Equatable {
   case invalidWebsite, unsupportedForm, unavailable, busy, failed, expired, invalidLink
-  case recoveryCodesExhausted
+  case recoveryCodesExhausted, recoveryNotLinkedToLogin
 
   /// Session closure after navigation/submission started must not suggest another sign-in.
   public static func forOperation(_ error: Error, executionStarted: Bool) -> Self {
     executionStarted ? .failed : (error as? Self) ?? .failed
   }
 
+  /// Fixed English guidance for agents (never localized, never derived from page content).
+  /// Only these exact strings may cross the MCP result boundary.
+  public var agentMessage: String? {
+    switch self {
+    case .recoveryCodesExhausted:
+      return "These recovery codes are used up. Ask the user to import new recovery codes in AgentKeyBox."
+    case .recoveryNotLinkedToLogin:
+      return "This recovery-code item is not linked to the current website login. Choose the item whose for_login equals this login item ID, or ask the user to link recovery codes to this login in AgentKeyBox."
+    default: return nil
+    }
+  }
+
+  public static let agentMessages: Set<String> = [
+    ControlledBrowserError.recoveryCodesExhausted.agentMessage!,
+    ControlledBrowserError.recoveryNotLinkedToLogin.agentMessage!,
+  ]
+
   public var errorDescription: String? {
     switch self {
+    case .recoveryNotLinkedToLogin:
+      return L("This recovery-code item is not linked to the current website login.")
     case .recoveryCodesExhausted:
       return L("These recovery codes are used up. Import new recovery codes in AgentKeyBox.")
     case .invalidWebsite: return L("Set an HTTPS sign-in page without a query or fragment.")

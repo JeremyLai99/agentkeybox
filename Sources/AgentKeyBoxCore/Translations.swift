@@ -473,6 +473,12 @@ enum Translations {
       "搭配：%@",
     "Linked website login":
       "搭配的網站登入",
+    "Use this site: %@ (%@)":
+      "使用登入網站：%1$@（%2$@）",
+    "Add the page path after the site address, for example /checkout.":
+      "請在網站位址後面補上頁面路徑，例如 /checkout。",
+    "This recovery-code item is not linked to the current website login.":
+      "這組復原碼沒有搭配目前的網站登入。",
     "Local authentication cancelled or failed.":
       "本機驗證已取消或失敗。",
     "Local authentication was not completed.":

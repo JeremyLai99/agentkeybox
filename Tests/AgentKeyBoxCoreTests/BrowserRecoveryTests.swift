@@ -35,8 +35,16 @@ final class BrowserRecoveryTests: XCTestCase {
     ] {
       XCTAssertThrowsError(
         try BrowserRecoveryPolicy.validate(
-          item, target: target, origin: "https://example.com", login: login))
+          item, target: target, origin: "https://example.com", login: login)
+      ) {
+        XCTAssertEqual($0 as? ControlledBrowserError, .recoveryNotLinkedToLogin)
+      }
     }
+    // The agent sees fixed English guidance, and only these exact messages cross MCP.
+    let message = try XCTUnwrap(ControlledBrowserError.recoveryNotLinkedToLogin.agentMessage)
+    XCTAssertEqual(BrokerError.requestFailed(message).controlledApprovalMessage, message)
+    XCTAssertNil(BrokerError.requestFailed("Some raw diagnostic").controlledApprovalMessage)
+    XCTAssertNotNil(ControlledBrowserError.recoveryCodesExhausted.agentMessage)
     XCTAssertThrowsError(
       try SensitiveSubmissionPolicy.validate(
         .init(fields: ["code": "{{recovery.code}}"]), credential: item)

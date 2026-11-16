@@ -24,7 +24,7 @@ public enum BrowserRecoveryPolicy {
         login.projectID == credential.projectID,
         let url = try? BrowserPolicy.loginURL(login.loginURL),
         BrowserPolicy.origin(url) == origin
-      else { throw ControlledBrowserError.unavailable }
+      else { throw ControlledBrowserError.recoveryNotLinkedToLogin }
     } else {
       guard (try? SensitiveSubmissionPolicy.destination(credential.submissionURL)) == target else {
         throw ControlledBrowserError.unavailable

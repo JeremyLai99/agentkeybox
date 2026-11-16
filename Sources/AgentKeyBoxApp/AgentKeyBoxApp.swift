@@ -1938,7 +1938,8 @@
       } catch {
         return BrokerResponse(
           ok: false,
-          error: ((error as? ControlledBrowserError) ?? .failed).localizedDescription)
+          error: ((error as? ControlledBrowserError) ?? .failed).agentMessage
+            ?? ((error as? ControlledBrowserError) ?? .failed).localizedDescription)
       }
     }
 
@@ -2043,11 +2044,10 @@
           ok: true, decision: .allowOnce,
           browserPage: recoveryGuidance(page, browser: browser, request: request))
       } catch {
+        let failure = ControlledBrowserError.forOperation(
+          error, executionStarted: executionStarted)
         return BrokerResponse(
-          ok: false,
-          error: ControlledBrowserError.forOperation(
-            error, executionStarted: executionStarted
-          ).localizedDescription)
+          ok: false, error: failure.agentMessage ?? failure.localizedDescription)
       }
     }
 

@@ -218,6 +218,8 @@ public enum BrokerError: Error, LocalizedError, Equatable {
       return "Another AgentKeyBox approval is already pending."
     case .requestFailed("Approval timed out."):
       return "Approval timed out."
+    case .requestFailed(let message) where ControlledBrowserError.agentMessages.contains(message):
+      return message
     case .clientUpdated(let kind):
       return kind.updatedMessage
     default:

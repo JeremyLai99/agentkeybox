@@ -82,6 +82,22 @@
                 }
               }
               .formStyle(.columns)
+              if linkedLoginID == nil, kind != .login {
+                ForEach(siteSuggestions, id: \.origin) { suggestion in
+                  Button {
+                    destination = suggestion.origin + "/"
+                  } label: {
+                    Label(
+                      L("Use this site: %@ (%@)", suggestion.origin, suggestion.label),
+                      systemImage: "globe")
+                  }
+                  .buttonStyle(.link)
+                }
+                if !siteSuggestions.isEmpty {
+                  Text(L("Add the page path after the site address, for example /checkout."))
+                    .font(.caption).foregroundStyle(.secondary)
+                }
+              }
               Text(
                 L(
                   linkedLoginID != nil
@@ -170,6 +186,19 @@
           L(
             "Only mark a code Available after verifying that it was not consumed. AgentKeyBox cannot check this with the service."
           ))
+      }
+    }
+
+    /// Sites of this project's saved website logins, offered as one-click starting points.
+    /// The user still sees and finishes the exact destination before saving.
+    private var siteSuggestions: [(origin: String, label: String)] {
+      var seen = Set<String>()
+      return availableLogins.compactMap { login in
+        guard let url = try? BrowserPolicy.loginURL(login.loginURL),
+          let origin = BrowserPolicy.origin(url), seen.insert(origin).inserted,
+          destination != origin + "/"
+        else { return nil }
+        return (origin, login.label)
       }
     }
 
