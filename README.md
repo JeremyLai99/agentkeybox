@@ -13,15 +13,15 @@ The product goal is to let agents complete approved tasks using sensitive data w
 AgentKeyBox is an experimental macOS utility for vibe coders, indie developers, and AI-first builders who do not want API keys scattered across `.env` files, notes, downloads, shell history, or chat windows.
 
 <p>
-  <a href="https://github.com/user-attachments/assets/9486ce5d-6f2d-4965-8226-f6cb88d1a5ad">
-    <img src="assets/promo/overview-en.png" alt="Play the 24-second AgentKeyBox overview: AI asks. You approve." width="560">
+  <a href="https://github.com/user-attachments/assets/b8d88193-c7d5-4c90-8a13-36bb57aea1e3">
+    <img src="assets/promo/overview-en.png" alt="Play the 32-second AgentKeyBox overview: AI asks. You approve." width="560">
   </a>
 </p>
 
 <details>
-<summary>▶ Watch here (24 seconds): project setup, key approval, and encrypted backups</summary>
+<summary>▶ Watch here (32 seconds): key approval, website sign-in in a private browser, cards and recovery codes</summary>
 
-https://github.com/user-attachments/assets/9486ce5d-6f2d-4965-8226-f6cb88d1a5ad
+https://github.com/user-attachments/assets/b8d88193-c7d5-4c90-8a13-36bb57aea1e3
 
 </details>
 

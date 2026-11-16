@@ -13,15 +13,15 @@
 適合 vibe coder、獨立開發者，以及不想讓 API 金鑰散落在 `.env` 檔、筆記、下載資料夾、終端機紀錄或聊天視窗裡的人。
 
 <p>
-  <a href="https://github.com/user-attachments/assets/67c40066-8b6a-45d9-a958-31690b7f169e">
-    <img src="assets/promo/overview-zh-TW.png" alt="播放 24 秒 AgentKeyBox 介紹：AI 開口問，你來決定。" width="560">
+  <a href="https://github.com/user-attachments/assets/0f0558d3-f4b7-4528-9652-bf7aff291b3d">
+    <img src="assets/promo/overview-zh-TW.png" alt="播放 32 秒 AgentKeyBox 介紹：AI 開口問，你來決定。" width="560">
   </a>
 </p>
 
 <details>
-<summary>▶ 在此頁面播放 24 秒介紹：專案設定、金鑰使用核准與加密備份</summary>
+<summary>▶ 在此頁面播放 32 秒介紹：金鑰核准、私有瀏覽器代為登入、信用卡與復原碼</summary>
 
-https://github.com/user-attachments/assets/67c40066-8b6a-45d9-a958-31690b7f169e
+https://github.com/user-attachments/assets/0f0558d3-f4b7-4528-9652-bf7aff291b3d
 
 </details>
 
